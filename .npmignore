@@ -1,0 +1,14 @@
+*.map
+*.ts
+*.tsx
+*.svelte
+.env
+.env.*
+.git/
+coverage/
+node_modules/
+scripts/
+src/
+test/
+tests/
+tsconfig*.json

@@ -1,0 +1,176 @@
+import { spawnSync } from 'node:child_process';
+import { copyFile, mkdir, readFile, rm, writeFile, chmod } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build as esbuild } from 'esbuild';
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const mereRoot = path.resolve(process.env.MERE_ROOT ?? path.join(packageRoot, '..'));
+const adaptersDir = path.join(packageRoot, 'adapters');
+const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
+
+const appBuilds = [
+	{ repo: 'business', args: ['--dir', path.join(mereRoot, 'business'), '--filter', '@zerosmb/cli', 'build'] },
+	{ repo: 'finance', script: 'build:cli' },
+	{ repo: 'projects', script: 'build:cli' },
+	{ repo: 'today', script: 'build:cli' },
+	{ repo: 'zone', script: 'build:cli' },
+	{ repo: 'video', script: 'build:cli' },
+	{ repo: 'network', script: 'build:cli' },
+	{ repo: 'email', script: 'build:cli' },
+	{ repo: 'gives', script: 'build:cli' }
+];
+
+const adapters = [
+	{
+		key: 'business',
+		sourceRepoPath: path.join(mereRoot, 'business'),
+		sourceArtifactPath: path.join(mereRoot, 'business', 'packages', 'cli', 'dist', 'index.js')
+	},
+	{
+		key: 'projects',
+		sourceRepoPath: path.join(mereRoot, 'projects'),
+		sourceArtifactPath: path.join(mereRoot, 'projects', 'dist', 'run.js')
+	},
+	{
+		key: 'today',
+		sourceRepoPath: path.join(mereRoot, 'today'),
+		sourceArtifactPath: path.join(mereRoot, 'today', 'dist', 'run.js')
+	},
+	{
+		key: 'zone',
+		sourceRepoPath: path.join(mereRoot, 'zone'),
+		sourceArtifactPath: path.join(mereRoot, 'zone', 'dist', 'run.js')
+	},
+	{
+		key: 'video',
+		sourceRepoPath: path.join(mereRoot, 'video'),
+		sourceArtifactPath: path.join(mereRoot, 'video', 'dist', 'run.js')
+	},
+	{
+		key: 'network',
+		sourceRepoPath: path.join(mereRoot, 'network'),
+		sourceArtifactPath: path.join(mereRoot, 'network', 'dist', 'run.js')
+	},
+	{
+		key: 'email',
+		sourceRepoPath: path.join(mereRoot, 'email'),
+		sourceArtifactPath: path.join(mereRoot, 'email', 'dist', 'run.js')
+	},
+	{
+		key: 'gives',
+		sourceRepoPath: path.join(mereRoot, 'gives'),
+		sourceArtifactPath: path.join(mereRoot, 'gives', 'dist', 'run.js')
+	}
+];
+
+function run(command, args, options = {}) {
+	const result = spawnSync(command, args, {
+		cwd: options.cwd ?? packageRoot,
+		env: process.env,
+		stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+		encoding: 'utf8'
+	});
+	if (result.error) throw result.error;
+	if (result.status !== 0) {
+		const detail = options.capture ? `\n${result.stderr}${result.stdout}` : '';
+		throw new Error(`${command} ${args.join(' ')} failed with ${result.status}.${detail}`);
+	}
+	return result;
+}
+
+async function copyAdapter(adapter) {
+	const targetDir = path.join(adaptersDir, adapter.key);
+	const target = path.join(targetDir, 'run.js');
+	await mkdir(targetDir, { recursive: true });
+	await copyFile(adapter.sourceArtifactPath, target);
+	await stripSourceMapReference(target);
+	await chmod(target, 0o755);
+	return target;
+}
+
+async function stripSourceMapReference(filePath) {
+	const raw = await readFile(filePath, 'utf8');
+	const next = raw.replace(/\n?\/\/# sourceMappingURL=.*(?:\r?\n)?$/u, '\n');
+	if (next !== raw) {
+		await writeFile(filePath, next, 'utf8');
+	}
+}
+
+async function bundleFinanceAdapter() {
+	const targetDir = path.join(adaptersDir, 'finance');
+	const target = path.join(targetDir, 'run.js');
+	await mkdir(targetDir, { recursive: true });
+	await esbuild({
+		entryPoints: [path.join(mereRoot, 'finance', 'packages', 'cli', 'bin', 'merefi.ts')],
+		bundle: true,
+		platform: 'node',
+		format: 'esm',
+		target: ['node24'],
+		outfile: target,
+		banner: { js: 'import { createRequire as __mereCreateRequire } from "node:module";const require = __mereCreateRequire(import.meta.url);' },
+		absWorkingDir: path.join(mereRoot, 'finance'),
+		logLevel: 'silent'
+	});
+	await stripSourceMapReference(target);
+	await chmod(target, 0o755);
+	return target;
+}
+
+function validateAdapter(key, target) {
+	const version = run(process.execPath, [target, '--version'], { capture: true });
+	if (!version.stdout.trim()) throw new Error(`${key} adapter did not print a version.`);
+
+	run(process.execPath, [target, 'completion', 'bash'], { capture: true });
+	const manifest = run(process.execPath, [target, 'commands', '--json'], { capture: true });
+	try {
+		JSON.parse(manifest.stdout);
+	} catch (error) {
+		throw new Error(`${key} adapter commands --json did not produce valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+for (const build of appBuilds) {
+	run(pnpm, build.args ?? ['--dir', path.join(mereRoot, build.repo), build.script]);
+}
+
+await rm(adaptersDir, { recursive: true, force: true });
+await mkdir(adaptersDir, { recursive: true });
+const rootPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+await writeFile(
+	path.join(adaptersDir, 'package.json'),
+	`${JSON.stringify({ name: '@merekit/cli-adapters', private: true, version: rootPackage.version ?? '0.0.0', type: 'module' }, null, 2)}\n`,
+	'utf8'
+);
+
+const builtAt = new Date().toISOString();
+const manifest = {
+	schemaVersion: 1,
+	builtAt,
+	adapters: []
+};
+
+for (const adapter of adapters) {
+	const target = await copyAdapter(adapter);
+	validateAdapter(adapter.key, target);
+	manifest.adapters.push({
+		app: adapter.key,
+		sourceRepoPath: path.relative(mereRoot, adapter.sourceRepoPath),
+		sourceArtifactPath: path.relative(mereRoot, adapter.sourceArtifactPath),
+		adapterPath: path.relative(packageRoot, target),
+		builtAt
+	});
+}
+
+const financeTarget = await bundleFinanceAdapter();
+validateAdapter('finance', financeTarget);
+manifest.adapters.splice(1, 0, {
+	app: 'finance',
+	sourceRepoPath: 'finance',
+	sourceArtifactPath: path.join('finance', 'packages', 'cli', 'bin', 'merefi.ts'),
+	adapterPath: path.relative(packageRoot, financeTarget),
+	builtAt
+});
+
+await writeFile(path.join(adaptersDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+console.log(`Built ${manifest.adapters.length} adapters in ${path.relative(process.cwd(), adaptersDir) || adaptersDir}`);
