@@ -6,6 +6,7 @@ const BOOLEAN_FLAGS = new Set([
     'local',
     'ndjson',
     'no-interactive',
+    'no-wait',
     'remote',
     'version',
     'yes'

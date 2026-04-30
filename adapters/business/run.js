@@ -564,7 +564,9 @@ var CLI_OPERATION_NAMES = [
   "settings.team.resend",
   "settings.team.revoke",
   "settings.team.role",
-  "settings.team.remove"
+  "settings.team.remove",
+  "onboarding.snapshot",
+  "onboarding.tool.run"
 ];
 var CLI_ROUTE_PATH = "/api/cli/v2";
 var CLI_OPERATION_SET = new Set(CLI_OPERATION_NAMES);
@@ -636,6 +638,30 @@ async function redeemConsoleInvite(input2) {
   return postJson2(
     url,
     { code: input2.code, refreshToken: input2.refreshToken },
+    {
+      headers: {
+        authorization: `Bearer ${input2.accessToken}`
+      }
+    }
+  ).then((payload) => payload);
+}
+async function bootstrapConsoleOnboarding(input2) {
+  const url = new URL("/api/cli/v1/onboarding/bootstrap", input2.baseUrl);
+  return postJson2(
+    url,
+    { code: input2.code, refreshToken: input2.refreshToken, values: input2.values ?? {} },
+    {
+      headers: {
+        authorization: `Bearer ${input2.accessToken}`
+      }
+    }
+  ).then((payload) => payload);
+}
+async function getConsoleOnboardingStatus(input2) {
+  const url = new URL("/api/cli/v1/onboarding/status", input2.baseUrl);
+  return postJson2(
+    url,
+    { workspaceId: input2.workspaceId, refreshToken: input2.refreshToken },
     {
       headers: {
         authorization: `Bearer ${input2.accessToken}`
@@ -4873,6 +4899,10 @@ var NEVER = INVALID;
 var requiredString = external_exports.string().min(1);
 var optionalString = external_exports.string().optional();
 var stringList = external_exports.array(external_exports.string()).optional().default([]);
+var optionalPositiveNumber = external_exports.preprocess(
+  (value) => value === void 0 ? void 0 : Number(value),
+  external_exports.number().positive().optional()
+);
 function stringOption(name, key, summary, options = {}) {
   return {
     name,
@@ -4993,6 +5023,29 @@ function workspaceCurrentFormat(data) {
   }
   return lines.join("\n");
 }
+function onboardingFormat(data) {
+  const payload = data;
+  const workspace = payload.workspace;
+  if (payload.state === "active") {
+    return `Workspace ${workspace?.slug ?? "workspace"} is active.${payload.nextUrl ? `
+open: ${payload.nextUrl}` : ""}`;
+  }
+  if (payload.state === "provisioning") {
+    const step = payload.provisioning?.activeStep ? `
+step: ${payload.provisioning.activeStep}` : "";
+    return `Workspace ${workspace?.slug ?? "workspace"} is provisioning.${step}${payload.nextUrl ? `
+status: ${payload.nextUrl}` : ""}`;
+  }
+  if (payload.state === "needs_attention") {
+    const detail = payload.provisioning?.activeOutput ?? payload.error ?? "Provisioning needs attention.";
+    return `Workspace ${workspace?.slug ?? "workspace"} needs attention.
+${detail}`;
+  }
+  if (payload.error) {
+    return payload.error;
+  }
+  return `Onboarding state: ${payload.state ?? "unknown"}`;
+}
 var commands = [
   {
     path: ["auth", "login"],
@@ -5101,6 +5154,67 @@ next: ${payload.nextUrl}` : ""}`;
       return `Invite state: ${payload.state ?? "unknown"}`;
     }
   },
+  {
+    path: ["onboard", "start"],
+    summary: "Create and provision a workspace from a Mere invite code.",
+    positionals: ["code"],
+    options: [
+      stringOption("name", "name", "Business name override."),
+      stringOption("slug", "slug", "Workspace subdomain override."),
+      stringOption("business-mode", "businessMode", "Business mode: new or existing."),
+      stringOption("base-domain", "baseDomain", "Workspace base domain."),
+      stringOption("existing-website-url", "existingWebsiteUrl", "Existing business website URL."),
+      stringOption("existing-city", "existingCity", "Existing business city."),
+      stringOption("existing-state", "existingState", "Existing business state/province."),
+      stringOption("existing-industry", "existingIndustry", "Existing business industry."),
+      stringOption("existing-phone", "existingPhone", "Existing business phone."),
+      stringOption("existing-description", "existingDescription", "Existing business description."),
+      booleanOption("no-wait", "noWait", "Return after provisioning starts."),
+      stringOption("timeout-seconds", "timeoutSeconds", "Maximum seconds to wait for provisioning."),
+      stringOption("poll-seconds", "pollSeconds", "Seconds between provisioning status checks.")
+    ],
+    schema: external_exports.object({
+      code: requiredString,
+      name: optionalString,
+      slug: optionalString,
+      businessMode: external_exports.enum(["new", "existing"]).optional(),
+      baseDomain: optionalString,
+      existingWebsiteUrl: optionalString,
+      existingCity: optionalString,
+      existingState: optionalString,
+      existingIndustry: optionalString,
+      existingPhone: optionalString,
+      existingDescription: optionalString,
+      noWait: external_exports.boolean().optional(),
+      timeoutSeconds: optionalPositiveNumber,
+      pollSeconds: optionalPositiveNumber
+    }),
+    auth: "session",
+    execute: (runtime, input2) => runtime.startOnboarding(input2),
+    format: onboardingFormat
+  },
+  rpcCommand({
+    path: ["onboard", "snapshot"],
+    summary: "Show onboarding setup state for the current workspace.",
+    schema: external_exports.object({}),
+    op: "onboarding.snapshot",
+    buildInput: () => ({})
+  }),
+  rpcCommand({
+    path: ["onboard", "tool"],
+    summary: "Run an onboarding agent tool by key.",
+    positionals: ["toolKey"],
+    options: [stringOption("input-json", "inputJson", "Tool input JSON object.")],
+    schema: external_exports.object({
+      toolKey: requiredString,
+      inputJson: optionalString
+    }),
+    op: "onboarding.tool.run",
+    buildInput: (input2) => ({
+      toolKey: input2.toolKey,
+      input: parseJsonText(input2.inputJson, "input-json") ?? {}
+    })
+  }),
   rpcCommand({
     path: ["ops", "list"],
     summary: "List ops items.",
@@ -7001,7 +7115,7 @@ function renderCommandManifest() {
       auth: { kind: "browser" },
       baseUrlEnv: ["MERE_BUSINESS_BASE_URL"],
       sessionPath: "~/.local/state/zerosmb-cli/session.json",
-      globalFlags: ["workspace", "json", "yes", "confirm"],
+      globalFlags: ["workspace", "json", "no-interactive", "yes", "confirm"],
       commands: [
         ...commands.map((command) => ({
           id: command.path.join("."),
@@ -7061,6 +7175,26 @@ function readPackageVersion() {
   return parsed.version?.trim() || "0.0.0";
 }
 var CLI_VERSION = readPackageVersion();
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function compactObject(input2) {
+  return Object.fromEntries(
+    Object.entries(input2).filter(([, value]) => value !== void 0 && value !== null)
+  );
+}
+function stripSessionPayload(result) {
+  if (!result || typeof result !== "object" || !("session" in result)) return result;
+  const next = { ...result };
+  delete next.session;
+  return next;
+}
+function writeProgress(globalFlags, message) {
+  if (!globalFlags.json) {
+    stderr.write(`${message}
+`);
+  }
+}
 async function createRuntime(globalFlags) {
   const paths = resolveCliPaths2();
   let sessionCache;
@@ -7078,6 +7212,14 @@ async function createRuntime(globalFlags) {
     const session = await getLocalSession();
     if (!session) {
       throw authError("No local session found. Run `mere-business auth login` first.");
+    }
+    return session;
+  }
+  async function ensureConsoleSession() {
+    const session = await requireSession();
+    const workspace = session.defaultWorkspaceId ?? session.workspace?.id ?? void 0;
+    if (!workspace || sessionNeedsRefresh2(session, workspace)) {
+      return writeSession(await refreshRemoteSession2(session, { workspace }));
     }
     return session;
   }
@@ -7134,7 +7276,7 @@ async function createRuntime(globalFlags) {
       );
     },
     redeemInvite: async (code) => {
-      const session = await requireSession();
+      const session = await ensureConsoleSession();
       const result = await redeemConsoleInvite({
         baseUrl: session.baseUrl,
         accessToken: session.accessToken,
@@ -7149,7 +7291,87 @@ async function createRuntime(globalFlags) {
           lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
         });
       }
-      return result;
+      return stripSessionPayload(result);
+    },
+    startOnboarding: async (input2) => {
+      const session = await ensureConsoleSession();
+      const code = String(input2.code ?? "").trim();
+      if (!code) throw usageError("Invite code is required.");
+      const values = compactObject({
+        name: input2.name,
+        slug: input2.slug,
+        businessMode: input2.businessMode,
+        baseDomain: input2.baseDomain,
+        existingWebsiteUrl: input2.existingWebsiteUrl,
+        existingCity: input2.existingCity,
+        existingState: input2.existingState,
+        existingIndustry: input2.existingIndustry,
+        existingPhone: input2.existingPhone,
+        existingDescription: input2.existingDescription
+      });
+      writeProgress(globalFlags, `Starting onboarding for invite ${code}...`);
+      let result = await bootstrapConsoleOnboarding({
+        baseUrl: session.baseUrl,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        code,
+        values
+      });
+      if (result.session) {
+        await writeSession({
+          ...result.session,
+          version: 1,
+          baseUrl: session.baseUrl,
+          lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      const workspaceId = result.workspace?.id;
+      if (!workspaceId || input2.noWait === true || result.state === "active" || result.state === "needs_attention") {
+        return stripSessionPayload(result);
+      }
+      const timeoutMs = Math.round(Number(input2.timeoutSeconds ?? 900) * 1e3);
+      const pollMs = Math.max(1e3, Math.round(Number(input2.pollSeconds ?? 5) * 1e3));
+      const deadline = Date.now() + timeoutMs;
+      let lastLine = "";
+      writeProgress(
+        globalFlags,
+        `Workspace ${result.workspace?.slug ?? workspaceId} created. Waiting for provisioning...`
+      );
+      while (Date.now() < deadline) {
+        await sleep(pollMs);
+        const latestSession = await getLocalSession() ?? session;
+        result = await getConsoleOnboardingStatus({
+          baseUrl: latestSession.baseUrl,
+          accessToken: latestSession.accessToken,
+          refreshToken: latestSession.refreshToken,
+          workspaceId
+        });
+        if (result.session) {
+          await writeSession({
+            ...result.session,
+            version: 1,
+            baseUrl: latestSession.baseUrl,
+            lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+        if (result.state === "active" || result.state === "needs_attention") {
+          return stripSessionPayload(result);
+        }
+        const line = [
+          result.provisioning?.activeStep ?? "provisioning",
+          result.provisioning?.activeOutput
+        ].filter(Boolean).join(": ");
+        if (line && line !== lastLine) {
+          writeProgress(globalFlags, line);
+          lastLine = line;
+        }
+      }
+      return {
+        ...stripSessionPayload(result),
+        state: result.state ?? "provisioning",
+        timedOut: true,
+        message: `Provisioning is still running after ${Math.round(timeoutMs / 1e3)} seconds.`
+      };
     },
     getProfile: async () => withRetry((session) => getWorkspaceProfile(session.workspace, session.accessToken), globalFlags.workspace),
     download: async (pathname, options) => withRetry(
