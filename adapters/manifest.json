@@ -1,69 +1,69 @@
 {
   "schemaVersion": 1,
-  "builtAt": "2026-04-27T15:08:08.706Z",
+  "builtAt": "2026-04-30T13:41:23.072Z",
   "adapters": [
     {
       "app": "business",
       "sourceRepoPath": "business",
       "sourceArtifactPath": "business/packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "finance",
       "sourceRepoPath": "finance",
       "sourceArtifactPath": "finance/packages/cli/bin/merefi.ts",
       "adapterPath": "adapters/finance/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "projects",
       "sourceRepoPath": "projects",
       "sourceArtifactPath": "projects/dist/run.js",
       "adapterPath": "adapters/projects/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "today",
       "sourceRepoPath": "today",
       "sourceArtifactPath": "today/dist/run.js",
       "adapterPath": "adapters/today/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "zone",
       "sourceRepoPath": "zone",
       "sourceArtifactPath": "zone/dist/run.js",
       "adapterPath": "adapters/zone/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "video",
       "sourceRepoPath": "video",
       "sourceArtifactPath": "video/dist/run.js",
       "adapterPath": "adapters/video/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "network",
       "sourceRepoPath": "network",
       "sourceArtifactPath": "network/dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "email",
       "sourceRepoPath": "email",
       "sourceArtifactPath": "email/dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     },
     {
       "app": "gives",
       "sourceRepoPath": "gives",
       "sourceArtifactPath": "gives/dist/run.js",
       "adapterPath": "adapters/gives/run.js",
-      "builtAt": "2026-04-27T15:08:08.706Z"
+      "builtAt": "2026-04-30T13:41:23.072Z"
     }
   ]
 }

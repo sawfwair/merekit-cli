@@ -348,7 +348,7 @@ function coerceLocalSession(value) {
     return null;
   }
   const parsed = value;
-  if (parsed.version !== 1 || typeof parsed.refreshToken !== "string" || typeof parsed.accessToken !== "string" || !parsed.workspace || !Array.isArray(parsed.workspaces) || !parsed.user || !parsed.accessTokenClaims) {
+  if (parsed.version !== 1 || typeof parsed.refreshToken !== "string" || typeof parsed.accessToken !== "string" || parsed.workspace === void 0 || !Array.isArray(parsed.workspaces) || !parsed.user || !parsed.accessTokenClaims) {
     return null;
   }
   const exp = parsed.accessTokenClaims.exp;
@@ -357,7 +357,7 @@ function coerceLocalSession(value) {
     ...parsed,
     version: 1,
     baseUrl: normalizeConsoleUrl(parsed.baseUrl ?? parsed.consoleUrl ?? DEFAULT_CONSOLE_URL),
-    defaultWorkspaceId: parsed.defaultWorkspaceId ?? parsed.workspace.id,
+    defaultWorkspaceId: parsed.defaultWorkspaceId ?? parsed.workspace?.id ?? null,
     expiresAt,
     lastRefreshAt: parsed.lastRefreshAt ?? (/* @__PURE__ */ new Date()).toISOString()
   };
@@ -630,6 +630,18 @@ async function getWorkspaceProfile(workspace, accessToken) {
     });
   }
   return body.data;
+}
+async function redeemConsoleInvite(input2) {
+  const url = new URL("/api/cli/v1/invites/redeem", input2.baseUrl);
+  return postJson2(
+    url,
+    { code: input2.code, refreshToken: input2.refreshToken },
+    {
+      headers: {
+        authorization: `Bearer ${input2.accessToken}`
+      }
+    }
+  ).then((payload) => payload);
 }
 async function postWorkspaceOperation(workspace, accessToken, op, input2) {
   const url = new URL(CLI_ROUTE_PATH, workspaceBaseUrl2(workspace));
@@ -4973,7 +4985,9 @@ function workspaceListFormat(data) {
 }
 function workspaceCurrentFormat(data) {
   const payload = data;
-  const lines = [`current: ${payload.current.slug} (${payload.current.host})`];
+  const lines = [
+    payload.current ? `current: ${payload.current.slug} (${payload.current.host})` : "current: none"
+  ];
   if (payload.defaultWorkspace) {
     lines.push(`default: ${payload.defaultWorkspace.slug} (${payload.defaultWorkspace.host})`);
   }
@@ -4994,8 +5008,9 @@ var commands = [
     }),
     format: (data) => {
       const session = data;
+      const workspace = session.workspace ? `workspace: ${session.workspace.slug} (${session.workspace.host})` : "workspace: none yet";
       return `Logged in as ${session.user.email}
-workspace: ${session.workspace.slug} (${session.workspace.host})`;
+${workspace}`;
     }
   },
   {
@@ -5041,7 +5056,7 @@ workspace: ${session.workspace.slug} (${session.workspace.host})`;
         throw usageError("No local session found. Run `mere-business auth login` first.");
       }
       return {
-        currentWorkspaceId: session.workspace.id,
+        currentWorkspaceId: session.workspace?.id ?? null,
         defaultWorkspaceId: session.defaultWorkspaceId,
         workspaces: session.workspaces
       };
@@ -5057,7 +5072,33 @@ workspace: ${session.workspace.slug} (${session.workspace.host})`;
     execute: (runtime, input2) => runtime.switchWorkspace(input2.workspace),
     format: (data) => {
       const session = data;
+      if (!session.workspace) return "Default workspace is not set.";
       return `Default workspace set to ${session.workspace.slug} (${session.workspace.host})`;
+    }
+  },
+  {
+    path: ["invite", "redeem"],
+    summary: "Redeem a Mere platform invite code.",
+    positionals: ["code"],
+    schema: external_exports.object({ code: requiredString }),
+    auth: "session",
+    execute: (runtime, input2) => runtime.redeemInvite(input2.code),
+    format: (data) => {
+      const payload = data;
+      if (payload.state === "create_workspace") {
+        const invite = payload.onboardingInvite;
+        return `Invite accepted. Create workspace from invite${invite?.name ? ` for ${invite.name}` : ""}${invite?.slug ? ` (${invite.slug})` : ""}.`;
+      }
+      if (payload.state === "claimed_workspace") {
+        const workspace = payload.workspace;
+        return `Invite redeemed for ${workspace?.slug ?? "workspace"}${payload.nextUrl ? `
+next: ${payload.nextUrl}` : ""}`;
+      }
+      if (payload.state === "claimed_organization_invite") {
+        return `Invite redeemed.${payload.nextUrl ? `
+next: ${payload.nextUrl}` : ""}`;
+      }
+      return `Invite state: ${payload.state ?? "unknown"}`;
     }
   },
   rpcCommand({
@@ -7047,7 +7088,7 @@ async function createRuntime(globalFlags) {
     if (!sessionNeedsRefresh2(session, targetWorkspace.id)) {
       return session;
     }
-    return writeSession(
+    return await writeSession(
       await refreshRemoteSession2(session, {
         workspace: targetWorkspace.id,
         persistDefaultWorkspace: options.persistDefaultWorkspace
@@ -7085,12 +7126,30 @@ async function createRuntime(globalFlags) {
     getLocalSession,
     switchWorkspace: async (selector) => {
       await requireSession();
-      return writeSession(
+      return await writeSession(
         await ensureWorkspaceSession({
           workspace: selector,
           persistDefaultWorkspace: true
         })
       );
+    },
+    redeemInvite: async (code) => {
+      const session = await requireSession();
+      const result = await redeemConsoleInvite({
+        baseUrl: session.baseUrl,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        code
+      });
+      if (result.session) {
+        await writeSession({
+          ...result.session,
+          version: 1,
+          baseUrl: session.baseUrl,
+          lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      return result;
     },
     getProfile: async () => withRetry((session) => getWorkspaceProfile(session.workspace, session.accessToken), globalFlags.workspace),
     download: async (pathname, options) => withRetry(
