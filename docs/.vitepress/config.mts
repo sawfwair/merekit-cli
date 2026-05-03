@@ -38,6 +38,9 @@ export default defineConfig({
       { text: 'Commands', link: '/commands' },
       { text: 'MCP', link: '/mcp' }
     ],
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/sawfwair/merekit-cli' }
+    ],
     sidebar: [
       {
         text: 'Orientation',
@@ -69,7 +72,8 @@ export default defineConfig({
       {
         text: 'Reference',
         items: [
-          { text: 'Safety Model', link: '/reference/safety' }
+          { text: 'Safety Model', link: '/reference/safety' },
+          { text: 'Release Checklist', link: '/release-checklist' }
         ]
       }
     ],

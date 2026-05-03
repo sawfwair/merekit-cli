@@ -1,5 +1,9 @@
 # Mere CLI
 
+[![CI](https://github.com/sawfwair/merekit-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sawfwair/merekit-cli/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@merekit/cli.svg)](https://www.npmjs.com/package/@merekit/cli)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 `mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, and MCP access.
 
 ```sh
@@ -78,6 +82,10 @@ mere ops doctor --json
 
 The package is a public scoped package as `@merekit/cli` and ships the `mere` bin from `dist/run.js` plus compiled app adapters under `adapters/`.
 
+## Contributing
+
+Issues and pull requests are welcome. Please read `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, and `SECURITY.md` before sending changes that affect adapters, auth flows, MCP behavior, package contents, or release scripts.
+
 ## License
 
 MereKit CLI is open source under the Apache License, Version 2.0. See `LICENSE`.
@@ -89,6 +97,8 @@ The license covers the package code and documentation. It does not grant access 
 ## Publish
 
 The package publishes compiled runtime files, bundled adapters, docs, and the repo-local `mere-cli` skill. Product and onboarding skill bodies are fetched from the centralized registry at `https://merekit.com/skills` with digest verification, so source, tests, app repos, local state, secrets, and non-CLI skill text are intentionally excluded from the package tarball.
+
+Use `docs/release-checklist.md` for the full public-release preflight, including adapter safety, package contents, smoke checks, and secret scanning.
 
 ```sh
 pnpm check
@@ -196,3 +206,5 @@ For deeper operating docs see:
 - `docs/commands.md`
 - `docs/ops.md`
 - `docs/mcp.md`
+- `docs/release-checklist.md`
+- `CHANGELOG.md`

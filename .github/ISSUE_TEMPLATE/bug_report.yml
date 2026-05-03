@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible Mere CLI bug.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the command, flags, and relevant non-secret output.
+      placeholder: |
+        1. Run `mere ...`
+        2. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "@merekit/cli 0.1.13, Node 24.x"
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Redact tokens, workspace data, customer data, and private URLs.

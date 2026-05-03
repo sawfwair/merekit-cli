@@ -1,9 +1,28 @@
 {
   "name": "@merekit/cli",
   "version": "0.1.13",
+  "description": "Headless command plane for Mere apps, with bundled adapters, onboarding context packs, audits, and MCP access.",
   "private": false,
   "license": "Apache-2.0",
   "type": "module",
+  "author": "Sawfwair",
+  "homepage": "https://github.com/sawfwair/merekit-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sawfwair/merekit-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sawfwair/merekit-cli/issues"
+  },
+  "keywords": [
+    "mere",
+    "merekit",
+    "cli",
+    "mcp",
+    "agents",
+    "command-plane",
+    "headless"
+  ],
   "bin": {
     "mere": "dist/run.js"
   },
@@ -13,9 +32,13 @@
     "docs/**/*.md",
     "docs/public",
     "skills",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "SUPPORT.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "publishConfig": {

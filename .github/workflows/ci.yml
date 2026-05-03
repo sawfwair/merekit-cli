@@ -23,3 +23,5 @@ jobs:
       - run: pnpm test
       - run: pnpm smoke
       - run: pnpm smoke:mcp
+      - run: pnpm check:package
+      - run: pnpm docs:build
