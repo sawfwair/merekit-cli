@@ -4,6 +4,7 @@ import { loadManifest } from './manifest.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
 import { createRegistry, executionCwd, resolveCli } from './registry.js';
+import { isWriteLikeCommand } from './safety.js';
 const toolInputSchema = z.object({
     args: z.array(z.string()).optional(),
     workspace: z.string().optional(),
@@ -25,7 +26,7 @@ export async function listMcpTools(entries, allowWrites, env) {
         if (!manifest.ok || !manifest.manifest)
             continue;
         for (const command of manifest.manifest.commands) {
-            const writeLike = command.risk !== 'read';
+            const writeLike = isWriteLikeCommand(command);
             if (writeLike && !allowWrites)
                 continue;
             tools.push({
@@ -60,7 +61,7 @@ function inputToArgs(input, command) {
 }
 async function invokeTool(io, spec, rawInput) {
     const input = toolInputSchema.parse(rawInput ?? {});
-    if (spec.command.requiresYes && input.yes !== true) {
+    if ((spec.command.requiresYes || spec.command.risk === 'destructive' || spec.command.risk === 'external') && input.yes !== true) {
         throw new Error(`${spec.name} requires yes: true.`);
     }
     if (spec.command.requiresConfirm && !input.confirm?.trim()) {

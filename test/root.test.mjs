@@ -49,6 +49,63 @@ console.log(JSON.stringify({ args, marker: process.env.FAKE_CLI_MARKER ?? null }
   );
 }
 
+async function writeFakeSelectorCli(fake, app) {
+  await mkdir(path.dirname(fake), { recursive: true });
+  const commands = {
+    today: [
+      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
+      { id: 'tenant.resolve', path: ['tenant', 'resolve'], summary: 'Resolve tenant.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['workspace'], auditDefault: true },
+    ],
+    zone: [
+      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
+      { id: 'store.list', path: ['store', 'list'], summary: 'List stores.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['workspace'], auditDefault: true },
+      { id: 'stripe.status', path: ['stripe', 'status'], summary: 'Stripe status.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['store'], auditDefault: true },
+    ],
+    gives: [
+      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
+      { id: 'campaigns.list', path: ['campaigns', 'list'], summary: 'List campaigns.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['tenant'], auditDefault: true },
+    ],
+  }[app];
+  await writeFile(
+    fake,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'commands') {
+  console.log(JSON.stringify({
+    schemaVersion: 1,
+    app: 'mere-${app}',
+    namespace: '${app}',
+    aliases: ['${app}', 'mere-${app}'],
+    auth: { kind: 'browser' },
+    baseUrlEnv: [],
+    sessionPath: null,
+    globalFlags: ['workspace', 'json', 'tenant', 'store'],
+    commands: ${JSON.stringify(commands)}
+  }));
+  process.exit(0);
+}
+if (args[0] === '--version') {
+  console.log('fake-${app}');
+  process.exit(0);
+}
+if (args[0] === 'completion') {
+  console.log('complete');
+  process.exit(0);
+}
+if (args[0] === 'tenant' && args[1] === 'resolve') {
+  console.log(JSON.stringify({ tenant: { id: 'ten_1' }, args }));
+  process.exit(0);
+}
+if (args[0] === 'store' && args[1] === 'list') {
+  console.log(JSON.stringify({ current: { storeId: 'store_1' }, stores: [{ storeId: 'store_1' }], args }));
+  process.exit(0);
+}
+console.log(JSON.stringify({ args }));
+`,
+    'utf8',
+  );
+}
+
 async function fakeMereRoot() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-test-'));
   const projects = path.join(root, 'projects');
@@ -90,6 +147,24 @@ console.log(JSON.stringify({ args }));
   return root;
 }
 
+async function writeFakeSkill(root, repo = 'business', name = 'mere-onboarding-agent') {
+  const skillDir = path.join(root, repo, 'skills', name);
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(
+    path.join(skillDir, 'SKILL.md'),
+    `---
+name: ${name}
+description: Help a new Mere business owner redeem an invite and complete setup.
+---
+
+# ${name}
+
+Use the Mere CLI to complete business onboarding.
+`,
+    'utf8',
+  );
+}
+
 async function fakePackageRoot() {
   const packageRoot = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-package-'));
   await writeFakeProjectsCli(path.join(packageRoot, 'adapters', 'projects', 'run.js'));
@@ -124,6 +199,39 @@ test('renders help and completion', async () => {
   assert.equal(completion.code, 0);
   assert.match(completion.stdout, /complete -F _mere_completion mere/);
   assert.match(completion.stdout, /agent/);
+  assert.match(completion.stdout, /onboard/);
+  assert.match(completion.stdout, /workspace-snapshot/);
+  assert.match(completion.stdout, /finance profiles/);
+});
+
+test('discovers local skills for registry publishing', async () => {
+  const root = await fakeMereRoot();
+  await writeFakeSkill(root);
+  await writeFakeSkill(root, 'business', 'zerosmb-cli');
+  await writeFakeSkill(root, 'works', 'works-cli');
+  const result = await run(['skills', 'list', '--local', '--json'], { MERE_ROOT: root });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const skill = payload.skills.find((entry) => entry.name === 'mere-onboarding-agent');
+  assert.ok(skill);
+  assert.equal(skill.repo, 'business');
+  assert.match(skill.url, /https:\/\/merekit\.com\/skills\/mere-onboarding-agent\/SKILL\.md/);
+  assert.equal(skill.files.length, 1);
+  assert.match(skill.digest, /^sha256:/);
+  assert.equal(payload.skills.some((entry) => entry.name === 'zerosmb-cli'), false);
+  assert.equal(payload.skills.some((entry) => entry.name === 'works-cli'), false);
+});
+
+test('renders a readable skills list for humans', async () => {
+  const root = await fakeMereRoot();
+  await writeFakeSkill(root);
+  const result = await run(['skills', 'list', '--local'], { MERE_ROOT: root, COLUMNS: '86' });
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /Mere skills local preview \(1\)/);
+  assert.match(result.stdout, /Name\s+Repo\s+Summary/);
+  assert.match(result.stdout, /mere-onboarding-agent\s+business\s+Help a new Mere business owner/);
+  assert.match(result.stdout, /mere skills show NAME/);
+  assert.doesNotMatch(result.stdout, /\t/);
 });
 
 test('lists apps from the registry', async () => {
@@ -230,6 +338,12 @@ test('workspace snapshot runs read-only audit defaults for a workspace', async (
   assert.equal(payload.workspace, 'ws_1');
   assert.equal(payload.apps.length, 1);
   assert.equal(payload.apps[0].app, 'projects');
+  assert.deepEqual(payload.apps[0].coverage, {
+    readCommands: 3,
+    auditDefaultCommands: 2,
+    executedCommands: 2,
+    skippedReadCommands: [{ command: ['completion'], reason: 'Not marked auditDefault in the app manifest.' }],
+  });
   assert.deepEqual(
     payload.apps[0].commands.map((command) => command.command.join(' ')),
     ['project list', 'auth whoami'],
@@ -243,6 +357,100 @@ test('workspace snapshot runs read-only audit defaults for a workspace', async (
     assert.ok(commandPayload.args.includes('--workspace'));
     assert.ok(commandPayload.args.includes('ws_1'));
   }
+});
+
+test('workspace snapshot includes selector hints for inferred selectors', async () => {
+  const root = await fakeMereRoot();
+  const todayCli = path.join(root, 'fake-today.js');
+  const zoneCli = path.join(root, 'fake-zone.js');
+  const givesCli = path.join(root, 'fake-gives.js');
+  await writeFakeSelectorCli(todayCli, 'today');
+  await writeFakeSelectorCli(zoneCli, 'zone');
+  await writeFakeSelectorCli(givesCli, 'gives');
+
+  const today = await run(['ops', 'workspace-snapshot', '--app', 'today', '--workspace', 'ws_1', '--json'], { MERE_ROOT: root, MERE_TODAY_CLI: todayCli });
+  assert.equal(today.code, 0, today.stderr);
+  assert.equal(JSON.parse(today.stdout).apps[0].selectorHints.inferredTenants[0].value, 'ten_1');
+
+  const zone = await run(['ops', 'workspace-snapshot', '--app', 'zone', '--workspace', 'ws_1', '--json'], { MERE_ROOT: root, MERE_ZONE_CLI: zoneCli });
+  assert.equal(zone.code, 0, zone.stderr);
+  assert.equal(JSON.parse(zone.stdout).apps[0].selectorHints.inferredStores[0].value, 'store_1');
+
+  const gives = await run(['ops', 'workspace-snapshot', '--app', 'gives', '--workspace', 'ws_1', '--json'], { MERE_ROOT: root, MERE_GIVES_CLI: givesCli });
+  assert.equal(gives.code, 0, gives.stderr);
+  assert.equal(JSON.parse(gives.stdout).apps[0].selectorHints.inferredTenants[0].value, 'ws_1');
+});
+
+test('onboard writes readiness report and onboarding artifacts', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-onboard-home-'));
+  const output = path.join(home, 'onboard-pack');
+  const result = await run(['onboard', '--app', 'projects', '--workspace', 'ws_1', '--target', 'codex', '--output', output, '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.schemaVersion, 1);
+  assert.equal(payload.workspace, 'ws_1');
+  assert.equal(payload.outputDir, output);
+  assert.equal(payload.artifacts.bootstrap, path.join(output, 'bootstrap.json'));
+  assert.equal(payload.artifacts.onboardingReport, path.join(output, 'onboarding-report.json'));
+  assert.equal(payload.artifacts.onboardingMarkdown, path.join(output, 'ONBOARDING.md'));
+  assert.equal(payload.apps[0].app, 'projects');
+  assert.equal(payload.apps[0].status, 'ready');
+  assert.equal(payload.apps[0].readinessScore, 100);
+  assert.ok(payload.apps[0].safeFirstCommands.some((command) => command.includes('mere projects project list')));
+  assert.match(await readFile(path.join(output, 'ONBOARDING.md'), 'utf8'), /mere skills install mere-onboarding-agent --target codex/);
+});
+
+test('onboard reports missing workspace without crashing', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-onboard-missing-workspace-'));
+  const result = await run(['onboard', '--app', 'projects', '--output', path.join(home, 'pack'), '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.apps[0].status, 'blocked');
+  assert.ok(payload.remediation.some((item) => item.id === 'projects.workspace' && item.nextCommand === 'mere onboard --workspace WORKSPACE_ID --json'));
+});
+
+test('onboard reports missing adapter with setup remediation', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-onboard-missing-adapter-'));
+  const result = await run(['onboard', '--app', 'business', '--workspace', 'ws_1', '--output', path.join(home, 'pack'), '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.apps[0].status, 'blocked');
+  assert.ok(payload.remediation.some((item) => item.id === 'business.adapter' && item.nextCommand === 'mere setup build --app business'));
+});
+
+test('onboard recommends finance login with placeholder and concrete base URLs', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-onboard-finance-'));
+  const placeholder = await run(['onboard', '--app', 'finance', '--workspace', 'ws_1', '--output', path.join(home, 'placeholder'), '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(placeholder.code, 0, placeholder.stderr);
+  assert.ok(JSON.parse(placeholder.stdout).remediation.some((item) => item.nextCommand === 'mere finance profiles login default --base-url https://<tenant>.mere.finance --json'));
+
+  const concrete = await run(['onboard', '--app', 'finance', '--workspace', 'ws_1', '--finance-profile', 'books', '--finance-base-url', 'https://finance.test', '--output', path.join(home, 'concrete'), '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(concrete.code, 0, concrete.stderr);
+  assert.ok(JSON.parse(concrete.stdout).remediation.some((item) => item.nextCommand === 'mere finance profiles login books --base-url https://finance.test --json'));
 });
 
 test('agent bootstrap writes a secret-free context pack', async () => {
@@ -267,6 +475,10 @@ test('agent bootstrap writes a secret-free context pack', async () => {
 
   const manifest = JSON.parse(await readFile(path.join(output, 'apps-manifest.json'), 'utf8'));
   assert.equal(manifest.apps[0].namespace, 'projects');
+
+  const context = JSON.parse(await readFile(path.join(output, 'context.json'), 'utf8'));
+  assert.equal(context.state.defaultWorkspace, 'ws_1');
+  assert.match(context.paths.configDir, /mere/);
 
   const snapshot = await readFile(path.join(output, 'workspace-snapshot.json'), 'utf8');
   assert.match(snapshot, /<redacted>/);
@@ -306,6 +518,21 @@ test('finance profile wrappers read and update local config', async () => {
   assert.equal(payload.currentProfile, 'books');
   assert.deepEqual(payload.profiles.map((profile) => profile.name), ['books', 'default']);
   assert.equal(payload.profiles[0].hasToken, false);
+});
+
+test('finance profile login stores profile and delegates auth login', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-finance-login-'));
+  const result = await run(['finance', 'profiles', 'login', 'books', '--base-url', 'https://finance.test', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.currentProfile, 'books');
+  assert.equal(payload.baseUrl, 'https://finance.test');
+  assert.deepEqual(payload.stdout.args, ['auth', 'login', '--base-url', 'https://finance.test', '--profile', 'books', '--json']);
 });
 
 test('finance profile wrappers require a tenant base URL for new profiles', async () => {

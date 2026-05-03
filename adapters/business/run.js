@@ -268,6 +268,9 @@ async function waitForCallback(input2) {
           if (input2.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input2.workspace.trim());
           }
+          if (input2.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input2.inviteCode.trim());
+          }
           const started = await fetchJson(input2.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input2.notify(
@@ -294,6 +297,7 @@ async function loginWithBrowser(input2) {
     fetchImpl: input2.fetchImpl ?? fetch,
     notify: input2.notify,
     workspace: input2.workspace,
+    inviteCode: input2.inviteCode,
     productLabel: input2.productLabel
   });
   return createLocalSession(payload, {
@@ -416,6 +420,7 @@ async function loginWithBrowser2(options, notify) {
     baseUrl: consoleUrl,
     productLabel: "mere-business",
     workspace: options.workspace,
+    inviteCode: options.inviteCode,
     notify
   });
 }
@@ -632,6 +637,10 @@ async function getWorkspaceProfile(workspace, accessToken) {
     });
   }
   return body.data;
+}
+async function peekConsoleInvite(input2) {
+  const url = new URL(`/api/cli/v1/invites/peek/${encodeURIComponent(input2.code)}`, input2.baseUrl);
+  return await fetchJson2(url);
 }
 async function redeemConsoleInvite(input2) {
   const url = new URL("/api/cli/v1/invites/redeem", input2.baseUrl);
@@ -4929,6 +4938,7 @@ function rpcCommand(definition) {
     options: definition.options,
     schema: definition.schema,
     auth: "workspace",
+    risk: definition.risk,
     destructive: definition.destructive,
     confirmationTarget: definition.confirmationTarget ? (input2) => definition.confirmationTarget?.(input2) ?? null : void 0,
     execute: (runtime, input2) => runtime.invoke(definition.op, definition.buildInput(input2)),
@@ -4943,6 +4953,7 @@ function downloadCommand(definition) {
     options: definition.options,
     schema: definition.schema,
     auth: "workspace",
+    risk: definition.risk,
     destructive: definition.destructive,
     execute: (runtime, input2) => {
       const download = definition.buildDownload(input2);
@@ -4965,6 +4976,126 @@ var globalOptions = [
   stringOption("confirm", "confirm", "Exact confirmation target for high-impact destructive actions."),
   booleanOption("help", "help", "Show help for this command.", "h")
 ];
+var EXTERNAL_COMMANDS = /* @__PURE__ */ new Set([
+  "calendar.subscription.sync",
+  "campaigns.send",
+  "mail.reply",
+  "mail.send",
+  "site.approve",
+  "site.regenerate",
+  "voice.number.buy",
+  "voice.number.pause",
+  "voice.number.resume",
+  "voice.number.route",
+  "voice.number.update",
+  "voice.provider.account.sync"
+]);
+var READ_COMMANDS = /* @__PURE__ */ new Set([
+  "auth.whoami",
+  "calendar.feed.get",
+  "calendar.list",
+  "calendar.subscription.list",
+  "contacts.get",
+  "contacts.list",
+  "deals.get",
+  "deals.list",
+  "deals.pipelines",
+  "mail.get",
+  "mail.list",
+  "mail.mailboxes",
+  "messages.get",
+  "messages.list",
+  "onboard.snapshot",
+  "ops.actors",
+  "ops.get",
+  "ops.list",
+  "reach.dashboard",
+  "settings.ai.get",
+  "settings.profile.get",
+  "settings.slack.get",
+  "settings.team.get",
+  "site.current",
+  "site.get",
+  "site.status",
+  "tasks.get",
+  "tasks.list",
+  "voice.call.audio",
+  "voice.call.export",
+  "voice.call.get",
+  "voice.call.list",
+  "voice.location.list",
+  "voice.number.get",
+  "voice.number.list",
+  "voice.number.search",
+  "voice.provider.account.list",
+  "voice.script.get",
+  "voice.script.list",
+  "voice.sms.get",
+  "voice.sms.list",
+  "voice.status",
+  "voice.telco.call.list",
+  "workspace.current",
+  "workspace.list"
+]);
+var WRITE_COMMANDS = /* @__PURE__ */ new Set(["voice.default.booth"]);
+var WRITE_COMMAND_SEGMENTS = /* @__PURE__ */ new Set([
+  "add",
+  "approve",
+  "assign",
+  "bootstrap",
+  "cancel",
+  "close",
+  "create",
+  "delete",
+  "generate",
+  "invite",
+  "login",
+  "logout",
+  "move",
+  "observe",
+  "prepare",
+  "read",
+  "reanalyze",
+  "redeem",
+  "refresh",
+  "regenerate",
+  "reopen",
+  "reorder",
+  "reply",
+  "replace",
+  "resend",
+  "resolve",
+  "restore",
+  "revoke",
+  "role",
+  "save",
+  "send",
+  "set",
+  "snooze",
+  "star",
+  "start",
+  "status",
+  "sync",
+  "tool",
+  "update",
+  "use"
+]);
+function commandKey(path3) {
+  return path3.join(".").replaceAll("-", ".");
+}
+function commandPathSegments(path3) {
+  return path3.flatMap((part) => part.toLowerCase().split(/[^a-z0-9]+/u)).filter(Boolean);
+}
+function commandRisk(command) {
+  if (command.destructive) return "destructive";
+  if (command.risk) return command.risk;
+  const key = commandKey(command.path);
+  if (EXTERNAL_COMMANDS.has(key)) return "external";
+  if (READ_COMMANDS.has(key)) return "read";
+  if (WRITE_COMMANDS.has(key)) return "write";
+  if (commandPathSegments(command.path).some((segment) => WRITE_COMMAND_SEGMENTS.has(segment))) return "write";
+  return "read";
+}
 function parseBooleanText(value, optionName) {
   if (value === void 0) return void 0;
   const normalized = value.trim().toLowerCase();
@@ -5049,7 +5180,7 @@ ${detail}`;
 var commands = [
   {
     path: ["auth", "login"],
-    summary: "Log in through the mere browser flow.",
+    summary: "Log in through the mere browser flow. Not required before `onboard start` or `invite redeem` \u2014 those self-bootstrap auth from the invite.",
     options: [stringOption("console-url", "consoleUrl", "Override the mere console URL.")],
     schema: external_exports.object({
       consoleUrl: optionalString
@@ -5131,10 +5262,10 @@ ${workspace}`;
   },
   {
     path: ["invite", "redeem"],
-    summary: "Redeem a Mere platform invite code.",
+    summary: "Redeem a Mere platform invite code. Signs in (or signs up) automatically if there is no local session \u2014 no prior `auth login` needed.",
     positionals: ["code"],
     schema: external_exports.object({ code: requiredString }),
-    auth: "session",
+    auth: "none",
     execute: (runtime, input2) => runtime.redeemInvite(input2.code),
     format: (data) => {
       const payload = data;
@@ -5156,7 +5287,7 @@ next: ${payload.nextUrl}` : ""}`;
   },
   {
     path: ["onboard", "start"],
-    summary: "Create and provision a workspace from a Mere invite code.",
+    summary: "Sign in (if needed) and bootstrap a workspace from a Mere invite code. Works zero-state \u2014 no prior `auth login` required.",
     positionals: ["code"],
     options: [
       stringOption("name", "name", "Business name override."),
@@ -5189,7 +5320,7 @@ next: ${payload.nextUrl}` : ""}`;
       timeoutSeconds: optionalPositiveNumber,
       pollSeconds: optionalPositiveNumber
     }),
-    auth: "session",
+    auth: "none",
     execute: (runtime, input2) => runtime.startOnboarding(input2),
     format: onboardingFormat
   },
@@ -7122,10 +7253,10 @@ function renderCommandManifest() {
           path: command.path,
           summary: command.summary,
           auth: command.auth ?? "workspace",
-          risk: command.destructive ? "destructive" : command.auth === "none" ? "read" : "read",
+          risk: commandRisk(command),
           supportsJson: true,
           supportsData: Boolean(command.options?.some((option) => option.name.includes("json"))),
-          requiresYes: Boolean(command.destructive),
+          requiresYes: command.destructive || commandRisk(command) === "external",
           requiresConfirm: Boolean(command.confirmationTarget),
           positionals: command.positionals ?? [],
           flags: [...globalOptions, ...command.options ?? []].map((option) => option.name),
@@ -7253,6 +7384,42 @@ async function createRuntime(globalFlags) {
       throw error;
     }
   }
+  async function ensureSessionForInvite(code) {
+    const trimmed = code.trim();
+    if (!trimmed) throw usageError("Invite code is required.");
+    const consoleUrl = normalizeConsoleUrl();
+    const peeked = await peekConsoleInvite({ baseUrl: consoleUrl, code: trimmed });
+    if (peeked.state !== "ready") {
+      throw new CommandError("This invite is no longer available.", { exitCode: 1, code: "invite_unavailable" });
+    }
+    const existing = await getLocalSession();
+    if (existing) {
+      if (peeked.emailHint) {
+        const sessionEmail = existing.user?.email;
+        const sessionLocal = sessionEmail?.split("@")[0] ?? "";
+        const hintLocal = peeked.emailHint.split("@")[0]?.replace(/\*/g, "") ?? "";
+        if (sessionEmail && hintLocal && sessionLocal && sessionLocal[0]?.toLowerCase() !== hintLocal[0]?.toLowerCase()) {
+          throw new CommandError(
+            `This invite is bound to ${peeked.emailHint}, but you are signed in as ${sessionEmail}. Run \`mere business auth logout\` and retry.`,
+            { exitCode: 1, code: "invite_email_mismatch" }
+          );
+        }
+      }
+      return existing;
+    }
+    if (peeked.emailHint) {
+      writeProgress(globalFlags, `This invite is bound to ${peeked.emailHint}. Opening browser to sign in...`);
+    } else {
+      writeProgress(globalFlags, "Opening browser to sign in for this invite...");
+    }
+    return writeSession(
+      await loginWithBrowser2(
+        { inviteCode: trimmed },
+        (message) => stderr.write(`${message}
+`)
+      )
+    );
+  }
   return {
     global: globalFlags,
     login: async (options) => writeSession(await loginWithBrowser2(options, (message) => stderr.write(`${message}
@@ -7276,6 +7443,7 @@ async function createRuntime(globalFlags) {
       );
     },
     redeemInvite: async (code) => {
+      await ensureSessionForInvite(code);
       const session = await ensureConsoleSession();
       const result = await redeemConsoleInvite({
         baseUrl: session.baseUrl,
@@ -7294,9 +7462,10 @@ async function createRuntime(globalFlags) {
       return stripSessionPayload(result);
     },
     startOnboarding: async (input2) => {
-      const session = await ensureConsoleSession();
       const code = String(input2.code ?? "").trim();
       if (!code) throw usageError("Invite code is required.");
+      await ensureSessionForInvite(code);
+      const session = await ensureConsoleSession();
       const values = compactObject({
         name: input2.name,
         slug: input2.slug,
@@ -7428,6 +7597,7 @@ async function run(argv) {
     return 0;
   }
   const runtime = await createRuntime(parsed.global);
+  const risk = commandRisk(command);
   if (command.destructive) {
     const target = command.confirmationTarget?.(parsed.input);
     if (target) {
@@ -7439,6 +7609,8 @@ async function run(argv) {
     } else {
       await runtime.confirm(`This will run ${command.path.join(" ")}.`);
     }
+  } else if (risk === "external") {
+    await runtime.confirm(`This will run external action ${command.path.join(" ")}.`);
   }
   const result = await command.execute(runtime, parsed.input);
   if (parsed.global.json) {

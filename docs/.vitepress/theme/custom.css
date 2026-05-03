@@ -1,0 +1,224 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --mere-bg: #f8faf7;
+  --mere-bg-soft: #eef5ef;
+  --mere-bg-alt: #e5eee8;
+  --mere-ink: #17211e;
+  --mere-muted: #495c55;
+  --mere-brand: #23715f;
+  --mere-brand-2: #b0483c;
+  --mere-brand-ink: #f8faf7;
+  --mere-border: rgba(23, 33, 30, 0.14);
+
+  --vp-c-bg: var(--mere-bg);
+  --vp-c-bg-alt: var(--mere-bg-alt);
+  --vp-c-bg-soft: var(--mere-bg-soft);
+  --vp-c-text-1: var(--mere-ink);
+  --vp-c-text-2: var(--mere-muted);
+  --vp-c-text-3: #667971;
+  --vp-c-brand-1: var(--mere-brand);
+  --vp-c-brand-2: #155745;
+  --vp-c-brand-3: #4d9e88;
+  --vp-c-brand-soft: rgba(35, 113, 95, 0.12);
+  --vp-c-border: var(--mere-border);
+  --vp-c-divider: rgba(23, 33, 30, 0.1);
+  --vp-font-family-base: 'IBM Plex Sans', 'Avenir Next', sans-serif;
+  --vp-font-family-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+  --vp-home-hero-name-color: var(--mere-ink);
+  --vp-home-hero-name-background: none;
+  --vp-home-hero-image-background-image: none;
+  --vp-home-hero-image-filter: none;
+}
+
+.dark {
+  --mere-bg: #101816;
+  --mere-bg-soft: #17231f;
+  --mere-bg-alt: #1d2a26;
+  --mere-ink: #edf7f1;
+  --mere-muted: #b7cbc2;
+  --mere-brand: #72c6ae;
+  --mere-brand-2: #ef8b78;
+  --mere-brand-ink: #10211c;
+  --mere-border: rgba(237, 247, 241, 0.16);
+
+  --vp-c-bg: var(--mere-bg);
+  --vp-c-bg-alt: var(--mere-bg-alt);
+  --vp-c-bg-soft: var(--mere-bg-soft);
+  --vp-c-text-1: var(--mere-ink);
+  --vp-c-text-2: var(--mere-muted);
+  --vp-c-text-3: #d0ddd8;
+  --vp-c-brand-1: var(--mere-brand);
+  --vp-c-brand-2: #92d8c4;
+  --vp-c-brand-3: var(--mere-brand-2);
+  --vp-c-brand-soft: rgba(114, 198, 174, 0.16);
+  --vp-c-border: var(--mere-border);
+  --vp-c-divider: rgba(237, 247, 241, 0.1);
+}
+
+body {
+  background: var(--vp-c-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.VPNavBar.has-sidebar .content,
+.VPNavBar.has-sidebar .curtain::before {
+  background: var(--vp-c-bg);
+}
+
+.VPNavBarTitle .title {
+  font-weight: 700;
+}
+
+.VPHero .name {
+  max-width: 760px;
+  font-family: var(--vp-font-family-base);
+  font-size: 3.5rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.04;
+}
+
+.VPHero .text {
+  max-width: 740px;
+  color: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-base);
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.16;
+}
+
+.VPHero .tagline {
+  max-width: 58ch;
+  color: var(--vp-c-text-2);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.VPHero .image,
+.VPHero .image-container {
+  display: none;
+}
+
+.VPButton.brand {
+  border: 1px solid var(--mere-brand);
+  background: var(--mere-brand);
+  color: var(--mere-brand-ink);
+  box-shadow: none;
+}
+
+.VPButton.alt {
+  border-color: var(--vp-c-border);
+  background: transparent;
+}
+
+.VPFeature {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  box-shadow: none;
+}
+
+.VPFeature .title {
+  color: var(--vp-c-text-1);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.vp-doc {
+  max-width: 74ch;
+}
+
+.vp-doc h1 {
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.08;
+}
+
+.vp-doc h2 {
+  margin-top: 2.25rem;
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 0.85rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.vp-doc h3 {
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.68;
+}
+
+.vp-doc a {
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.18em;
+}
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.vp-doc :not(pre) > code {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--vp-c-bg-soft), var(--vp-c-bg) 35%);
+  color: var(--vp-c-text-1);
+}
+
+.mere-path {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.5rem 0;
+}
+
+.mere-step {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--vp-c-bg-soft);
+}
+
+.mere-step strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--vp-c-text-1);
+  font-size: 1rem;
+}
+
+.mere-step span {
+  color: var(--vp-c-text-2);
+}
+
+.mere-callout {
+  margin: 1.25rem 0;
+  border-left: 4px solid var(--mere-brand-2);
+  padding: 0.85rem 1rem;
+  background: color-mix(in oklch, var(--vp-c-bg-soft), var(--mere-brand-2) 8%);
+}
+
+.mere-table-note {
+  color: var(--vp-c-text-2);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 760px) {
+  .VPHero .name {
+    font-size: 2.5rem;
+  }
+
+  .VPHero .text {
+    font-size: 1.5rem;
+  }
+
+  .mere-path {
+    grid-template-columns: 1fr;
+  }
+}

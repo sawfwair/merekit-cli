@@ -1,6 +1,7 @@
 const BOOLEAN_FLAGS = new Set([
     'all',
     'allow-writes',
+    'dry-run',
     'help',
     'json',
     'local',
@@ -21,6 +22,7 @@ export const ROOT_PASSTHROUGH_FLAGS = new Set([
     'confirm',
     'data',
     'data-file',
+    'bucket',
     'tenant',
     'store',
     'remote',

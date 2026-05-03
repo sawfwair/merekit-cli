@@ -3294,7 +3294,7 @@ function commandManifest() {
       "persist-to"
     ],
     commands: [
-      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none" }),
+      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none" }),
@@ -3330,8 +3330,8 @@ function commandManifest() {
       manifestCommand(["booking", "cancel"], "Cancel booking.", { risk: "destructive", requiresYes: true }),
       manifestCommand(["booking", "reschedule"], "Reschedule booking.", { risk: "write", supportsData: true }),
       manifestCommand(["google", "status"], "Show Google status."),
-      manifestCommand(["google", "connect-url"], "Create Google connect URL."),
-      manifestCommand(["google", "refresh"], "Refresh Google connection.", { risk: "external" }),
+      manifestCommand(["google", "connect-url"], "Create Google connect URL.", { risk: "write" }),
+      manifestCommand(["google", "refresh"], "Refresh Google connection.", { risk: "external", requiresYes: true }),
       manifestCommand(["time-entry", "current"], "Show current time entry."),
       manifestCommand(["time-entry", "start"], "Start timer.", { risk: "write", supportsData: true }),
       manifestCommand(["time-entry", "stop"], "Stop timer.", { risk: "write" }),

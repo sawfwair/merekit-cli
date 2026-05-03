@@ -4,6 +4,7 @@
 
 ```sh
 mere apps list
+mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 mere ops doctor --json
 mere auth status --all --json
@@ -18,6 +19,7 @@ mere help agent
 Use this sequence when an agent or new CLI user enters the system:
 
 ```sh
+mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 mere apps list --json
 mere ops doctor --json
@@ -29,7 +31,7 @@ mere ops workspace-snapshot --workspace ws_123 --json
 mere apps manifest --app projects --json
 ```
 
-The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
+`onboard` is the best first command. It writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
 
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
@@ -41,6 +43,7 @@ The snapshot is the safest first operational read. It runs only manifest-declare
   doctor.json
   auth-status.json
   finance-profiles.json
+  context.json
   apps-manifest.json
   workspace-snapshot.json
   mcp.json
@@ -85,7 +88,7 @@ The license covers the package code and documentation. It does not grant access 
 
 ## Publish
 
-The package publishes compiled runtime files, bundled adapters, docs, and the skill only. Source, tests, app repos, local state, and secrets are intentionally excluded from the package tarball.
+The package publishes compiled runtime files, bundled adapters, docs, and the repo-local `mere-cli` skill. Product and onboarding skill bodies are fetched from the centralized registry at `https://merekit.com/skills` with digest verification, so source, tests, app repos, local state, secrets, and non-CLI skill text are intentionally excluded from the package tarball.
 
 ```sh
 pnpm check
@@ -116,14 +119,15 @@ Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source for debugging. A
 Root-owned commands:
 
 - `mere apps list|manifest|doctor`
+- `mere onboard`
 - `mere agent bootstrap`
 - `mere auth login|whoami|logout|status`
 - `mere context get|set-workspace|clear`
-- `mere finance profiles list|current|use`
+- `mere finance profiles list|current|use|login`
 - `mere setup build|check|smoke`
 - `mere ops doctor|smoke|audit|workspace-snapshot`
 - `mere mcp serve`
-- `mere help agent|safety|mcp`
+- `mere help agent|onboard|safety|mcp`
 
 Delegated commands use `mere <app> ...`:
 
@@ -152,7 +156,7 @@ Registered namespaces:
 
 ## Auth And Context
 
-Browser-auth apps keep their own app-local sessions. Finance intentionally uses scoped token profiles, so root auth commands summarize profile/token state instead of launching browser auth.
+Browser-auth apps keep their own app-local sessions. Finance intentionally uses scoped token profiles, and `mere finance profiles login NAME --base-url https://<tenant>.mere.finance --json` provides the root-owned profile setup plus product auth handoff.
 
 Root context stores workspace defaults only:
 

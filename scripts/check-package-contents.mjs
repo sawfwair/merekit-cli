@@ -7,6 +7,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const forbiddenPathPatterns = [
 	/\.map$/u,
 	/^adapters\/admin\//u,
+	/^docs\/\.vitepress\//u,
 	/(^|\/)\.env(?:\.|$)/u,
 	/(^|\/)(src|test|tests|scripts|coverage|node_modules|\.git)(\/|$)/u,
 	/\.(ts|tsx|svelte)$/u,

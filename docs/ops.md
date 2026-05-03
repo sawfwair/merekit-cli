@@ -5,10 +5,11 @@ Ops commands are root-owned read/check workflows for humans and agents. They pre
 ## Agent Bootstrap
 
 ```sh
+mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 ```
 
-Runs the first-use discovery path and writes an agent context pack with docs, manifests, auth status, doctor output, MCP config, and a workspace snapshot. This is the preferred first command for a fresh agent because it creates durable local context without copying product secrets.
+`onboard` runs the first-use discovery path, writes an agent context pack with docs, manifests, auth status, doctor output, MCP config, and a workspace snapshot, then adds `onboarding-report.json` and `ONBOARDING.md` with readiness, remediation, and selector hints. `agent bootstrap` writes only the lower-level context pack.
 
 ## Doctor
 
@@ -26,6 +27,7 @@ Use this before cross-stack work. `authStatus` is a signal, not a hard failure f
 mere auth status --all --json
 mere auth status --app finance --json
 mere finance profiles list --json
+mere finance profiles login default --base-url https://<tenant>.mere.finance --json
 ```
 
 Browser-auth apps keep app-local sessions. Finance stores scoped token profiles in `~/.config/merefi/config.json`.
@@ -71,7 +73,12 @@ Each app entry has:
 - `namespace`
 - `ok`
 - `manifestOk`
+- `coverage`
 - `commands[]`
+
+`coverage` reports how many read commands exist in the manifest, how many are marked as safe audit defaults, how many were executed, and which read commands were skipped because the app did not mark them `auditDefault`.
+
+`selectorHints` reports the active workspace, inferred tenant/store selectors, and discovery commands for selectors that could not be inferred.
 
 Each command entry has:
 
@@ -84,6 +91,19 @@ Each command entry has:
 
 Agents should summarize failures first, then inspect the failed delegated command directly.
 
+## Reading Onboarding
+
+`mere onboard --workspace ws_123 --json` produces:
+
+- `readinessScore`
+- `summary`
+- `apps[]`
+- `selectors`
+- `remediation[]`
+- `artifacts`
+
+Treat `remediation[].nextCommand` as the copy-paste path for setup work. Browser auth, Finance auth, destructive actions, and skill installs are recommended but not run automatically.
+
 ## Common Remediation Patterns
 
 Finance unauthenticated:
@@ -91,8 +111,7 @@ Finance unauthenticated:
 ```sh
 mere auth status --app finance --json
 mere finance profiles list --json
-mere finance profiles use default --base-url https://<tenant>.mere.finance --json
-mere finance auth login --profile default
+mere finance profiles login default --base-url https://<tenant>.mere.finance --json
 ```
 
 Workspace-specific product state:

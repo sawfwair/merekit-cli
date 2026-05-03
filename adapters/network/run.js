@@ -358,10 +358,30 @@ Workspace groups:
   transcripts turns|export <call-id>
   diagnostics metrics|delivery-log|provider-sync
   locations list|create|update|delete
+  locations pool list|add|update|remove <location-id>
   scripts list|create|show|update|delete
+  scripts stages list|create|update|reorder|delete <script-id>
   numbers list|search|show|create|update|delete|pause|resume|route
   routing default-location|number
   provider-accounts list|create|update|delete|sync
+
+Phased scripts:
+  Scripts are made of ordered stages (script_stages). Each stage has a name, goal,
+  prompt_direction, and optional max_turns. The conversation engine progresses
+  through stages using [ADVANCE_STAGE]/[CONVERSATION_COMPLETE] markers.
+  - scripts show <id>            \u2192 returns the script with its stages bundled
+  - scripts stages list <id>     \u2192 just the stages
+  - scripts stages create <id>   \u2192 --data '{"name":"Open","goal":"...","prompt_direction":"...","max_turns":1}'
+  - scripts stages update <id>   \u2192 --data '{"id":"<stage-id>","name":"...","max_turns":2}'
+  - scripts stages reorder <id>  \u2192 --data '{"stage_ids":["stg_a","stg_b","stg_c"]}'
+  - scripts stages delete <id>   \u2192 --data '{"id":"<stage-id>"}' --yes --confirm <stage-id>
+
+Script pool:
+  Locations can rotate through weighted active scripts on new calls.
+  - locations pool list <id>     \u2192 list scripts in the location pool
+  - locations pool add <id>      \u2192 --data '{"script_id":"script_1","weight":1,"active":1}'
+  - locations pool update <id>   \u2192 --data '{"script_id":"script_1","weight":3}'
+  - locations pool remove <id>   \u2192 --data '{"script_id":"script_1"}' --yes --confirm script_1
 
 Mutation commands accept either:
   --json-file payload.json
@@ -435,7 +455,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-network/session.json",
     globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file"],
     commands: [
-      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none" }),
+      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -462,10 +482,34 @@ function commandManifest() {
       manifestCommand(["diagnostics", "provider-sync"], "Show provider sync diagnostics."),
       ...["locations", "scripts", "numbers", "provider-accounts"].flatMap((resource) => [
         manifestCommand([resource, "list"], `List ${resource}.`),
-        manifestCommand([resource, "create"], `Create ${resource}.`, { risk: "write", supportsData: true }),
+        manifestCommand([resource, "show"], resource === "scripts" ? "Show script with its stages." : `Show ${resource}.`),
+        manifestCommand(
+          [resource, "create"],
+          resource === "scripts" ? "Create script. Add phases with `scripts stages create <script-id>`." : `Create ${resource}.`,
+          { risk: "write", supportsData: true }
+        ),
         manifestCommand([resource, "update"], `Update ${resource}.`, { risk: "write", supportsData: true }),
         manifestCommand([resource, "delete"], `Delete ${resource}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })
       ]),
+      manifestCommand(["locations", "pool", "list"], "List scripts in a location pool."),
+      manifestCommand(["locations", "pool", "add"], "Add or update a script in a location pool.", { risk: "write", supportsData: true }),
+      manifestCommand(["locations", "pool", "update"], "Update a script pool entry.", { risk: "write", supportsData: true }),
+      manifestCommand(["locations", "pool", "remove"], "Remove a script from a location pool.", {
+        risk: "destructive",
+        requiresYes: true,
+        requiresConfirm: true,
+        supportsData: true
+      }),
+      manifestCommand(["scripts", "stages", "list"], "List stages for a script."),
+      manifestCommand(["scripts", "stages", "create"], "Add a stage to a script.", { risk: "write", supportsData: true }),
+      manifestCommand(["scripts", "stages", "update"], "Update a stage on a script.", { risk: "write", supportsData: true }),
+      manifestCommand(["scripts", "stages", "reorder"], "Reorder stages on a script.", { risk: "write", supportsData: true }),
+      manifestCommand(["scripts", "stages", "delete"], "Delete a stage from a script.", {
+        risk: "destructive",
+        requiresYes: true,
+        requiresConfirm: true,
+        supportsData: true
+      }),
       manifestCommand(["numbers", "pause"], "Pause number.", { risk: "external", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["numbers", "resume"], "Resume number.", { risk: "external", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["numbers", "route"], "Route number.", { risk: "external", supportsData: true, requiresYes: true, requiresConfirm: true }),
@@ -910,6 +954,81 @@ async function handleWorkspaceRequest(io, globalOptions, input) {
     case "locations":
     case "scripts":
     case "provider-accounts":
+      if (input.group === "locations" && input.action === "pool") {
+        const subAction = positionals.shift();
+        const locationId = requireSinglePositional(positionals, "<location-id>");
+        const poolPath = `${resourcePath}/${encodeURIComponent(locationId)}/pool`;
+        switch (subAction) {
+          case "list":
+            return request(io, globalOptions, { path: poolPath });
+          case "add":
+            return request(io, globalOptions, { method: "POST", path: poolPath, body: await readJsonInput(options) });
+          case "update": {
+            const body = await readJsonInput(options);
+            if (!body || typeof body !== "object" || Array.isArray(body) || !("script_id" in body)) {
+              throw new Error("locations pool update requires --data with script_id.");
+            }
+            const { script_id: scriptId, ...patchBody } = body;
+            const normalizedScriptId = String(scriptId ?? "").trim();
+            if (!normalizedScriptId) {
+              throw new Error("locations pool update requires a non-empty script_id.");
+            }
+            return request(io, globalOptions, {
+              method: "PATCH",
+              path: `${poolPath}/${encodeURIComponent(normalizedScriptId)}`,
+              body: patchBody
+            });
+          }
+          case "remove": {
+            const body = await readJsonInput(options);
+            if (!body || typeof body !== "object" || Array.isArray(body) || !("script_id" in body)) {
+              throw new Error("locations pool remove requires --data with script_id.");
+            }
+            const scriptId = String(body.script_id ?? "").trim();
+            if (!scriptId) {
+              throw new Error("locations pool remove requires a non-empty script_id.");
+            }
+            requireDestructiveConfirmation(globalOptions, options, "remove script from location pool", scriptId);
+            return request(io, globalOptions, {
+              method: "DELETE",
+              path: `${poolPath}/${encodeURIComponent(scriptId)}`
+            });
+          }
+          default:
+            throw new Error("Unknown locations pool command. Expected list, add, update, or remove.");
+        }
+      }
+      if (input.group === "scripts" && input.action === "stages") {
+        const subAction = positionals.shift();
+        const scriptId = requireSinglePositional(positionals, "<script-id>");
+        const stagesPath = `${resourcePath}/${encodeURIComponent(scriptId)}/stages`;
+        switch (subAction) {
+          case "list":
+            return request(io, globalOptions, { path: stagesPath });
+          case "create":
+            return request(io, globalOptions, { method: "POST", path: stagesPath, body: await readJsonInput(options) });
+          case "update":
+            return request(io, globalOptions, { method: "PATCH", path: stagesPath, body: await readJsonInput(options) });
+          case "reorder": {
+            const body = await readJsonInput(options);
+            const merged = body && typeof body === "object" && !Array.isArray(body) ? { ...body, script_id: scriptId } : { script_id: scriptId };
+            return request(io, globalOptions, { method: "PATCH", path: stagesPath, body: merged });
+          }
+          case "delete": {
+            const body = await readJsonInput(options);
+            const stageId = body && typeof body === "object" && "id" in body ? String(body.id ?? "") : "";
+            requireDestructiveConfirmation(
+              globalOptions,
+              options,
+              "delete script stage",
+              stageId || scriptId
+            );
+            return request(io, globalOptions, { method: "DELETE", path: stagesPath, body });
+          }
+          default:
+            throw new Error("Unknown scripts stages command. Expected list, create, update, reorder, or delete.");
+        }
+      }
       switch (input.action) {
         case "list":
           return request(io, globalOptions, { path: resourcePath });

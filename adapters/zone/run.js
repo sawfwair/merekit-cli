@@ -417,7 +417,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-zone/session.json",
     globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file", "store"],
     commands: [
-      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none" }),
+      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -438,12 +438,12 @@ function commandManifest() {
       manifestCommand(["customers", "list"], "List customers."),
       manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true }),
       manifestCommand(["checkout", "create"], "Create checkout.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "provision"], "Provision workspace connection.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "sync"], "Sync workspace connection.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace connection.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["workspace", "command"], "Run workspace command.", { risk: "external", supportsData: true }),
-      manifestCommand(["workspace", "order"], "Lookup workspace order."),
+      manifestCommand(["workspace", "provision"], "Provision workspace connection.", { auth: "token", risk: "write", supportsData: true }),
+      manifestCommand(["workspace", "sync"], "Sync workspace connection.", { auth: "token", risk: "write", supportsData: true }),
+      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace connection.", { auth: "token", risk: "write", supportsData: true }),
+      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { auth: "token", risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["workspace", "command"], "Run workspace command.", { auth: "token", risk: "external", supportsData: true, requiresYes: true }),
+      manifestCommand(["workspace", "order"], "Lookup workspace order.", { auth: "token" }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

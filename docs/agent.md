@@ -17,7 +17,7 @@ npm install -g @merekit/cli
 mere --help
 ```
 
-The npm package contains the root command plane, docs, skill, and compiled app CLI adapters. A global `mere` install resolves app CLIs from env overrides, bundled adapters, local Mere repo paths, or app binaries on `PATH`.
+The npm package contains the root command plane, docs, the repo-local `mere-cli` skill, and compiled app CLI adapters. Product and onboarding skill bodies live in the centralized registry at `https://merekit.com/skills` and are installed on demand with digest verification. A global `mere` install resolves app CLIs from env overrides, bundled adapters, local Mere repo paths, or app binaries on `PATH`.
 
 For full cross-stack operation, make sure `mere apps list --json` reports the target app CLIs as ready. Installed users should normally see `source: "bundled"`; use `MERE_CLI_SOURCE=bundled` to simulate a fresh machine without local repos.
 
@@ -25,10 +25,11 @@ For full cross-stack operation, make sure `mere apps list --json` reports the ta
 
 ```sh
 npm install -g @merekit/cli
+mere onboard --workspace WORKSPACE_ID --target codex --json
 mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
 ```
 
-`agent bootstrap` is the shortest safe first move. It runs discovery/check/status commands, stores the workspace when provided, and writes a secret-free context pack under `~/.config/mere/agents/default` unless `--output DIR` is passed.
+`onboard` is the shortest safe first move for humans and agents. It runs discovery/check/status commands, stores the workspace when provided, writes a secret-free context pack under `~/.config/mere/agents/default` unless `--output DIR` is passed, and adds a readiness report with exact next commands. `agent bootstrap` remains the lower-level context-pack primitive.
 
 Generated files:
 
@@ -38,20 +39,26 @@ Generated files:
 - `doctor.json`
 - `auth-status.json`
 - `finance-profiles.json`
+- `context.json`
 - `apps-manifest.json`
 - `workspace-snapshot.json`
 - `mcp.json`
 - `command-reference.md`
+- `onboarding-report.json`
+- `ONBOARDING.md`
 
 Manual sequence:
 
 ```sh
 mere --help
+mere help onboard
 mere help agent
+mere onboard --workspace WORKSPACE_ID --target codex --json
 mere apps list --json
 mere ops doctor --json
 mere auth status --all --json
 mere finance profiles list --json
+mere finance profiles login default --base-url https://<tenant>.mere.finance --json
 mere context set-workspace --workspace WORKSPACE_ID
 mere ops workspace-snapshot --json
 mere apps manifest --app APP --json
@@ -65,6 +72,7 @@ Interpretation:
 - `context set-workspace` stores a root default for root-owned workflows such as `workspace-snapshot`.
 - `workspace-snapshot` is the safest cross-stack operational read.
 - `apps manifest` is the source of truth for exact product commands.
+- `onboarding-report.json` groups readiness, blockers, selector hints, and remediation commands.
 
 ## Operating Loop
 
@@ -169,8 +177,7 @@ Finance unauthenticated:
 ```sh
 mere auth status --app finance --json
 mere finance profiles list --json
-mere finance profiles use default --base-url https://<tenant>.mere.finance --json
-mere finance auth login --profile default
+mere finance profiles login default --base-url https://<tenant>.mere.finance --json
 ```
 
 Cross-stack workspace read:
@@ -186,3 +193,4 @@ mere apps manifest --json
 ```
 
 Then inspect commands where `auditDefault` is true and `risk` is `read`.
+Snapshot entries also include `coverage`, which lists read commands that were skipped because they are not app-declared audit defaults.

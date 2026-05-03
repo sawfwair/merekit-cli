@@ -19,6 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm check:adapters
       - run: pnpm test
       - run: pnpm smoke
       - run: pnpm smoke:mcp

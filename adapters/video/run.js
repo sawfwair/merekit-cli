@@ -48,6 +48,16 @@ function expectString(record, key, context) {
   }
   return value;
 }
+function assertMaxStringLength(value, maxLength, context) {
+  if (value.length > maxLength) {
+    throw new Error(`Expected ${context} to be at most ${maxLength} characters.`);
+  }
+}
+function expectBoundedString(record, key, context, maxLength) {
+  const value = expectString(record, key, context);
+  assertMaxStringLength(value, maxLength, `${context}.${key}`);
+  return value;
+}
 function expectOptionalString(record, key, context) {
   const value = record[key];
   if (value == null) {
@@ -55,6 +65,13 @@ function expectOptionalString(record, key, context) {
   }
   if (typeof value !== "string") {
     throw new Error(`Expected ${context}.${key} to be a string when provided.`);
+  }
+  return value;
+}
+function expectOptionalBoundedString(record, key, context, maxLength) {
+  const value = expectOptionalString(record, key, context);
+  if (value !== void 0) {
+    assertMaxStringLength(value, maxLength, `${context}.${key}`);
   }
   return value;
 }
@@ -781,21 +798,23 @@ init_json();
 
 // src/lib/shared/meeting-protocol.ts
 init_validation();
+var MAX_PARTICIPANT_DISPLAY_NAME_LENGTH = 80;
+var MAX_TRACK_ID_LENGTH = 256;
 function parseTracks(value, context) {
   const record = expectRecord(value, context);
   return {
-    audio: expectOptionalString(record, "audio", context),
+    audio: expectOptionalBoundedString(record, "audio", context, MAX_TRACK_ID_LENGTH),
     audioEnabled: expectOptionalBoolean(record, "audioEnabled", context),
-    video: expectOptionalString(record, "video", context),
+    video: expectOptionalBoundedString(record, "video", context, MAX_TRACK_ID_LENGTH),
     videoEnabled: expectOptionalBoolean(record, "videoEnabled", context),
-    screenshare: expectOptionalString(record, "screenshare", context),
+    screenshare: expectOptionalBoundedString(record, "screenshare", context, MAX_TRACK_ID_LENGTH),
     screenshareEnabled: expectOptionalBoolean(record, "screenshareEnabled", context)
   };
 }
 function parseParticipantUpdate(value, context) {
   const record = expectRecord(value, context);
   return {
-    displayName: expectString(record, "displayName", context),
+    displayName: expectBoundedString(record, "displayName", context, MAX_PARTICIPANT_DISPLAY_NAME_LENGTH),
     joined: expectBoolean(record, "joined", context),
     speaking: expectBoolean(record, "speaking", context),
     raisedHand: expectBoolean(record, "raisedHand", context),
@@ -1087,6 +1106,44 @@ function parseAgentActionText(text) {
 }
 
 // cli/stdio-agent.ts
+function splitCommandLine(input) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  let escaping = false;
+  for (const char of input.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+    if ((char === '"' || char === "'") && !quote) {
+      quote = char;
+      continue;
+    }
+    if (char === quote) {
+      quote = null;
+      continue;
+    }
+    if (/\s/u.test(char) && !quote) {
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (escaping) current += "\\";
+  if (quote) throw new Error("Unterminated quote in agent command.");
+  if (current) parts.push(current);
+  if (parts.length === 0) throw new Error("Agent command cannot be empty.");
+  return parts;
+}
 var StdioAgent = class {
   command;
   onAction;
@@ -1104,8 +1161,9 @@ var StdioAgent = class {
     if (this.child) {
       return;
     }
-    const child = this.spawnImpl(this.command, {
-      shell: true,
+    const [command, ...args] = splitCommandLine(this.command);
+    const child = this.spawnImpl(command, args, {
+      shell: false,
       stdio: "pipe"
     });
     this.child = child;
@@ -1867,7 +1925,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-video/session.json",
     globalFlags: ["base-url", "workspace", "json", "yes", "confirm"],
     commands: [
-      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none" }),
+      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -1879,25 +1937,25 @@ function commandManifest() {
       manifestCommand(["rooms", "create"], "Create room.", { risk: "write", supportsData: true }),
       manifestCommand(["rooms", "update"], "Update room.", { risk: "write", supportsData: true }),
       manifestCommand(["rooms", "archive"], "Archive room.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["rooms", "invite"], "Create room invite link."),
+      manifestCommand(["rooms", "invite"], "Create room invite link.", { risk: "write" }),
       manifestCommand(["meetings", "list"], "List meetings.", { auditDefault: true }),
       manifestCommand(["meetings", "show"], "Show meeting."),
       manifestCommand(["participants", "list"], "List meeting participants."),
-      manifestCommand(["recordings", "start"], "Start recording lifecycle.", { risk: "external", supportsData: true }),
-      manifestCommand(["recordings", "stop"], "Stop recording lifecycle.", { risk: "external" }),
+      manifestCommand(["recordings", "start"], "Start recording lifecycle.", { risk: "external", supportsData: true, requiresYes: true }),
+      manifestCommand(["recordings", "stop"], "Stop recording lifecycle.", { risk: "external", requiresYes: true }),
       manifestCommand(["recordings", "status"], "Show recording status."),
       manifestCommand(["recordings", "list"], "List recordings."),
       manifestCommand(["recordings", "show"], "Show recording."),
       manifestCommand(["recordings", "download"], "Download recording artifact."),
       manifestCommand(["transcripts", "list"], "List transcript turns."),
       manifestCommand(["transcripts", "export"], "Export transcript artifact."),
-      manifestCommand(["access-links", "room"], "Create room access link."),
+      manifestCommand(["access-links", "room"], "Create room access link.", { risk: "write" }),
       manifestCommand(["diagnostics", "health"], "Show diagnostics health.", { auditDefault: true }),
       manifestCommand(["diagnostics", "room-worker"], "Show room worker diagnostics."),
       manifestCommand(["diagnostics", "client-errors"], "List client errors."),
       manifestCommand(["diagnostics", "client-error"], "Show client error."),
       manifestCommand(["agent", "voice-config"], "Show agent voice config."),
-      manifestCommand(["agent", "join"], "Join room as agent.", { risk: "external" }),
+      manifestCommand(["agent", "join"], "Join room as agent.", { risk: "external", requiresYes: true }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

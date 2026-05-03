@@ -8,6 +8,19 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const mereRoot = path.resolve(process.env.MERE_ROOT ?? path.join(packageRoot, '..'));
 const adaptersDir = path.join(packageRoot, 'adapters');
 const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
+const adaptersReadme = `# Generated Adapters
+
+This directory contains generated public client artifacts for bundled Mere app CLIs.
+They are committed so the \`@merekit/cli\` npm package works out of the box after a global install.
+
+The adapters intentionally expose command names, public API route shapes, environment variable names, and default service URLs. They do not contain credentials or grant access to Mere hosted services.
+
+Access is enforced by the Mere services through browser sessions, bearer tokens, workspace membership, roles, destructive-operation confirmations, and server-side authorization checks.
+
+Adapter manifests must mark command risk honestly as \`read\`, \`write\`, \`destructive\`, or \`external\`. External and destructive commands must require explicit confirmation.
+
+Maintainers regenerate these files from the Mere app repositories with \`pnpm build:adapters\`. That command expects the private app repositories to be available as sibling directories and is not required for normal public development of the root CLI.
+`;
 
 const appBuilds = [
 	{ repo: 'business', args: ['--dir', path.join(mereRoot, 'business'), '--filter', '@zerosmb/cli', 'build'] },
@@ -142,6 +155,7 @@ await writeFile(
 	`${JSON.stringify({ name: '@merekit/cli-adapters', private: true, version: rootPackage.version ?? '0.0.0', type: 'module' }, null, 2)}\n`,
 	'utf8'
 );
+await writeFile(path.join(adaptersDir, 'README.md'), adaptersReadme, 'utf8');
 
 const builtAt = new Date().toISOString();
 const manifest = {

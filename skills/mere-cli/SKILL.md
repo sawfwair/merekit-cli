@@ -6,8 +6,8 @@ Use this skill when operating the Mere portfolio through the root `mere` command
 
 ## Workflow
 
-1. Run `mere --help` and `mere help agent` to read the root operating model.
-2. Prefer `mere agent bootstrap --workspace WORKSPACE_ID --target codex --json` for a fresh agent. It writes `AGENT.md`, manifests, auth status, doctor output, workspace snapshot, MCP config, and a command reference under `~/.config/mere/agents/default`.
+1. Run `mere --help`, `mere help onboard`, and `mere help agent` to read the root operating model.
+2. Prefer `mere onboard --workspace WORKSPACE_ID --target codex --json` for a fresh agent. It writes `AGENT.md`, manifests, auth status, doctor output, workspace snapshot, MCP config, a command reference, `onboarding-report.json`, and `ONBOARDING.md` under `~/.config/mere/agents/default`.
 3. Run `mere apps list --json` to see registered apps and CLI locations.
 4. Run `mere ops doctor --json` before cross-stack work.
 5. Run `mere auth status --all --json` to inspect app session state.
@@ -42,7 +42,7 @@ mere ops workspace-snapshot --workspace WORKSPACE_ID --json
 
 Root snapshot is read-only and includes selector help for audited reads:
 
-- Today defaults to `auth whoami` and route-backed `tenant resolve`; D1-backed booking/time commands are not default snapshot commands.
+- Today defaults to `auth whoami` and workspace booking context reads; booking/time mutations are not default snapshot commands.
 - Zone infers `--store` for Stripe status.
 - Gives accepts the workspace id as `--tenant` and canonicalizes internally.
 
@@ -59,6 +59,7 @@ Root snapshot is read-only and includes selector help for audited reads:
 
 ```sh
 mere help agent
+mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 mere apps list --json
 mere ops doctor --json

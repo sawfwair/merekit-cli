@@ -8,19 +8,21 @@ mere apps manifest --app APP --json
 
 ## Root Commands
 
-- `mere --help`, `mere help [agent|safety|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
+- `mere --help`, `mere help [agent|onboard|safety|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
+- `mere onboard [--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
 - `mere agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR] [--allow-writes] [--json]`
 - `mere apps list|manifest|doctor [--app APP] [--json]`
 - `mere context get|set-workspace|clear`
 - `mere setup build|check|smoke (--app APP|--all) [--json]`
 - `mere auth login|whoami|logout|status (--app APP|--all) [--json]`
-- `mere finance profiles list|current|use [--json]`
+- `mere finance profiles list|current|use|login [--json]`
 - `mere ops doctor|smoke|audit|workspace-snapshot [--app APP] [--workspace ID] [--json]`
 - `mere mcp serve [--allow-writes]`
 
 ## First-Use Commands
 
 ```sh
+mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 mere apps list --json
 mere ops doctor --json
@@ -31,13 +33,13 @@ mere ops workspace-snapshot --json
 mere apps manifest --app projects --json
 ```
 
-These are safe discovery/read commands. They are the recommended agent-native entrypoint before mutation.
+These are safe discovery/read commands. `mere onboard` is the recommended human and agent entrypoint before mutation.
 
-`agent bootstrap` writes the manual sequence into a reusable context pack. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
+`onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
 
 ## Installable Package
 
-`@merekit/cli` ships the `mere` bin from `dist/run.js`. The package includes compiled root CLI files, bundled app adapters, docs, and skills.
+`@merekit/cli` ships the `mere` bin from `dist/run.js`. The package includes compiled root CLI files, bundled app adapters, docs, and the repo-local `mere-cli` skill. Product and onboarding skill bodies are kept in the centralized Mere skill registry and fetched with digest verification by `mere skills install`.
 
 Publish/install flow:
 
@@ -71,6 +73,7 @@ mere business workspace current --json
 mere auth status --app finance --json
 mere finance profiles list --json
 mere finance profiles use books --base-url https://<tenant>.mere.finance --json
+mere finance profiles login books --base-url https://<tenant>.mere.finance --json
 mere finance reports trial-balance --json
 mere projects project list --json
 mere today booking list --tenant ten_1 --json

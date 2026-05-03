@@ -508,7 +508,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-projects/session.json",
     globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file"],
     commands: [
-      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none" }),
+      manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List available workspaces.", { auth: "session", auditDefault: true }),
@@ -598,6 +598,19 @@ function renderSessionSummary(session) {
     `available workspaces: ${session.workspaces.length}`,
     `session: ${sessionFilePath()}`
   ].join("\n");
+}
+function sessionOutput(session) {
+  return {
+    authenticated: true,
+    version: session.version,
+    user: session.user,
+    workspace: session.workspace,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    workspaces: session.workspaces,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt,
+    sessionPath: sessionFilePath()
+  };
 }
 async function ensureSession(parsed, io) {
   const current = await loadSession(io.env);
@@ -1146,7 +1159,7 @@ function writeResult(io, parsed, result) {
 async function handleAuth(parsed, io) {
   const action = parsed.positionals[1];
   if (action === "login") {
-    return loginWithBrowser2({
+    const session = await loginWithBrowser2({
       baseUrl: normalizeBaseUrl2(readFlag(parsed, "base-url")),
       workspace: readFlag(parsed, "workspace"),
       fetchImpl: io.fetchImpl,
@@ -1154,12 +1167,13 @@ async function handleAuth(parsed, io) {
 `),
       env: io.env
     });
+    return sessionOutput(session);
   }
   if (action === "logout") {
     return { loggedOut: await logoutRemote({ fetchImpl: io.fetchImpl, env: io.env }) };
   }
   if (action === "whoami") {
-    return ensureSession(parsed, io);
+    return sessionOutput(await ensureSession(parsed, io));
   }
   throw new CliError(`Unknown auth action: ${action ?? "(missing)"}`, 2);
 }
