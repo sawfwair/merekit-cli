@@ -26,7 +26,11 @@ gitleaks detect --source . --log-opts=--all --redact
 - Enable Dependabot for npm and GitHub Actions.
 - Set the repository description, homepage, and topics.
 - Confirm the Pages source is GitHub Actions and the Docs workflow deploys to `https://sawfwair.github.io/merekit-cli/`.
-- Add an `NPM_TOKEN` secret to the `npm` GitHub environment. The token must belong to an npm account with publish rights for `@merekit/cli`.
+- Configure npm Trusted Publishing for `@merekit/cli`:
+  - Provider: GitHub Actions.
+  - Repository: `sawfwair/merekit-cli`.
+  - Workflow filename: `publish.yml`.
+  - Environment name: `npm`.
 - Confirm `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `SECURITY.md`, issue templates, and pull request template are present.
 
 ## Publish
@@ -34,6 +38,5 @@ gitleaks detect --source . --log-opts=--all --redact
 - Confirm `SECURITY.md` still describes the adapter/API-shape model.
 - Confirm `CHANGELOG.md`, `package.json`, and the npm version all agree.
 - Confirm the dry-run tarball contains only intended files.
-- Publish with npm two-factor authentication or trusted publishing.
-- Prefer the manual `Publish` GitHub Actions workflow once trusted publishing is configured for `@merekit/cli`.
+- Publish through the manual `Publish` GitHub Actions workflow. It uses OIDC trusted publishing, so no long-lived npm publish token is required.
 - Confirm the workflow created the matching GitHub Release after npm publish succeeds.

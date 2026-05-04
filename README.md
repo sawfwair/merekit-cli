@@ -122,7 +122,7 @@ The license covers the package code and documentation. It does not grant access 
 The package publishes compiled runtime files, bundled adapters, docs, and the repo-local `mere-cli` skill. Product and onboarding skill bodies are fetched from the centralized registry at `https://merekit.com/skills` with digest verification, so source, tests, app repos, local state, secrets, and non-CLI skill text are intentionally excluded from the package tarball.
 
 Use `docs/release-checklist.md` for the full public-release preflight, including adapter safety, package contents, smoke checks, and secret scanning.
-The manual `Publish` workflow expects the `npm` GitHub environment to provide an `NPM_TOKEN` secret from an npm account that can publish `@merekit/cli`.
+The manual `Publish` workflow uses npm Trusted Publishing through GitHub Actions OIDC. Configure `@merekit/cli` on npm with repository `sawfwair/merekit-cli`, workflow `publish.yml`, and environment `npm`.
 
 ```sh
 pnpm check
@@ -130,7 +130,6 @@ pnpm test
 pnpm smoke
 pnpm pack:dry
 pnpm test:pack
-npm publish --access public
 ```
 
 ## Bundled Adapters
