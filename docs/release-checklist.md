@@ -26,6 +26,7 @@ gitleaks detect --source . --log-opts=--all --redact
 - Enable Dependabot for npm and GitHub Actions.
 - Set the repository description, homepage, and topics.
 - Confirm the Pages source is GitHub Actions and the Docs workflow deploys to `https://sawfwair.github.io/merekit-cli/`.
+- Add an `NPM_TOKEN` secret to the `npm` GitHub environment. The token must belong to an npm account with publish rights for `@merekit/cli`.
 - Confirm `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `SECURITY.md`, issue templates, and pull request template are present.
 
 ## Publish
