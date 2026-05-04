@@ -89,7 +89,7 @@ export default defineConfig({
     },
     footer: {
       message: 'Released under the Apache License, Version 2.0.',
-      copyright: 'Copyright MereKit contributors'
+      copyright: 'Copyright Sawfwair Inc. and MereKit contributors'
     }
   }
 })

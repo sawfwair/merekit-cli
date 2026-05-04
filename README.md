@@ -111,7 +111,7 @@ Issues and pull requests are welcome. Please read `CONTRIBUTING.md`, `CODE_OF_CO
 
 ## License
 
-MereKit CLI is open source under the Apache License, Version 2.0. See `LICENSE`.
+MereKit CLI is open source under the Apache License, Version 2.0. See `LICENSE`. Project copyright is listed in `NOTICE`.
 
 Bundled third-party notices are listed in `THIRD_PARTY_NOTICES.md`.
 
