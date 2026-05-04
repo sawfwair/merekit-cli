@@ -4,7 +4,13 @@ Mere CLI is read-first. The root command plane helps humans and agents discover 
 
 ## Defaults
 
-Use read-only workflows first:
+Invite-code onboarding has one explicit setup action:
+
+```sh
+mere business onboard start INVITE_CODE --json
+```
+
+That command may open the browser and create/provision a workspace from the invite. After a workspace exists, use read-only workflows first:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --json
@@ -12,6 +18,8 @@ mere ops audit --workspace WORKSPACE_ID --json
 mere ops workspace-snapshot --workspace WORKSPACE_ID --json
 mere mcp serve
 ```
+
+Operators and agents entering an already-provisioned workspace can start at `mere onboard --workspace ...`.
 
 ## Guardrails
 

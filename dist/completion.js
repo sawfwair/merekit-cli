@@ -12,6 +12,7 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         'ops',
         'setup',
         'skills',
+        'tui',
         ...registry.flatMap((entry) => entry.aliases)
     ]
         .filter((word, index, list) => list.indexOf(word) === index)
@@ -24,12 +25,13 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         completion: ['bash', 'fish', 'zsh'],
         context: ['clear', 'get', 'set-workspace'],
         finance: ['profiles'],
-        help: ['agent', 'mcp', 'safety', 'skills'],
+        help: ['agent', 'mcp', 'onboard', 'safety', 'skills'],
         mcp: ['serve'],
-        onboard: ['--app', '--finance-base-url', '--finance-profile', '--json', '--no-interactive', '--output', '--target', '--workspace'],
+        onboard: ['--app', '--base-domain', '--business-mode', '--existing-website-url', '--finance-base-url', '--finance-profile', '--interactive', '--invite-code', '--json', '--name', '--no-interactive', '--no-wait', '--output', '--slug', '--target', '--workspace'],
         ops: ['audit', 'doctor', 'smoke', 'workspace-snapshot'],
         setup: ['build', 'check', 'smoke'],
         skills: ['install', 'list', 'publish', 'show'],
+        tui: ['--app', '--base-domain', '--business-mode', '--dry-run', '--existing-website-url', '--finance-base-url', '--finance-profile', '--invite-code', '--name', '--no-wait', '--output', '--slug', '--target', '--workspace'],
         ...dynamicCommands
     };
     const thirdCommands = {

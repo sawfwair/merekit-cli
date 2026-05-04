@@ -6,6 +6,14 @@ It is created by `mere onboard` and by the lower-level `mere agent bootstrap` co
 
 ## Create The Pack
 
+Normal users start by redeeming an invite, which creates or provisions the workspace:
+
+```sh
+mere business onboard start INVITE_CODE --json
+```
+
+After a workspace exists, create the readiness pack:
+
 ```sh
 mere onboard --workspace WORKSPACE_ID --target codex --json
 ```

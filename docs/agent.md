@@ -23,13 +23,23 @@ For full cross-stack operation, make sure `mere apps list --json` reports the ta
 
 ## First-Use Sequence
 
+If the task starts from a customer invite code, redeem and bootstrap that invite first:
+
+```sh
+npm install -g @merekit/cli
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+If the operator already supplied a workspace ID, start directly with the readiness report:
+
 ```sh
 npm install -g @merekit/cli
 mere onboard --workspace WORKSPACE_ID --target codex --json
 mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
 ```
 
-`onboard` is the shortest safe first move for humans and agents. It runs discovery/check/status commands, stores the workspace when provided, writes a secret-free context pack under `~/.config/mere/agents/default` unless `--output DIR` is passed, and adds a readiness report with exact next commands. `agent bootstrap` remains the lower-level context-pack primitive.
+`mere business onboard start` is the zero-state invite bootstrap path: it signs in or signs up through the browser when needed and creates/provisions the workspace from the invite. `mere onboard` is the readiness path after a workspace exists. It runs discovery/check/status commands, stores the workspace when provided, writes a secret-free context pack under `~/.config/mere/agents/default` unless `--output DIR` is passed, and adds a readiness report with exact next commands. `agent bootstrap` remains the lower-level context-pack primitive.
 
 Generated files:
 
@@ -53,6 +63,7 @@ Manual sequence:
 mere --help
 mere help onboard
 mere help agent
+mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
 mere apps list --json
 mere ops doctor --json

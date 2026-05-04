@@ -4,12 +4,21 @@ Ops commands are root-owned read/check workflows for humans and agents. They pre
 
 ## Agent Bootstrap
 
+Invite-code bootstrap for a normal first run:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace ws_123 --target codex --json
+```
+
+Operator/agent bootstrap for an already-provisioned workspace:
+
 ```sh
 mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 ```
 
-`onboard` runs the first-use discovery path, writes an agent context pack with docs, manifests, auth status, doctor output, MCP config, and a workspace snapshot, then adds `onboarding-report.json` and `ONBOARDING.md` with readiness, remediation, and selector hints. `agent bootstrap` writes only the lower-level context pack.
+`business onboard start` redeems an invite and bootstraps the workspace. `onboard` then runs the discovery/readiness path, writes an agent context pack with docs, manifests, auth status, doctor output, MCP config, and a workspace snapshot, then adds `onboarding-report.json` and `ONBOARDING.md` with readiness, remediation, and selector hints. `agent bootstrap` writes only the lower-level context pack.
 
 ## Doctor
 
@@ -93,7 +102,7 @@ Agents should summarize failures first, then inspect the failed delegated comman
 
 ## Reading Onboarding
 
-`mere onboard --workspace ws_123 --json` produces:
+After invite bootstrap or for an already-provisioned workspace, `mere onboard --workspace ws_123 --json` produces:
 
 - `readinessScore`
 - `summary`

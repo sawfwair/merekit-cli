@@ -1,8 +1,34 @@
 # First Run
 
-The first run should produce evidence, not changes. Start with onboarding, then use the generated report to decide what to set up next.
+The first run has one intentional setup action when the user has an invite code: redeem the invite and create or provision the workspace. After that, onboarding should produce evidence, not product changes. Operators, agents, and automation that already have a workspace can start directly with the read-first readiness report.
 
 ## Run Onboarding
+
+For a human first run:
+
+```sh
+mere tui
+```
+
+This asks for an invite code. There is also an operator-only workspace ID path for support, agents, automation, or re-running checks on an already-provisioned workspace. Those paths are exclusive:
+
+- Invite code: the UI runs `mere business onboard start CODE --json` first. That command signs in or signs up through the browser when needed, bootstraps the workspace, and waits for provisioning unless you pass `--no-wait`.
+- Operator workspace ID: the UI skips invite redemption and runs the root readiness report directly.
+
+You can also launch the same UI through:
+
+```sh
+mere onboard --interactive
+```
+
+For a headless invite-code flow:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+For an operator, agent, or headless shell entering an already-provisioned workspace:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --target codex --json
@@ -14,13 +40,13 @@ This writes the context pack and prints the structured report. If you prefer a r
 mere onboard --workspace WORKSPACE_ID --target codex
 ```
 
-For one app:
+For one app after a workspace exists:
 
 ```sh
 mere onboard --app projects --workspace WORKSPACE_ID --target codex --json
 ```
 
-For a custom output directory:
+For a custom output directory after a workspace exists:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --output .mere/onboarding --json

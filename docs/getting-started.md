@@ -1,6 +1,6 @@
 # Getting Started
 
-Mere CLI is easiest to learn as a read-first loop: install the public package, run onboarding, inspect the generated report, then use manifests and snapshots before invoking product commands.
+Mere CLI is easiest to learn as a guided first-use loop: install the public package, redeem an invite through the TUI when needed, inspect the generated report, then use manifests and snapshots before invoking product commands.
 
 ## Install
 
@@ -26,7 +26,22 @@ node dist/run.js --help
 
 ## Run The First Command
 
-If you have a Mere workspace id:
+For a human first run:
+
+```sh
+mere tui
+```
+
+The TUI asks for an invite code. Invite codes are redeemed through `mere business onboard start CODE --json`. Workspace IDs are an operator/support/agent path for re-running the safe onboarding report against an already-provisioned workspace.
+
+For a headless invite-code flow:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+If you are an operator or agent with a Mere workspace ID:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --target codex --json
@@ -39,7 +54,7 @@ mere apps list --json
 mere ops doctor --json
 ```
 
-`mere onboard` is still useful without a workspace, but it will mark workspace-scoped apps as blocked and tell you the exact command to rerun:
+Operators can run `mere onboard` without a workspace as a package-health check, but workspace-scoped apps will be blocked and the report will tell you the exact command to rerun:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --json

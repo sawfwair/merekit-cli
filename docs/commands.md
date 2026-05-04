@@ -8,8 +8,9 @@ mere apps manifest --app APP --json
 
 ## Root Commands
 
-- `mere --help`, `mere help [agent|onboard|safety|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
-- `mere onboard [--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
+- `mere --help`, `mere help [agent|onboard|safety|skills|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
+- `mere tui [--invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]`
+- `mere onboard [--interactive] [--invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
 - `mere agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR] [--allow-writes] [--json]`
 - `mere apps list|manifest|doctor [--app APP] [--json]`
 - `mere context get|set-workspace|clear`
@@ -20,6 +21,21 @@ mere apps manifest --app APP --json
 - `mere mcp serve [--allow-writes]`
 
 ## First-Use Commands
+
+Human TUI:
+
+```sh
+mere tui
+```
+
+Headless invite bootstrap:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+Operator/agent workspace entry:
 
 ```sh
 mere onboard --workspace ws_123 --target codex --json
@@ -33,7 +49,7 @@ mere ops workspace-snapshot --json
 mere apps manifest --app projects --json
 ```
 
-These are safe discovery/read commands. `mere onboard` is the recommended human and agent entrypoint before mutation.
+`mere tui` is the recommended human entrypoint. Normal users start with an invite code, so the first delegated step is `mere business onboard start INVITE_CODE --json`. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace.
 
 `onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
 

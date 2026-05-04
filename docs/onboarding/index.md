@@ -1,6 +1,6 @@
 # Onboarding Overview
 
-`mere onboard` is the user-facing entrypoint for a new human or agent. It creates one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
+`mere tui` is the human-facing entrypoint for invite-code onboarding. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace. `mere onboard` is the headless readiness entrypoint. Together they create one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
 
 It is intentionally conservative. It discovers app adapters, checks manifests, summarizes auth state, stores the workspace when provided, runs safe read-only snapshot commands, and writes exact next commands for anything that still needs setup.
 
@@ -8,12 +8,12 @@ It is intentionally conservative. It discovers app adapters, checks manifests, s
 
 <div class="mere-path">
   <div class="mere-step">
-    <strong>1. Resolve app CLIs</strong>
-    <span>Find bundled, local, env-overridden, or PATH-based app command adapters.</span>
+    <strong>1. Redeem invite or select workspace</strong>
+    <span>Use <code>mere business onboard start CODE</code> for customer invite bootstrap, or provide an operator workspace ID.</span>
   </div>
   <div class="mere-step">
     <strong>2. Collect state</strong>
-    <span>Run doctor, auth status, Finance profile checks, context reads, and app manifests.</span>
+    <span>Resolve app CLIs, run doctor, auth status, Finance profile checks, context reads, and app manifests.</span>
   </div>
   <div class="mere-step">
     <strong>3. Write next steps</strong>
@@ -23,29 +23,54 @@ It is intentionally conservative. It discovers app adapters, checks manifests, s
 
 ## Recommended First Run
 
+For humans:
+
+```sh
+mere tui
+```
+
+For headless invite redemption and workspace bootstrap:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+For operators, agents, or automation after a workspace exists:
+
 ```sh
 mere onboard --workspace WORKSPACE_ID --target codex --json
 ```
 
-For one app:
+For one app after a workspace exists:
 
 ```sh
 mere onboard --app projects --workspace WORKSPACE_ID --target codex --json
 ```
 
-For Claude-targeted onboarding material:
+For Claude-targeted onboarding material after a workspace exists:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --target claude --json
 ```
 
-For a project-local output directory:
+For a project-local output directory after a workspace exists:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --output .mere/onboarding --json
 ```
 
-## What Onboarding Does
+## What Invite Bootstrap Does
+
+When the user starts from an invite code, `mere tui` runs:
+
+```sh
+mere business onboard start INVITE_CODE --json
+```
+
+That delegated Business command validates the invite, signs in or signs up through the browser when needed, creates/provisions the workspace, and returns workspace state for the root readiness pass.
+
+## What Root Onboarding Does
 
 - Runs `mere apps list --json`.
 - Runs `mere ops doctor --json`.
@@ -57,10 +82,10 @@ mere onboard --workspace WORKSPACE_ID --output .mere/onboarding --json
 - Writes a context pack and onboarding report.
 - Saves the workspace as the root default when `--workspace` is provided.
 
-## What Onboarding Does Not Do
+## What Root Onboarding Does Not Do
 
 <div class="mere-callout">
-Onboarding recommends setup commands, but it does not perform browser login, Finance token login, skill installation, write commands, destructive commands, refunds, releases, or external side effects.
+The root `mere onboard` command recommends setup commands, but it does not perform browser login, Finance token login, skill installation, write commands, destructive commands, refunds, releases, or external side effects.
 </div>
 
 The root CLI never invents `--yes` or `--confirm`. Product CLIs keep their own guardrails.
@@ -92,12 +117,14 @@ Start with `ONBOARDING.md` if you are reading. Start with `onboarding-report.jso
 
 | Flag | Purpose |
 | --- | --- |
-| `--workspace ID` | Selects and stores the workspace for root-owned workflows such as `workspace-snapshot`. |
+| `--invite-code CODE` | TUI-only shortcut that starts from a Mere invite code and runs `mere business onboard start CODE --json`. |
+| `--workspace ID` | Operator/agent path that selects and stores an already-provisioned workspace for root-owned workflows such as `workspace-snapshot`. |
 | `--app APP` | Limits checks and manifests to one app namespace. |
-| `--target codex|claude` | Selects the target for generated agent-facing guidance and skill install commands. |
+| `--target codex\|claude` | Selects the target for generated agent-facing guidance and skill install commands. |
 | `--output DIR` | Writes the context pack to a custom directory instead of the default agent path. |
 | `--finance-profile NAME` | Names the Finance token profile recommended in remediation. |
 | `--finance-base-url URL` | Uses a concrete Finance base URL in remediation commands. |
+| `--interactive` | Opens the first-use TUI instead of printing the report directly. |
 | `--json` | Prints the structured onboarding report to stdout. |
 
 ## After Onboarding

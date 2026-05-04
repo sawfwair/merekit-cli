@@ -3,6 +3,7 @@ const BOOLEAN_FLAGS = new Set([
     'allow-writes',
     'dry-run',
     'help',
+    'interactive',
     'json',
     'local',
     'ndjson',

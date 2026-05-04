@@ -10,7 +10,14 @@ Symptom:
 - Remediation id ends in `.workspace`.
 - The next command is `mere onboard --workspace WORKSPACE_ID --json`.
 
-Fix:
+Fix for a normal user with an invite code:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --json
+```
+
+Fix for an operator or agent that already has a workspace ID:
 
 ```sh
 mere onboard --workspace WORKSPACE_ID --json
@@ -151,6 +158,7 @@ Even in write-capable mode, app guardrails still apply. If a manifest says a com
 
 Rerun onboarding after any of these changes:
 
+- Invite code redemption or workspace bootstrap.
 - New workspace.
 - New app adapter.
 - Browser auth login or logout.

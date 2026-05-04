@@ -7,16 +7,18 @@ Use this skill when operating the Mere portfolio through the root `mere` command
 ## Workflow
 
 1. Run `mere --help`, `mere help onboard`, and `mere help agent` to read the root operating model.
-2. Prefer `mere onboard --workspace WORKSPACE_ID --target codex --json` for a fresh agent. It writes `AGENT.md`, manifests, auth status, doctor output, workspace snapshot, MCP config, a command reference, `onboarding-report.json`, and `ONBOARDING.md` under `~/.config/mere/agents/default`.
-3. Run `mere apps list --json` to see registered apps and CLI locations.
-4. Run `mere ops doctor --json` before cross-stack work.
-5. Run `mere auth status --all --json` to inspect app session state.
-6. Use `mere auth status --app finance --json` and `mere finance profiles list --json` when Finance token/profile state matters.
-7. Set or pass a workspace: `mere context set-workspace --workspace WORKSPACE_ID` or use explicit `--workspace`.
-8. Use `mere ops workspace-snapshot --workspace WORKSPACE_ID --json` for grouped read-only cross-app inspection.
-9. Use `mere apps manifest --app APP --json` to discover exact command paths, risk, flags, JSON/data support, and guardrails.
-10. Use `mere <app> ...` for product-owned operations.
-11. For agents, start MCP with `mere mcp serve`; add `--allow-writes` only when write tools are intentionally in scope.
+2. For a human first run, prefer `mere tui`. A normal user starts with an invite code.
+3. If the user has an invite code and you are operating headlessly, run `mere business onboard start INVITE_CODE --json` first. This signs in or signs up through the browser if needed and bootstraps the workspace from the invite. It does not require a prior `auth login`.
+4. After invite bootstrap returns a workspace, run `mere onboard --workspace WORKSPACE_ID --target codex --json`. If an operator supplied a workspace ID at the start, treat that as a support/agent path for an already-provisioned workspace. Onboarding writes `AGENT.md`, manifests, auth status, doctor output, workspace snapshot, MCP config, a command reference, `onboarding-report.json`, and `ONBOARDING.md` under `~/.config/mere/agents/default`.
+5. Run `mere apps list --json` to see registered apps and CLI locations.
+6. Run `mere ops doctor --json` before cross-stack work.
+7. Run `mere auth status --all --json` to inspect app session state.
+8. Use `mere auth status --app finance --json` and `mere finance profiles list --json` when Finance token/profile state matters.
+9. Set or pass a workspace: `mere context set-workspace --workspace WORKSPACE_ID` or use explicit `--workspace`.
+10. Use `mere ops workspace-snapshot --workspace WORKSPACE_ID --json` for grouped read-only cross-app inspection.
+11. Use `mere apps manifest --app APP --json` to discover exact command paths, risk, flags, JSON/data support, and guardrails.
+12. Use `mere <app> ...` for product-owned operations.
+13. For agents, start MCP with `mere mcp serve`; add `--allow-writes` only when write tools are intentionally in scope.
 
 ## Discovery Rules
 
@@ -59,6 +61,8 @@ Root snapshot is read-only and includes selector help for audited reads:
 
 ```sh
 mere help agent
+mere tui
+mere business onboard start INVITE_CODE --json
 mere onboard --workspace ws_123 --target codex --json
 mere agent bootstrap --workspace ws_123 --target codex --json
 mere apps list --json

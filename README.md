@@ -7,12 +7,12 @@
 `mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, and MCP access.
 
 ```sh
-mere apps list
+mere tui
+mere business onboard start INVITE_CODE --json
 mere onboard --workspace ws_123 --target codex --json
-mere agent bootstrap --workspace ws_123 --target codex --json
+mere apps list --json
 mere ops doctor --json
 mere auth status --all --json
-mere context set-workspace --workspace ws_123
 mere ops workspace-snapshot --json
 mere apps manifest --app projects --json
 mere help agent
@@ -20,7 +20,26 @@ mere help agent
 
 ## First Use
 
-Use this sequence when an agent or new CLI user enters the system:
+For a human first run, start the terminal UI:
+
+```sh
+mere tui
+```
+
+The UI asks for an invite code. Workspace IDs are only for operators, support, agents, or re-running checks on an already-provisioned workspace. If you paste an invite code, it runs `mere business onboard start CODE --json` to sign in and bootstrap the workspace, then runs the same safe readiness checks as `mere onboard --json`. You can also launch it with:
+
+```sh
+mere onboard --interactive
+```
+
+For headless human onboarding from an invite code:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+Use this operator sequence when an agent or automation enters an already-provisioned workspace:
 
 ```sh
 mere onboard --workspace ws_123 --target codex --json
@@ -35,7 +54,7 @@ mere ops workspace-snapshot --workspace ws_123 --json
 mere apps manifest --app projects --json
 ```
 
-`onboard` is the best first command. It writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
+For normal users, start with `mere tui` because it starts from the invite code they actually have. For operators and agents that already have a workspace, `mere onboard --workspace ...` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
 
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
@@ -129,6 +148,7 @@ Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source for debugging. A
 Root-owned commands:
 
 - `mere apps list|manifest|doctor`
+- `mere tui`
 - `mere onboard`
 - `mere agent bootstrap`
 - `mere auth login|whoami|logout|status`

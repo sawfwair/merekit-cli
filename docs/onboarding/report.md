@@ -2,6 +2,13 @@
 
 `mere onboard --json` prints the same structured report that it writes to `onboarding-report.json`.
 
+For a normal invite-code first run, create or provision the workspace first:
+
+```sh
+mere business onboard start INVITE_CODE --json
+mere onboard --workspace WORKSPACE_ID --json
+```
+
 The report is designed to answer three questions:
 
 1. Can this install see the app CLIs?

@@ -189,19 +189,82 @@ async function run(args, env = {}) {
 test('renders help and completion', async () => {
   const help = await run(['--help']);
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /Agent first run:/);
+  assert.match(help.stdout, /Human first run:/);
+  assert.match(help.stdout, /mere tui/);
+  assert.match(help.stdout, /Operator\/agent first run:/);
   assert.match(help.stdout, /mere help agent/);
   const agentHelp = await run(['help', 'agent']);
   assert.equal(agentHelp.code, 0);
   assert.match(agentHelp.stdout, /mere agent guide/);
+  assert.match(agentHelp.stdout, /Human first-use:/);
   assert.match(agentHelp.stdout, /Operating loop:/);
   const completion = await run(['completion', 'bash']);
   assert.equal(completion.code, 0);
   assert.match(completion.stdout, /complete -F _mere_completion mere/);
   assert.match(completion.stdout, /agent/);
   assert.match(completion.stdout, /onboard/);
+  assert.match(completion.stdout, /tui/);
+  assert.match(completion.stdout, /--interactive/);
+  assert.match(completion.stdout, /--invite-code/);
   assert.match(completion.stdout, /workspace-snapshot/);
   assert.match(completion.stdout, /finance profiles/);
+});
+
+test('tui dry-run shows the onboarding command it will execute', async () => {
+  const result = await run([
+    'tui',
+    '--dry-run',
+    '--app',
+    'projects',
+    '--workspace',
+    'ws_1',
+    '--target',
+    'claude',
+    '--output',
+    '/tmp/mere-onboarding',
+  ]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'mere onboard --app projects --workspace ws_1 --target claude --output /tmp/mere-onboarding --json');
+});
+
+test('tui dry-run starts from an invite code when provided', async () => {
+  const result = await run([
+    'tui',
+    '--dry-run',
+    '--invite-code',
+    'zcli_code_123',
+    '--name',
+    'Acme Plumbing',
+    '--slug',
+    'acme',
+    '--business-mode',
+    'existing',
+    '--existing-website-url',
+    'https://acme.example',
+  ]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(
+    result.stdout.trim(),
+    [
+      'mere business onboard start zcli_code_123 --name "Acme Plumbing" --slug acme --business-mode existing --existing-website-url https://acme.example --json',
+      'mere onboard --target codex --json',
+    ].join('\n'),
+  );
+});
+
+test('tui explains non-interactive terminal requirements', async () => {
+  const result = await run(['tui']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /requires an interactive terminal/);
+  assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
+  assert.match(result.stderr, /mere onboard --workspace WORKSPACE_ID --json/);
+});
+
+test('onboard invite-code without interactive points to the bootstrap path', async () => {
+  const result = await run(['onboard', '--invite-code', 'zcli_code_123', '--json']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /Invite codes require the TUI/);
+  assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
 });
 
 test('discovers local skills for registry publishing', async () => {

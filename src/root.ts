@@ -11,6 +11,7 @@ import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
 import { PRODUCT_APP_KEYS, createRegistry, executionCwd, findEntry, findPnpm, resolveCli } from './registry.js';
 import { runSkills } from './skills.js';
+import { runFirstUseTui } from './tui.js';
 import type { AppCommandManifest, ManifestCommand, ProcessResult, RegistryEntry } from './types.js';
 import { CLI_VERSION } from './version.js';
 
@@ -18,6 +19,7 @@ export interface CliIO {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
 	env: NodeJS.ProcessEnv;
+	stdin?: NodeJS.ReadStream;
 }
 
 function writeJson(io: CliIO, value: unknown): void {
@@ -35,7 +37,12 @@ Usage:
   mere [--json] <command>
   mere <app> [app command...]
 
-Agent first run:
+Human first run:
+  mere tui
+  mere onboard --interactive
+  mere business onboard start INVITE_CODE --json
+
+Operator/agent first run:
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
   mere ops doctor --json
@@ -58,12 +65,13 @@ Global:
   --help                 Show help.
 
 Commands:
-  help [agent|safety|mcp]
+  help [agent|onboard|safety|skills|mcp]
+  tui [--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   completion [bash|zsh|fish]
   apps list|manifest|doctor
   auth login|whoami|logout|status [--app APP|--all]
   context get|set-workspace|clear
-  onboard [--workspace ID] [--app APP] [--target codex|claude] [--output DIR]
+  onboard [--interactive] [--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR]
   skills list|show|install|publish
   finance profiles list|current|use|login
@@ -84,7 +92,12 @@ function helpTopicText(topic: string | undefined): string {
 Goal:
   Learn the command plane from live manifests, inspect safely first, then delegate product-owned work.
 
-First-use sequence:
+Human first-use:
+  mere tui
+  mere onboard --interactive
+  mere business onboard start INVITE_CODE --json
+
+Operator/agent workspace sequence:
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
@@ -111,9 +124,12 @@ Notes:
 		return `mere onboard guide
 
 Goal:
-  Generate one readiness report for a fresh human or agent, with exact next commands.
+  Generate one readiness report for a fresh human invite flow or an agent entering an existing workspace.
 
 Usage:
+  mere tui
+  mere onboard --interactive
+  mere business onboard start INVITE_CODE --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere onboard --app projects --workspace WORKSPACE_ID
   mere onboard --finance-profile default --finance-base-url https://<tenant>.mere.finance --json
@@ -1577,10 +1593,14 @@ function buildOnboardingReport(
 }
 
 async function runOnboard(io: CliIO, action: string | undefined, flags: Record<string, string | boolean | string[]>): Promise<number> {
-	if (action && action !== 'help') throw new Error('Usage: mere onboard [--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--json]');
+	if (action && action !== 'help') throw new Error('Usage: mere onboard [--interactive] [--invite-code CODE|--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--json]');
 	if (action === 'help') {
 		writeText(io, helpTopicText('onboard'));
 		return 0;
+	}
+	const inviteCode = readStringFlag(flags, 'invite-code');
+	if (inviteCode) {
+		throw new Error('Invite codes require the TUI (`mere tui` or `mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard start INVITE_CODE --json`.');
 	}
 	const target = readStringFlag(flags, 'target') ?? 'codex';
 	if (target !== 'codex' && target !== 'claude') throw new Error('Onboard target must be codex or claude.');
@@ -1596,6 +1616,32 @@ async function runOnboard(io: CliIO, action: string | undefined, flags: Record<s
 	if (readBooleanFlag(flags, 'json')) writeJson(io, report);
 	else io.stdout(renderOnboardingText(report));
 	return 0;
+}
+
+async function runTui(io: CliIO, flags: Record<string, string | boolean | string[]>): Promise<number> {
+	const paths = resolveMerePaths(io.env);
+	const registry = createRegistry(paths.mereRoot, paths.packageRoot);
+	const entries = registry.filter((entry) => PRODUCT_APP_KEYS.includes(entry.key));
+	return runFirstUseTui({
+		io,
+		entries,
+		flags,
+		runCommand: async (args) => {
+			let stdout = '';
+			let stderr = '';
+			const code = await runCli(args, {
+				env: io.env,
+				stdin: io.stdin,
+				stdout: (text) => {
+					stdout += text;
+				},
+				stderr: (text) => {
+					stderr += text;
+				}
+			});
+			return { code, stdout, stderr };
+		}
+	});
 }
 
 async function runOps(io: CliIO, action: string | undefined, flags: Record<string, string | boolean | string[]>): Promise<number> {
@@ -1658,6 +1704,8 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 		if (rest[0] === 'auth') return await runAuth(io, rest[1], parsed.flags);
 		if (rest[0] === 'context') return await runContext(io, rest[1], parsed.flags);
 		if (rest[0] === 'agent') return await runAgent(io, rest[1], parsed.flags);
+		if (rest[0] === 'tui') return await runTui(io, parsed.flags);
+		if (rest[0] === 'onboard' && readBooleanFlag(parsed.flags, 'interactive')) return await runTui(io, parsed.flags);
 		if (rest[0] === 'onboard') return await runOnboard(io, rest[1]?.startsWith('--') ? undefined : rest[1], parsed.flags);
 		if (rest[0] === 'skills') return await runSkills(io, rest[1], rest.slice(2), parsed.flags);
 		if (rest[0] === 'apps') return await runApps(io, rest[1], parsed.flags);
