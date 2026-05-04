@@ -36,6 +36,7 @@ jobs:
       - run: pnpm pack:dry
       - run: npm publish --provenance --access public --tag "$NPM_TAG"
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ inputs.npm_tag }}
       - name: Create GitHub release
         env:
