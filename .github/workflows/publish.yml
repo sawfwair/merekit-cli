@@ -1,5 +1,8 @@
 name: Publish
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -10,7 +13,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -34,3 +37,20 @@ jobs:
       - run: npm publish --provenance --access public --tag "$NPM_TAG"
         env:
           NPM_TAG: ${{ inputs.npm_tag }}
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NPM_TAG: ${{ inputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          args=(--repo "$GITHUB_REPOSITORY" --title "Mere CLI ${tag}" --generate-notes)
+          if [[ "$NPM_TAG" != "latest" ]]; then
+            args+=(--prerelease)
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub release ${tag} already exists."
+          else
+            gh release create "$tag" "${args[@]}"
+          fi

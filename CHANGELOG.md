@@ -6,11 +6,20 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.1.14 - 2026-05-04
+
+- Added the first-use TUI (`mere tui` and `mere onboard --interactive`) for invite-code onboarding and operator workspace checks.
+- Added invite-code onboarding docs across README, VitePress docs, command reference, agent workflow, ops, safety, troubleshooting, and the bundled `mere-cli` skill.
+- Added GitHub Pages deployment for the VitePress docs site.
+- Added release workflow support for creating a GitHub Release after a successful npm publish.
+
+## 0.1.13
+
 - Added public repository polish: package metadata, README badges, issue templates, pull request template, Dependabot config, support guide, code of conduct, and release checklist.
 - Added CI coverage for package-content checks and docs builds.
 - Added a manual npm publish workflow for provenance-backed public releases.
-
-## 0.1.13
 
 - Hardened bundled adapter safety checks before public release.
 - Added shared command-risk classification for MCP and adapter CI checks.

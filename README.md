@@ -1,10 +1,14 @@
 # Mere CLI
 
 [![CI](https://github.com/sawfwair/merekit-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sawfwair/merekit-cli/actions/workflows/ci.yml)
+[![Docs](https://github.com/sawfwair/merekit-cli/actions/workflows/docs.yml/badge.svg)](https://github.com/sawfwair/merekit-cli/actions/workflows/docs.yml)
 [![npm](https://img.shields.io/npm/v/@merekit/cli.svg)](https://www.npmjs.com/package/@merekit/cli)
+[![GitHub Release](https://img.shields.io/github/v/release/sawfwair/merekit-cli?sort=semver)](https://github.com/sawfwair/merekit-cli/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 `mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, and MCP access.
+
+Full docs are published at [sawfwair.github.io/merekit-cli](https://sawfwair.github.io/merekit-cli/).
 
 ```sh
 mere tui

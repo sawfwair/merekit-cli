@@ -24,7 +24,7 @@ body:
     id: version
     attributes:
       label: Version
-      placeholder: "@merekit/cli 0.1.13, Node 24.x"
+      placeholder: "@merekit/cli 0.1.x, Node 24.x"
   - type: textarea
     id: context
     attributes:
