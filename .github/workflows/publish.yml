@@ -22,7 +22,7 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.8.1
       - uses: actions/setup-node@v4
