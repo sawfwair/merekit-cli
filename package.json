@@ -47,6 +47,13 @@
   "publishConfig": {
     "access": "public"
   },
+  "pnpm": {
+    "overrides": {
+      "@vitejs/plugin-vue": "6.0.6",
+      "esbuild": "0.27.7",
+      "vite": "6.4.2"
+    }
+  },
   "scripts": {
     "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json",

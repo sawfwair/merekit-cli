@@ -28,6 +28,11 @@ export default defineConfig({
       dark: 'github-dark'
     }
   },
+  vite: {
+    build: {
+      target: 'esnext'
+    }
+  },
   themeConfig: {
     siteTitle: 'Mere CLI',
     logo: '/mark.svg',
