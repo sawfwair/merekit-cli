@@ -283,7 +283,9 @@ test('discovers local skills for registry publishing', async () => {
   assert.equal(skill.files.length, 1);
   assert.match(skill.digest, /^sha256:/);
   assert.equal(payload.skills.some((entry) => entry.name === 'zerosmb-cli'), false);
-  assert.equal(payload.skills.some((entry) => entry.name === 'works-cli'), false);
+  const worksSkill = payload.skills.find((entry) => entry.name === 'works-cli');
+  assert.ok(worksSkill);
+  assert.equal(worksSkill.repo, 'works');
 });
 
 test('renders a readable skills list for humans', async () => {
@@ -304,6 +306,7 @@ test('lists apps from the registry', async () => {
   assert.equal(result.code, 0);
   const payload = JSON.parse(result.stdout);
   assert.ok(payload.apps.some((app) => app.app === 'projects' && app.exists === true && app.source === 'local'));
+  assert.ok(payload.apps.some((app) => app.app === 'works' && app.auth === 'browser'));
 });
 
 test('resolves bundled adapters before local CLIs by default', async () => {

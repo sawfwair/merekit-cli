@@ -170,6 +170,7 @@ mere projects project list --workspace ws_123 --json
 mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json
+mere works work list --workspace ws_123 --json
 ```
 
 The root only passes flags a target manifest supports. Use `mere apps manifest --app APP --json` to discover exact command paths, risk levels, flags, JSON support, data support, and destructive guardrails.
@@ -187,6 +188,7 @@ Registered namespaces:
 | `network` | browser | Calls, SMS, conversations, numbers, routing, deployments, diagnostics |
 | `email` | browser | Mailboxes, threads, sending, providers, domains, drafts |
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
+| `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
 
 ## Auth And Context
 

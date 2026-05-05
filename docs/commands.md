@@ -98,6 +98,7 @@ mere video rooms list --json
 mere network calls list --json
 mere email threads search invoice --json
 mere gives donations list --tenant ten_1 --json
+mere works work list --workspace ws_123 --json
 ```
 
 Global pass-through flags are only forwarded when the target manifest supports them:
@@ -174,6 +175,7 @@ This matrix is generated from the current local app manifests.
 | `network` | 58 | 6 | 25 read, 16 write, 9 destructive, 8 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `email` | 31 | 4 | 16 read, 10 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `gives` | 40 | 6 | 24 read, 11 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
+| `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 
 ## Output And Exit Codes
 
