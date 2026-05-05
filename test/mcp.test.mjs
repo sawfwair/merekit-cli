@@ -18,6 +18,7 @@ if (process.argv.includes('commands')) console.log(JSON.stringify({
   baseUrlEnv: [], sessionPath: null, globalFlags: ['json'],
   commands: [
     { id: 'project.list', path: ['project', 'list'], summary: 'List.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] },
+    { id: 'db.query', path: ['db', 'query'], summary: 'Run a local D1 query.', auth: 'none', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['sql'] },
     { id: 'project.create', path: ['project', 'create'], summary: 'Create.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: true, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] },
     { id: 'project.delete', path: ['project', 'delete'], summary: 'Delete.', auth: 'workspace', risk: 'destructive', supportsJson: true, supportsData: false, requiresYes: true, requiresConfirm: true, positionals: [], flags: [] }
   ]

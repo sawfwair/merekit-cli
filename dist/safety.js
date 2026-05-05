@@ -65,10 +65,12 @@ export const WRITE_LIKE_COMMAND_SEGMENTS = new Set([
 export const READ_ONLY_EXACT_COMMANDS = new Set([
     'commands',
     'completion',
-    'db.query',
     'diagnostics.provider-sync',
     'import.status',
     'tenant.resolve'
+]);
+export const WRITE_LIKE_EXACT_COMMANDS = new Set([
+    'db.query'
 ]);
 export function commandId(command) {
     return command.path.join('.');
@@ -79,6 +81,8 @@ export function commandSegments(command) {
         .filter(Boolean);
 }
 export function hasWriteLikeShape(command) {
+    if (WRITE_LIKE_EXACT_COMMANDS.has(commandId(command)))
+        return true;
     if (READ_ONLY_EXACT_COMMANDS.has(commandId(command)))
         return false;
     if (command.supportsData)
@@ -86,6 +90,8 @@ export function hasWriteLikeShape(command) {
     return commandSegments(command).some((segment) => WRITE_LIKE_COMMAND_SEGMENTS.has(segment));
 }
 export function isWriteLikeCommand(command) {
+    if (WRITE_LIKE_EXACT_COMMANDS.has(commandId(command)))
+        return true;
     if (READ_ONLY_EXACT_COMMANDS.has(commandId(command)))
         return false;
     if (command.risk !== 'read')

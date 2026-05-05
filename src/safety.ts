@@ -69,10 +69,13 @@ export const WRITE_LIKE_COMMAND_SEGMENTS = new Set([
 export const READ_ONLY_EXACT_COMMANDS = new Set([
 	'commands',
 	'completion',
-	'db.query',
 	'diagnostics.provider-sync',
 	'import.status',
 	'tenant.resolve'
+]);
+
+export const WRITE_LIKE_EXACT_COMMANDS = new Set([
+	'db.query'
 ]);
 
 export function commandId(command: ManifestCommand): string {
@@ -86,12 +89,14 @@ export function commandSegments(command: ManifestCommand): string[] {
 }
 
 export function hasWriteLikeShape(command: ManifestCommand): boolean {
+	if (WRITE_LIKE_EXACT_COMMANDS.has(commandId(command))) return true;
 	if (READ_ONLY_EXACT_COMMANDS.has(commandId(command))) return false;
 	if (command.supportsData) return true;
 	return commandSegments(command).some((segment) => WRITE_LIKE_COMMAND_SEGMENTS.has(segment));
 }
 
 export function isWriteLikeCommand(command: ManifestCommand): boolean {
+	if (WRITE_LIKE_EXACT_COMMANDS.has(commandId(command))) return true;
 	if (READ_ONLY_EXACT_COMMANDS.has(commandId(command))) return false;
 	if (command.risk !== 'read') return true;
 	return hasWriteLikeShape(command);

@@ -3297,7 +3297,7 @@ function commandManifest() {
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
-      manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none" }),
+      manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none", risk: "write" }),
       manifestCommand(["db", "migrate"], "Run local migrations.", { auth: "none", risk: "write" }),
       manifestCommand(["tenant", "resolve"], "Resolve workspace to tenant.", { auditDefault: true }),
       manifestCommand(["tenant", "list"], "List tenants."),

@@ -42,6 +42,18 @@ export function redactArgv(argv: string[]): string[] {
 		}
 		const [flagName] = token.slice(2).split('=', 1);
 		const normalized = flagName.toLowerCase();
+		if (normalized === 'data') {
+			if (token.includes('=')) {
+				redacted.push(`--${flagName}=${redactDataValue(token.slice(token.indexOf('=') + 1))}`);
+				continue;
+			}
+			redacted.push(token);
+			if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
+				redacted.push(redactDataValue(argv[index + 1]));
+				index += 1;
+			}
+			continue;
+		}
 		const shouldRedact = [...SECRET_FLAG_NAMES].some((name) => normalized.includes(name));
 		if (!shouldRedact) {
 			redacted.push(token);
@@ -58,6 +70,14 @@ export function redactArgv(argv: string[]): string[] {
 		}
 	}
 	return redacted;
+}
+
+function redactDataValue(value: string): string {
+	try {
+		return JSON.stringify(redactJsonValue(JSON.parse(value)));
+	} catch {
+		return '<redacted>';
+	}
 }
 
 function shouldRedactProperty(name: string): boolean {

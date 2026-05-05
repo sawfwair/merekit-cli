@@ -24,6 +24,7 @@ if (args[0] === 'commands') {
     globalFlags: ['workspace', 'json', 'yes', 'confirm'],
     commands: [
       { id: 'project.list', path: ['project', 'list'], summary: 'List projects.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
+      { id: 'project.create', path: ['project', 'create'], summary: 'Create project.', auth: 'workspace', risk: 'write', supportsJson: true, supportsData: true, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] },
       { id: 'project.delete', path: ['project', 'delete'], summary: 'Delete project.', auth: 'workspace', risk: 'destructive', supportsJson: true, supportsData: false, requiresYes: true, requiresConfirm: true, positionals: [], flags: [] },
       { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
       { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
@@ -650,6 +651,26 @@ test('writes redacted audit entries', async () => {
   assert.doesNotMatch(audit, /secret/);
 });
 
+test('redacts structured data payloads in audit entries', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-home-'));
+  const data = JSON.stringify({
+    name: 'safe project',
+    apiKey: 'super-sensitive-key',
+    nested: { token: 'nested-token-value' },
+  });
+  const result = await run(['projects', 'project', 'create', '--data', data, '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+    HOME: home,
+  });
+  assert.equal(result.code, 0);
+  const audit = await readFile(path.join(home, '.local', 'state', 'mere', 'audit.ndjson'), 'utf8');
+  assert.match(audit, /safe project/);
+  assert.match(audit, /<redacted>/);
+  assert.doesNotMatch(audit, /super-sensitive-key|nested-token-value/);
+});
+
 test('redacts secret flag values', () => {
   assert.deepEqual(redactArgv(['--token', 'abc', '--name', 'ok', '--api-key=xyz']), [
     '--token',
@@ -657,6 +678,15 @@ test('redacts secret flag values', () => {
     '--name',
     'ok',
     '--api-key=<redacted>',
+  ]);
+  assert.deepEqual(redactArgv(['--data', '{"name":"ok","apiKey":"abc","nested":{"token":"def"}}']), [
+    '--data',
+    '{"name":"ok","apiKey":"<redacted>","nested":{"token":"<redacted>"}}',
+  ]);
+  assert.deepEqual(redactArgv(['--data={"password":"pw","name":"inline"}', '--data', 'not-json']), [
+    '--data={"password":"<redacted>","name":"inline"}',
+    '--data',
+    '<redacted>',
   ]);
   assert.equal(
     redactOutput(JSON.stringify({ accessToken: 'secret', nested: { refreshToken: 'secret' } })),
