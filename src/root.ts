@@ -115,7 +115,7 @@ Operating loop:
   2. Use apps manifest to find exact command paths, risk, flags, and JSON/data support.
   3. Delegate with mere <app> ... and explicit --workspace/--json when needed.
   4. Use --data or --data-file for structured mutations when the manifest supports data.
-  5. Never invent destructive guardrails; app CLIs enforce --yes and exact --confirm.
+  5. Never invent destructive guardrails; app CLIs declare --yes and exact --confirm when required.
 
 Notes:
   Finance intentionally uses token/profile auth. Browser auth apps keep app-local sessions.
@@ -153,8 +153,8 @@ Read-first defaults:
 Guardrails:
   The root CLI never adds --yes or --confirm.
   Soft archives may require --yes.
-  Permanent deletes, refunds, disconnects, releases, and expensive external actions require app-local guardrails.
-  Destructive MCP tools are hidden unless the server starts with --allow-writes or MERE_MCP_ALLOW_WRITES=1.
+  Permanent deletes, refunds, disconnects, and releases require app-local guardrails.
+  Write, destructive, and external MCP tools are hidden unless the server starts with --allow-writes or MERE_MCP_ALLOW_WRITES=1.
 
 Audit:
   Root commands, delegated commands, and MCP invocations append redacted metadata to ~/.local/state/mere/audit.ndjson.
@@ -174,7 +174,7 @@ Tool model:
   Tools are generated from app commands --json manifests.
   Names look like mere_projects_project_list or mere_zone_stripe_status.
   Inputs include args, workspace, baseUrl, profile, json, data, dataFile, yes, and confirm.
-  Destructive tools still require yes: true and exact confirm when the app manifest requires them.
+  Destructive and external tools still require yes: true; exact confirm is required when the app manifest requires it.
 `;
 	}
 	if (topic === 'skills') {
@@ -255,7 +255,7 @@ function buildMcpConfig(target: string, allowWrites: boolean): Record<string, un
 		},
 		notes: [
 			'Default MCP mode is read-only.',
-			'Write/destructive app tools still require app-local guardrails such as yes and confirm.'
+			'Write, destructive, and external app tools still require app-local guardrails when their manifest declares them.'
 		]
 	};
 }

@@ -34,9 +34,9 @@ Operators and agents entering an already-provisioned workspace can start at `mer
 - The root CLI never adds `--yes`.
 - The root CLI never adds `--confirm`.
 - Destructive commands keep app-local semantics.
-- Permanent deletes, refunds, disconnects, releases, and expensive external actions require product-owned guardrails.
+- Permanent deletes, refunds, disconnects, and releases require product-owned guardrails.
 - MCP registers read-only tools by default.
-- Write-capable MCP requires `mere mcp serve --allow-writes` or `MERE_MCP_ALLOW_WRITES=1`.
+- Write, destructive, and external MCP tools require `mere mcp serve --allow-writes` or `MERE_MCP_ALLOW_WRITES=1`.
 - Bundled adapter command names, route shapes, env var names, and default URLs are intentionally public.
 - Security must come from server-side authentication, authorization, tenant/workspace scoping, and internal-token checks.
 - Adapter manifests must mark command risk honestly: `read`, `write`, `destructive`, or `external`.

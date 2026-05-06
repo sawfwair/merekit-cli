@@ -27,7 +27,7 @@ Use this skill when operating the Mere portfolio through the root `mere` command
 - Check `risk` before acting: `read`, `write`, `external`, or `destructive`.
 - Check `supportsJson` before assuming parseable JSON.
 - Check `supportsData` before using `--data` or `--data-file`.
-- Check `requiresYes` and `requiresConfirm` before any destructive/external action.
+- Check `risk`, `requiresYes`, and `requiresConfirm` before any destructive or external action.
 - Delegated commands preserve app stdout, stderr, and exit codes.
 - Root pass-through flags are forwarded only when the target manifest supports them.
 - Installed packages should normally resolve app adapters with `source: "bundled"`.

@@ -176,15 +176,15 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 138 | 2 | 52 read, 59 write, 15 destructive, 12 external | `workspace`, `json`, `yes`, `confirm` |
+| `business` | 138 | 2 | 52 read, 59 write, 15 destructive, 12 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 38 | 2 | 27 read, 7 write, 4 destructive | `base-url`, `profile`, `json`, `yes`, `confirm` |
-| `projects` | 47 | 4 | 21 read, 18 write, 8 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
-| `today` | 58 | 2 | 25 read, 22 write, 10 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `persist-to` |
-| `zone` | 29 | 5 | 16 read, 8 write, 3 external, 2 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `store` |
-| `video` | 33 | 7 | 25 read, 4 write, 1 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm` |
-| `network` | 58 | 6 | 25 read, 16 write, 9 destructive, 8 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
-| `email` | 31 | 4 | 16 read, 10 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
-| `gives` | 40 | 6 | 24 read, 11 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
+| `projects` | 59 | 4 | 27 read, 23 write, 9 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
+| `today` | 58 | 2 | 22 read, 25 write, 10 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `persist-to` |
+| `zone` | 29 | 5 | 15 read, 9 write, 2 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `store` |
+| `video` | 33 | 7 | 22 read, 7 write, 1 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm` |
+| `network` | 71 | 6 | 30 read, 22 write, 11 destructive, 8 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
+| `email` | 31 | 4 | 15 read, 11 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
+| `gives` | 40 | 6 | 22 read, 13 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 
 ## Output And Exit Codes

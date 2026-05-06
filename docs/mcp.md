@@ -42,7 +42,7 @@ Tool inputs support:
 - `yes`
 - `confirm`
 
-Destructive tools still require exact app guardrails. If a manifest says `requiresYes`, pass `yes: true`. If it says `requiresConfirm`, pass the exact target in `confirm`.
+Destructive and external tools still require `yes: true`. If a manifest says `requiresConfirm`, pass the exact target in `confirm`.
 
 ## Agent Workflow
 

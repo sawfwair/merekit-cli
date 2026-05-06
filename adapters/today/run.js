@@ -352,6 +352,9 @@ async function waitForCallback(input) {
           if (input.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input.workspace.trim());
           }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
           const started = await fetchJson(input.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input.notify(
@@ -378,6 +381,7 @@ async function loginWithBrowser(input) {
     fetchImpl: input.fetchImpl ?? fetch,
     notify: input.notify,
     workspace: input.workspace,
+    inviteCode: input.inviteCode,
     productLabel: input.productLabel
   });
   return createLocalSession(payload, {
@@ -648,11 +652,69 @@ function isoNow() {
 }
 
 // src/lib/server/bookings.ts
+var INACTIVE_STATUSES = ["cancelled", "canceled", "declined", "no_show", "noshow", "archived", "spam"];
+var RESERVATION_SLOT_MS = 60 * 1e3;
+function parseLocalIsoMinute(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match.map(Number);
+  return Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+}
+function formatReservationSlot(value) {
+  const date = new Date(value);
+  return {
+    reserved_date: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`,
+    reserved_time: `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`
+  };
+}
+function buildBookingReservationSlots(startsAt, endsAt) {
+  const start = parseLocalIsoMinute(startsAt);
+  const end = parseLocalIsoMinute(endsAt);
+  if (start === null || end === null || end <= start) {
+    return [];
+  }
+  const slots = [];
+  for (let cursor = start; cursor < end; cursor += RESERVATION_SLOT_MS) {
+    slots.push(formatReservationSlot(cursor));
+  }
+  return slots;
+}
+async function runBookingStatements(db, statements) {
+  const batch = db.batch;
+  if (batch) {
+    return batch.call(db, statements);
+  }
+  const results = [];
+  for (const statement of statements) {
+    results.push(await statement.run());
+  }
+  return results;
+}
+function deleteBookingReservationsStatement(db, tenantId, bookingId) {
+  return db.prepare("DELETE FROM booking_slot_reservations WHERE tenant_id = ? AND booking_id = ?").bind(tenantId, bookingId);
+}
+function insertBookingReservationStatements(db, tenantId, bookingId, startsAt, endsAt, createdAt) {
+  return buildBookingReservationSlots(startsAt, endsAt).map(
+    (slot) => db.prepare(
+      `INSERT INTO booking_slot_reservations (
+           id, booking_id, tenant_id, reserved_date, reserved_time, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(
+      makeId(),
+      bookingId,
+      tenantId,
+      slot.reserved_date,
+      slot.reserved_time,
+      createdAt
+    )
+  );
+}
 async function storeBooking(db, tenantId, data, options) {
   const id = makeId();
   const createdAt = isoNow();
-  await db.prepare(
-    `INSERT INTO bookings (
+  await runBookingStatements(db, [
+    db.prepare(
+      `INSERT INTO bookings (
          id,
          tenant_id,
          service_id,
@@ -671,24 +733,33 @@ async function storeBooking(db, tenantId, data, options) {
          source
        )
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    id,
-    tenantId,
-    options.serviceId,
-    options.calendarEventId ?? null,
-    createdAt,
-    options.startsAt,
-    options.endsAt,
-    data.name,
-    data.email,
-    data.phone || null,
-    data.company || null,
-    data.preferredDate,
-    data.preferredTime,
-    data.timezone,
-    data.details || null,
-    options.source ?? "website"
-  ).run();
+    ).bind(
+      id,
+      tenantId,
+      options.serviceId,
+      options.calendarEventId ?? null,
+      createdAt,
+      options.startsAt,
+      options.endsAt,
+      data.name,
+      data.email,
+      data.phone || null,
+      data.company || null,
+      data.preferredDate,
+      data.preferredTime,
+      data.timezone,
+      data.details || null,
+      options.source ?? "website"
+    ),
+    ...insertBookingReservationStatements(
+      db,
+      tenantId,
+      id,
+      options.startsAt,
+      options.endsAt,
+      createdAt
+    )
+  ]);
   return { id, createdAt };
 }
 async function linkBookingCalendarEvent(db, tenantId, bookingId, calendarEventId) {
@@ -731,7 +802,11 @@ async function updateBookingStatus(db, tenantId, bookingId, status, cancelReason
     binds = [status, bookingId, tenantId];
   }
   const result = await db.prepare(sql).bind(...binds).run();
-  return (result.meta?.changes ?? 0) > 0;
+  const changed = (result.meta?.changes ?? 0) > 0;
+  if (changed && INACTIVE_STATUSES.includes(status.toLowerCase())) {
+    await deleteBookingReservationsStatement(db, tenantId, bookingId).run();
+  }
+  return changed;
 }
 async function rescheduleBooking(db, tenantId, bookingId, fields) {
   const result = await db.prepare(
@@ -747,7 +822,21 @@ async function rescheduleBooking(db, tenantId, bookingId, fields) {
     tenantId,
     bookingId
   ).run();
-  return (result.meta?.changes ?? 0) > 0;
+  const changed = (result.meta?.changes ?? 0) > 0;
+  if (changed) {
+    await runBookingStatements(db, [
+      deleteBookingReservationsStatement(db, tenantId, bookingId),
+      ...insertBookingReservationStatements(
+        db,
+        tenantId,
+        bookingId,
+        fields.startsAt,
+        fields.endsAt,
+        isoNow()
+      )
+    ]);
+  }
+  return changed;
 }
 
 // src/lib/server/calendar.ts
@@ -763,6 +852,12 @@ function addDays(date, days) {
 function compareDates(a, b) {
   return a.localeCompare(b);
 }
+function dateUtc(value) {
+  return (/* @__PURE__ */ new Date(`${value}T00:00:00Z`)).getTime();
+}
+function daysBetween(later, earlier) {
+  return Math.round((dateUtc(later) - dateUtc(earlier)) / 864e5);
+}
 function startOfWeek(date) {
   const weekday = (/* @__PURE__ */ new Date(`${date}T00:00:00Z`)).getUTCDay();
   return addDays(date, -weekday);
@@ -771,6 +866,16 @@ function monthDiff(a, b) {
   const [aYear, aMonth] = a.split("-").map(Number);
   const [bYear, bMonth] = b.split("-").map(Number);
   return (aYear - bYear) * 12 + (aMonth - bMonth);
+}
+function addMonthsKeepingDay(anchorDate, monthOffset) {
+  const [year, month, day] = anchorDate.split("-").map(Number);
+  const targetMonthIndex = month - 1 + monthOffset;
+  const date = new Date(Date.UTC(year, targetMonthIndex, day, 0, 0, 0, 0));
+  const normalizedMonth = (targetMonthIndex % 12 + 12) % 12;
+  if (date.getUTCMonth() !== normalizedMonth) {
+    return null;
+  }
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
 }
 function minutesBetween(startAt, endAt) {
   const start = /* @__PURE__ */ new Date(startAt.replace("T", "T") + "Z");
@@ -820,15 +925,43 @@ function matchesSeriesOnDate(series, occurrenceDate) {
 }
 function countOccurrencesThroughDate(series, throughDate) {
   const anchorDate = splitLocalIso(series.start_at).date;
-  let count = 0;
-  let cursor = anchorDate;
-  while (compareDates(cursor, throughDate) <= 0) {
-    if (matchesSeriesOnDate(series, cursor)) {
-      count += 1;
-    }
-    cursor = addDays(cursor, 1);
+  const cappedThroughDate = series.until_date && compareDates(series.until_date, throughDate) < 0 ? series.until_date : throughDate;
+  if (compareDates(cappedThroughDate, anchorDate) < 0) return 0;
+  const interval = Math.max(series.interval_count || 1, 1);
+  if (series.frequency === "daily") {
+    return Math.floor(daysBetween(cappedThroughDate, anchorDate) / interval) + 1;
   }
-  return count;
+  if (series.frequency === "weekly") {
+    const anchorWeekday = (/* @__PURE__ */ new Date(`${anchorDate}T00:00:00Z`)).getUTCDay();
+    const validWeekdays = parseWeekdays(series.by_weekday_json);
+    const occurrenceWeekdays = validWeekdays.length > 0 ? validWeekdays : [anchorWeekday];
+    const anchorWeekStart = startOfWeek(anchorDate);
+    const throughWeekStart = startOfWeek(cappedThroughDate);
+    const weekSpan = Math.floor(daysBetween(throughWeekStart, anchorWeekStart) / 7);
+    let count = 0;
+    for (let weeks = 0; weeks <= weekSpan; weeks += interval) {
+      const weekStart = addDays(anchorWeekStart, weeks * 7);
+      for (const weekday of occurrenceWeekdays) {
+        const occurrenceDate = addDays(weekStart, weekday);
+        if (compareDates(occurrenceDate, anchorDate) >= 0 && compareDates(occurrenceDate, cappedThroughDate) <= 0) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }
+  if (series.frequency === "monthly") {
+    const monthSpan = monthDiff(cappedThroughDate, anchorDate);
+    let count = 0;
+    for (let offset = 0; offset <= monthSpan; offset += interval) {
+      const occurrenceDate = addMonthsKeepingDay(anchorDate, offset);
+      if (occurrenceDate && compareDates(occurrenceDate, cappedThroughDate) <= 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+  return 0;
 }
 function createOccurrence(base) {
   return {
