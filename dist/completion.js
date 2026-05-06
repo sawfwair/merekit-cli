@@ -31,7 +31,7 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         ops: ['audit', 'doctor', 'smoke', 'workspace-snapshot'],
         setup: ['build', 'check', 'smoke'],
         skills: ['install', 'list', 'publish', 'show'],
-        tui: ['--app', '--base-domain', '--business-mode', '--dry-run', '--existing-website-url', '--finance-base-url', '--finance-profile', '--invite-code', '--name', '--no-wait', '--output', '--slug', '--target', '--workspace'],
+        tui: ['--app', '--base-domain', '--business-mode', '--dry-run', '--existing-website-url', '--finance-base-url', '--finance-profile', '--invite-code', '--name', '--no-wait', '--output', '--slug', '--target', '--waitlist-email', '--workspace'],
         ...dynamicCommands
     };
     const thirdCommands = {

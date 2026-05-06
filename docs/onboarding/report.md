@@ -2,7 +2,13 @@
 
 `mere onboard --json` prints the same structured report that it writes to `onboarding-report.json`.
 
-For a normal invite-code first run, create or provision the workspace first:
+Before an invite exists, there is no onboarding report yet. Use the protected waitlist handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
+For a normal invite-code first run after the waitlist handoff, create or provision the workspace first:
 
 ```sh
 mere business onboard start INVITE_CODE --json

@@ -62,6 +62,7 @@ const PUBLIC_REGISTRY_SKILLS = new Set([
 	'projects-cli',
 	'today-cli',
 	'video-cli',
+	'works-cli',
 	'zone-cli'
 ]);
 

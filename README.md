@@ -8,10 +8,11 @@
 
 `mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, and MCP access.
 
-Full docs are published at [sawfwair.github.io/merekit-cli](https://sawfwair.github.io/merekit-cli/).
+Full docs are published at [sawfwair.github.io/merekit-cli](https://sawfwair.github.io/merekit-cli/). Public waitlist access is at [merekit.com/waitlist](https://merekit.com/waitlist).
 
 ```sh
 mere tui
+mere business waitlist join --email you@example.com
 mere business onboard start INVITE_CODE --json
 mere onboard --workspace ws_123 --target codex --json
 mere apps list --json
@@ -20,7 +21,10 @@ mere auth status --all --json
 mere ops workspace-snapshot --json
 mere apps manifest --app projects --json
 mere help agent
+mere business waitlist join --email you@example.com --json
 ```
+
+`mere business waitlist join` opens the Turnstile and magic-link protected page at [merekit.com/waitlist](https://merekit.com/waitlist) with the email prefilled. The page sends a confirmation link, and the link click performs the waitlist join. `mere tui` also accepts a waitlist email directly when someone does not have an invite yet.
 
 ## First Use
 
@@ -30,7 +34,7 @@ For a human first run, start the terminal UI:
 mere tui
 ```
 
-The UI asks for an invite code. Workspace IDs are only for operators, support, agents, or re-running checks on an already-provisioned workspace. If you paste an invite code, it runs `mere business onboard start CODE --json` to sign in and bootstrap the workspace, then runs the same safe readiness checks as `mere onboard --json`. You can also launch it with:
+The UI asks for an invite code, waitlist email, or operator workspace ID. If someone does not have an invite yet, entering an email opens the protected waitlist. Workspace IDs are only for operators, support, agents, or re-running checks on an already-provisioned workspace. If you paste an invite code, it runs `mere business onboard start CODE --json` to sign in and bootstrap the workspace, then runs the same safe readiness checks as `mere onboard --json`. You can also launch it with:
 
 ```sh
 mere onboard --interactive
@@ -42,6 +46,14 @@ For headless human onboarding from an invite code:
 mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
 ```
+
+For headless waitlist access before an invite exists:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
+Or open [merekit.com/waitlist](https://merekit.com/waitlist) directly.
 
 Use this operator sequence when an agent or automation enters an already-provisioned workspace:
 
@@ -58,7 +70,7 @@ mere ops workspace-snapshot --workspace ws_123 --json
 mere apps manifest --app projects --json
 ```
 
-For normal users, start with `mere tui` because it starts from the invite code they actually have. For operators and agents that already have a workspace, `mere onboard --workspace ...` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
+For normal users, start with `mere tui` because it starts from the invite code they actually have, or from the waitlist email they need before an invite exists. For operators and agents that already have a workspace, `mere onboard --workspace ...` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
 
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
@@ -166,11 +178,15 @@ Root-owned commands:
 Delegated commands use `mere <app> ...`:
 
 ```sh
+mere business waitlist join --email you@example.com --json
 mere projects project list --workspace ws_123 --json
 mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json
+mere works work list --workspace ws_123 --json
 ```
+
+The waitlist command is intentionally a browser handoff; it does not post the email directly from the root CLI process.
 
 The root only passes flags a target manifest supports. Use `mere apps manifest --app APP --json` to discover exact command paths, risk levels, flags, JSON support, data support, and destructive guardrails.
 
@@ -187,6 +203,7 @@ Registered namespaces:
 | `network` | browser | Calls, SMS, conversations, numbers, routing, deployments, diagnostics |
 | `email` | browser | Mailboxes, threads, sending, providers, domains, drafts |
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
+| `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
 
 ## Auth And Context
 

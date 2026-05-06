@@ -1,6 +1,6 @@
 # Getting Started
 
-Mere CLI is easiest to learn as a guided first-use loop: install the public package, redeem an invite through the TUI when needed, inspect the generated report, then use manifests and snapshots before invoking product commands.
+Mere CLI is easiest to learn as a guided first-use loop: install the public package, join the waitlist or redeem an invite through the TUI when needed, inspect the generated report, then use manifests and snapshots before invoking product commands.
 
 ## Install
 
@@ -32,7 +32,14 @@ For a human first run:
 mere tui
 ```
 
-The TUI asks for an invite code. Invite codes are redeemed through `mere business onboard start CODE --json`. Workspace IDs are an operator/support/agent path for re-running the safe onboarding report against an already-provisioned workspace.
+The TUI asks for an invite code, waitlist email, or operator workspace ID. Waitlist emails open the protected sign-up handoff, invite codes are redeemed through `mere business onboard start CODE --json`, and workspace IDs are an operator/support/agent path for re-running the safe onboarding report against an already-provisioned workspace.
+
+If you do not have an invite yet:
+
+```sh
+mere business waitlist join --email you@example.com
+mere tui --waitlist-email you@example.com
+```
 
 For a headless invite-code flow:
 

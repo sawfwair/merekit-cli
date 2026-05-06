@@ -10,7 +10,8 @@ export const PRODUCT_APP_KEYS = [
     'video',
     'network',
     'email',
-    'gives'
+    'gives',
+    'works'
 ];
 export const APP_KEYS = [...PRODUCT_APP_KEYS];
 function repo(mereRoot, name) {
@@ -145,6 +146,19 @@ export function createRegistry(mereRoot, packageRoot = repo(mereRoot, 'cli')) {
             pathBins: ['mere-gives', 'zerodonate'],
             authKind: 'browser',
             packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
+        },
+        {
+            key: 'works',
+            label: 'Works',
+            namespace: 'works',
+            aliases: ['works', 'mere-works'],
+            repoDir: repo(mereRoot, 'works'),
+            envCliPath: 'MERE_WORKS_CLI',
+            bundledCliPath: adapter(packageRoot, 'works'),
+            localCliPath: path.join(repo(mereRoot, 'works'), 'dist', 'run.js'),
+            pathBins: ['mere-works'],
+            authKind: 'browser',
+            packageScripts: { build: 'build:cli', check: 'check' }
         }
     ];
 }

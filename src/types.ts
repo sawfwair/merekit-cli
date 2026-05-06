@@ -7,7 +7,8 @@ export type AppKey =
 	| 'video'
 	| 'network'
 	| 'email'
-	| 'gives';
+	| 'gives'
+	| 'works';
 
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
 export type CommandRisk = 'read' | 'write' | 'destructive' | 'external';

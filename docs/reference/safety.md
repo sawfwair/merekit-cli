@@ -4,6 +4,14 @@ Mere CLI is read-first. The root command plane helps humans and agents discover 
 
 ## Defaults
 
+Pre-invite waitlist access has one explicit browser handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
+The waitlist flow uses Turnstile plus an email magic link before signup capture. The CLI opens the protected page; it does not submit the email directly.
+
 Invite-code onboarding has one explicit setup action:
 
 ```sh

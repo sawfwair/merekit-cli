@@ -1,6 +1,6 @@
 # Onboarding Overview
 
-`mere tui` is the human-facing entrypoint for invite-code onboarding. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace. `mere onboard` is the headless readiness entrypoint. Together they create one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
+`mere tui` is the human-facing entrypoint for waitlist access, invite-code onboarding, and operator workspace handoff. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace. `mere onboard` is the headless readiness entrypoint after a workspace exists. Together they create one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
 
 It is intentionally conservative. It discovers app adapters, checks manifests, summarizes auth state, stores the workspace when provided, runs safe read-only snapshot commands, and writes exact next commands for anything that still needs setup.
 
@@ -8,8 +8,8 @@ It is intentionally conservative. It discovers app adapters, checks manifests, s
 
 <div class="mere-path">
   <div class="mere-step">
-    <strong>1. Redeem invite or select workspace</strong>
-    <span>Use <code>mere business onboard start CODE</code> for customer invite bootstrap, or provide an operator workspace ID.</span>
+    <strong>1. Join waitlist, redeem invite, or select workspace</strong>
+    <span>Use <code>mere business waitlist join --email EMAIL</code> before an invite exists, <code>mere business onboard start CODE</code> for customer invite bootstrap, or provide an operator workspace ID.</span>
   </div>
   <div class="mere-step">
     <strong>2. Collect state</strong>
@@ -27,6 +27,13 @@ For humans:
 
 ```sh
 mere tui
+```
+
+For protected waitlist access before an invite exists:
+
+```sh
+mere business waitlist join --email you@example.com
+mere tui --waitlist-email you@example.com
 ```
 
 For headless invite redemption and workspace bootstrap:
@@ -61,6 +68,14 @@ mere onboard --workspace WORKSPACE_ID --output .mere/onboarding --json
 ```
 
 ## What Invite Bootstrap Does
+
+Before an invite exists, `mere tui` can open the protected waitlist browser handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
+The waitlist page uses Turnstile plus an email magic link before the signup is captured.
 
 When the user starts from an invite code, `mere tui` runs:
 
@@ -117,6 +132,7 @@ Start with `ONBOARDING.md` if you are reading. Start with `onboarding-report.jso
 
 | Flag | Purpose |
 | --- | --- |
+| `--waitlist-email EMAIL` | TUI-only shortcut that opens the protected waitlist browser handoff through `mere business waitlist join --email EMAIL`. |
 | `--invite-code CODE` | TUI-only shortcut that starts from a Mere invite code and runs `mere business onboard start CODE --json`. |
 | `--workspace ID` | Operator/agent path that selects and stores an already-provisioned workspace for root-owned workflows such as `workspace-snapshot`. |
 | `--app APP` | Limits checks and manifests to one app namespace. |

@@ -9,7 +9,7 @@ mere apps manifest --app APP --json
 ## Root Commands
 
 - `mere --help`, `mere help [agent|onboard|safety|skills|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
-- `mere tui [--invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]`
+- `mere tui [--waitlist-email EMAIL | --invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]`
 - `mere onboard [--interactive] [--invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
 - `mere agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR] [--allow-writes] [--json]`
 - `mere apps list|manifest|doctor [--app APP] [--json]`
@@ -26,6 +26,13 @@ Human TUI:
 
 ```sh
 mere tui
+```
+
+Waitlist before an invite exists:
+
+```sh
+mere business waitlist join --email you@example.com
+mere tui --waitlist-email you@example.com
 ```
 
 Headless invite bootstrap:
@@ -49,7 +56,7 @@ mere ops workspace-snapshot --json
 mere apps manifest --app projects --json
 ```
 
-`mere tui` is the recommended human entrypoint. Normal users start with an invite code, so the first delegated step is `mere business onboard start INVITE_CODE --json`. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace.
+`mere tui` is the recommended human entrypoint. Normal users start with an invite code or, before they have one, a waitlist email. A waitlist email opens the protected `mere business waitlist join --email ...` browser handoff. An invite code runs `mere business onboard start INVITE_CODE --json`. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace.
 
 `onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
 
@@ -85,6 +92,7 @@ Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source when debugging i
 The first positional app name delegates to that app:
 
 ```sh
+mere business waitlist join --email you@example.com --json
 mere business workspace current --json
 mere auth status --app finance --json
 mere finance profiles list --json
@@ -98,7 +106,10 @@ mere video rooms list --json
 mere network calls list --json
 mere email threads search invoice --json
 mere gives donations list --tenant ten_1 --json
+mere works work list --workspace ws_123 --json
 ```
+
+The business waitlist command opens a Turnstile and magic-link protected browser page with the email prefilled; the CLI does not submit the email directly.
 
 Global pass-through flags are only forwarded when the target manifest supports them:
 
@@ -165,7 +176,7 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 133 | 2 | 118 read, 15 destructive | `workspace`, `json`, `yes`, `confirm` |
+| `business` | 138 | 2 | 52 read, 59 write, 15 destructive, 12 external | `workspace`, `json`, `yes`, `confirm` |
 | `finance` | 38 | 2 | 27 read, 7 write, 4 destructive | `base-url`, `profile`, `json`, `yes`, `confirm` |
 | `projects` | 47 | 4 | 21 read, 18 write, 8 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `today` | 58 | 2 | 25 read, 22 write, 10 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `persist-to` |
@@ -174,6 +185,7 @@ This matrix is generated from the current local app manifests.
 | `network` | 58 | 6 | 25 read, 16 write, 9 destructive, 8 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `email` | 31 | 4 | 16 read, 10 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `gives` | 40 | 6 | 24 read, 11 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
+| `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 
 ## Output And Exit Codes
 

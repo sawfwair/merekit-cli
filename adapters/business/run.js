@@ -860,6 +860,55 @@ function renderHuman(value) {
   return util.inspect(value, { depth: 6, colors: false, compact: false });
 }
 
+// src/waitlist.ts
+import { spawn as spawn2 } from "node:child_process";
+import { platform } from "node:os";
+var DEFAULT_WAITLIST_URL = "https://merekit.com/waitlist";
+function buildBusinessWaitlistUrl(input2) {
+  const url = new URL(
+    input2.baseUrl?.trim() || process.env.MERE_BUSINESS_WAITLIST_URL?.trim() || DEFAULT_WAITLIST_URL
+  );
+  url.searchParams.set("email", input2.email);
+  url.searchParams.set("source", "mere-business-cli");
+  return url.toString();
+}
+function openCommand(url) {
+  switch (platform()) {
+    case "darwin":
+      return { command: "open", args: [url] };
+    case "win32":
+      return { command: "cmd", args: ["/c", "start", "", url], windowsHide: true };
+    default:
+      return { command: "xdg-open", args: [url] };
+  }
+}
+function openExternalUrl(url) {
+  const target = openCommand(url);
+  return new Promise((resolve) => {
+    const child = spawn2(target.command, target.args, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: target.windowsHide
+    });
+    child.once("error", () => resolve(false));
+    child.once("spawn", () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+}
+async function openBusinessWaitlist(input2) {
+  const url = buildBusinessWaitlistUrl({ email: input2.email });
+  if (input2.noInteractive) {
+    return { email: input2.email, url, opened: false };
+  }
+  return {
+    email: input2.email,
+    url,
+    opened: await openExternalUrl(url)
+  };
+}
+
 // src/commands.ts
 import { parseArgs } from "node:util";
 
@@ -4906,6 +4955,7 @@ var NEVER = INVALID;
 
 // src/commands.ts
 var requiredString = external_exports.string().min(1);
+var emailString = external_exports.string().trim().email().transform((value) => value.toLowerCase());
 var optionalString = external_exports.string().optional();
 var stringList = external_exports.array(external_exports.string()).optional().default([]);
 var optionalPositiveNumber = external_exports.preprocess(
@@ -5211,6 +5261,25 @@ ${workspace}`;
     schema: external_exports.object({}),
     auth: "workspace",
     execute: (runtime) => runtime.getProfile()
+  },
+  {
+    path: ["waitlist", "join"],
+    summary: "Open the protected mere.business waitlist signup page.",
+    options: [stringOption("email", "email", "Email address.")],
+    schema: external_exports.object({ email: emailString }),
+    auth: "none",
+    risk: "write",
+    execute: (runtime, input2) => runtime.joinWaitlist(input2),
+    format: (data, input2) => {
+      const result = data;
+      const url = result.url ?? "";
+      if (result.opened) {
+        return `Opening the protected waitlist page for ${input2.email}.
+${url}`;
+      }
+      return `Open the protected waitlist page for ${input2.email}:
+${url}`;
+    }
   },
   {
     path: ["workspace", "current"],
@@ -7550,6 +7619,10 @@ async function createRuntime(globalFlags) {
       }),
       globalFlags.workspace
     ),
+    joinWaitlist: async (input2) => openBusinessWaitlist({
+      email: input2.email,
+      noInteractive: globalFlags.noInteractive
+    }),
     invoke: async (op, input2 = {}) => withRetry(
       (session) => postWorkspaceOperation(session.workspace, session.accessToken, op, input2),
       globalFlags.workspace

@@ -13,7 +13,7 @@ hero:
       link: /commands
 features:
   - title: Onboarding first
-    details: "'mere tui' guides normal users from an invite code; 'mere onboard' runs discovery, readiness checks, auth status, manifest collection, and safe workspace reads for operators and agents."
+    details: "'mere tui' guides normal users from a waitlist email or invite code; 'mere onboard' runs discovery, readiness checks, auth status, manifest collection, and safe workspace reads for operators and agents."
   - title: Manifest-backed operations
     details: Product behavior stays in app CLIs. The root discovers exact command paths, risks, flags, JSON support, and destructive guardrails.
   - title: Agent-ready by default
@@ -33,7 +33,7 @@ The root CLI is responsible for discovery, onboarding, context, diagnostics, rea
   </div>
   <div class="mere-step">
     <strong>Onboard</strong>
-    <span>Run <code>mere tui</code> for invite-code onboarding, or <code>mere onboard</code> when an operator or agent already has a workspace.</span>
+    <span>Run <code>mere tui</code> to join the protected waitlist, redeem an invite, or use <code>mere onboard</code> when an operator or agent already has a workspace.</span>
   </div>
   <div class="mere-step">
     <strong>Operate</strong>
@@ -43,7 +43,14 @@ The root CLI is responsible for discovery, onboarding, context, diagnostics, rea
 
 ## Start Here
 
-Human invite-code first run:
+Waitlist before an invite exists:
+
+```sh
+npm install -g @merekit/cli
+mere business waitlist join --email you@example.com
+```
+
+Human waitlist or invite-code first run:
 
 ```sh
 npm install -g @merekit/cli

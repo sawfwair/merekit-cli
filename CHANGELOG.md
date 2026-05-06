@@ -8,6 +8,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 - Nothing yet.
 
+## 0.1.15 - 2026-05-06
+
+- Added the protected pre-invite waitlist path through `mere business waitlist join --email EMAIL` and `mere tui --waitlist-email EMAIL`.
+- Updated first-use TUI, root help, shell completion, docs, README, and bundled `mere-cli` skill to present waitlist email, invite code, and operator workspace ID as distinct paths.
+- Updated the bundled Business adapter to open the Turnstile and magic-link protected `merekit.com/waitlist` browser handoff instead of submitting emails directly.
+- Updated package metadata so npm describes waitlist and invite onboarding.
+
 ## 0.1.14 - 2026-05-04
 
 - Added the first-use TUI (`mere tui` and `mere onboard --interactive`) for invite-code onboarding and operator workspace checks.
