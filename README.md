@@ -91,21 +91,21 @@ For normal users, start with `mere tui` because it starts from the invite code t
 
 ## Install
 
-From the repo:
+Requires Node.js `>=24 <26`.
 
-```sh
-pnpm install
-pnpm build
-node dist/run.js --help
-node dist/run.js help agent
-```
-
-From npm after publishing:
+Install the published package from npm:
 
 ```sh
 npm install -g @merekit/cli
 mere --help
-mere help agent
+mere tui
+```
+
+Run it once without a global install:
+
+```sh
+npx --yes @merekit/cli@latest --help
+npx --yes @merekit/cli@latest tui
 ```
 
 With pnpm:
@@ -115,7 +115,16 @@ pnpm add -g @merekit/cli
 mere ops doctor --json
 ```
 
-The package is a public scoped package as `@merekit/cli` and ships the `mere` bin from `dist/run.js` plus compiled app adapters under `adapters/`.
+For development from this repository:
+
+```sh
+pnpm install
+pnpm build
+node dist/run.js --help
+node dist/run.js help agent
+```
+
+The package is published as the public scoped package `@merekit/cli` and ships the `mere` bin from `dist/run.js` plus compiled app adapters under `adapters/`.
 
 ## Contributing
 
