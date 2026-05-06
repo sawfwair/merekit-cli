@@ -17,7 +17,7 @@ The adapters intentionally expose command names, public API route shapes, enviro
 
 Access is enforced by the Mere services through browser sessions, bearer tokens, workspace membership, roles, destructive-operation confirmations, and server-side authorization checks.
 
-Adapter manifests must mark command risk honestly as \`read\`, \`write\`, \`destructive\`, or \`external\`. External and destructive commands must require explicit confirmation.
+Adapter manifests must mark command risk honestly as \`read\`, \`write\`, \`destructive\`, or \`external\`. Destructive commands must require explicit confirmation.
 
 Maintainers regenerate these files from the Mere app repositories with \`pnpm build:adapters\`. That command expects the private app repositories to be available as sibling directories and is not required for normal public development of the root CLI.
 `;

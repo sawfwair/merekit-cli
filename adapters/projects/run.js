@@ -304,6 +304,7 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
   "no-interactive",
   "not-ongoing",
   "ongoing",
+  "override",
   "refresh-sources",
   "version",
   "yes"
@@ -402,6 +403,9 @@ function readFlag(parsed, ...names) {
     if (Array.isArray(value)) return value.at(-1);
   }
   return void 0;
+}
+function hasFlag(parsed, name) {
+  return parsed.flags[name] !== void 0;
 }
 function readFlagValues(parsed, ...names) {
   const values = [];
@@ -538,6 +542,18 @@ function commandManifest() {
       manifestCommand(["proposal", "generate-draft"], "Generate proposal draft.", { risk: "write", supportsData: true }),
       manifestCommand(["proposal", "analysis"], "Show proposal analysis."),
       manifestCommand(["proposal", "analyze"], "Analyze proposal.", { risk: "write", supportsData: true }),
+      manifestCommand(["proposal", "readiness"], "Show proposal submission readiness."),
+      manifestCommand(["proposal", "review"], "Run proposal submission readiness review.", { risk: "write" }),
+      manifestCommand(["proposal", "claims"], "List proposal claim ledger entries."),
+      manifestCommand(["proposal", "findings"], "List proposal readiness findings."),
+      manifestCommand(["proposal", "exports"], "List proposal export history."),
+      manifestCommand(["proposal", "export"], "Export proposal artifact.", { risk: "write" }),
+      manifestCommand(["proposal", "defaults"], "List proposal defaults."),
+      manifestCommand(["proposal", "defaults", "upload"], "Upload proposal default file.", { risk: "write" }),
+      manifestCommand(["proposal", "defaults", "download"], "Download proposal default file."),
+      manifestCommand(["proposal", "defaults", "delete"], "Delete proposal default file.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["proposal", "defaults", "extract"], "Refresh proposal default structured output.", { risk: "write" }),
+      manifestCommand(["proposal", "defaults", "structured"], "List proposal default structured outputs."),
       manifestCommand(["source", "list"], "List sources."),
       manifestCommand(["source", "get"], "Get source."),
       manifestCommand(["source", "upsert"], "Upsert source.", { risk: "write", supportsData: true }),
@@ -578,8 +594,10 @@ Resources:
   file list|upload|download|delete --project <projectId>
   profile list|get|create|update|delete
   proposal list|get|create|update|delete|draft|generate-draft|analysis|analyze
+  proposal readiness|review|claims|findings|exports|export <proposalId>
+  proposal defaults [list|upload|download|delete|extract|structured]
   source list|get|upsert|patch|capture
-  sam search --api-key <key> [--keyword <term>]
+  sam search [--api-key-env <name>] [--keyword <term>]
 
 Input:
   Mutating JSON commands accept --data '<json>' or --data-file payload.json.
@@ -839,9 +857,23 @@ async function sourceBody(parsed) {
   setIfDefined(body, "attributes", parseJsonOption(readFlag(parsed, "attributes"), "--attributes"));
   return body;
 }
-function samBody(parsed) {
+function samBody(parsed, env) {
   const body = objectValue(parseJsonOption(readFlag(parsed, "data"), "--data"));
-  setStringFlag(body, "apiKey", parsed, "api-key");
+  if (hasFlag(parsed, "api-key")) {
+    throw new CliError("Do not pass SAM API keys in argv. Use SAM_API_KEY or --api-key-env.", 2);
+  }
+  if (typeof body.apiKey === "string") {
+    throw new CliError("Do not pass SAM API keys in --data. Use SAM_API_KEY or --api-key-env.", 2);
+  }
+  const apiKeyEnvName = readFlag(parsed, "api-key-env") ?? "SAM_API_KEY";
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(apiKeyEnvName)) {
+    throw new CliError("--api-key-env must be an environment variable name.", 2);
+  }
+  const apiKey = env[apiKeyEnvName]?.trim();
+  if (!apiKey) {
+    throw new CliError(`Set ${apiKeyEnvName} or choose another variable with --api-key-env.`, 2);
+  }
+  body.apiKey = apiKey;
   setStringFlag(body, "keyword", parsed, "keyword", "query");
   setListFlag(body, "naicsCodes", parsed, "naics", "naics-code");
   setStringFlag(body, "setAsideCode", parsed, "set-aside");
@@ -1013,8 +1045,44 @@ async function handleProfile(active, action, rest, parsed) {
   }
   throw new CliError(`Unknown profile action: ${action}`, 2);
 }
+async function handleProposalDefaults(active, rest, parsed) {
+  const subaction = rest[0] ?? "list";
+  const base = "/api/proposals/defaults";
+  if (subaction === "list") return requestJson(active, base);
+  if (subaction === "structured") {
+    const payload = objectValue(await requestJson(active, base));
+    return payload.structuredOutputs ?? [];
+  }
+  if (subaction === "upload") {
+    const filePath = requireFlag(parsed, "path");
+    const kind = requireFlag(parsed, "kind");
+    const bytes = await readFile2(filePath);
+    const form = new FormData();
+    form.set("kind", kind);
+    form.set("file", new File([bytes], basename(filePath), { type: mimeTypeForPath(filePath) }));
+    return requestJson(active, `${base}/files`, { method: "POST", rawBody: form });
+  }
+  if (subaction === "download") {
+    const fileId = firstPositional(rest.slice(1), "default file id");
+    const response = await requestRaw(active, `${base}/files/${encodeURIComponent(fileId)}`);
+    return saveResponse(response, readFlag(parsed, "output"), `${fileId}.bin`);
+  }
+  if (subaction === "delete") {
+    const fileId = firstPositional(rest.slice(1), "default file id");
+    requireDeleteConfirmation(parsed, "proposal default file", fileId);
+    return requestJson(active, `${base}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+  }
+  if (subaction === "extract" || subaction === "refresh-structured") {
+    const fileId = firstPositional(rest.slice(1), "default file id");
+    return requestJson(active, `${base}/files/${encodeURIComponent(fileId)}/structured-output`, {
+      method: "POST"
+    });
+  }
+  throw new CliError(`Unknown proposal defaults action: ${subaction}`, 2);
+}
 async function handleProposal(active, action, rest, parsed) {
   const base = "/api/proposals";
+  if (action === "defaults" || action === "default") return handleProposalDefaults(active, rest, parsed);
   if (action === "list") {
     return requestJson(active, base, {
       query: queryFromFlags(parsed, [
@@ -1049,6 +1117,42 @@ async function handleProposal(active, action, rest, parsed) {
       method: "POST",
       query: { refreshSources: readBooleanFlag(parsed, "refresh-sources") ? "1" : void 0 }
     });
+  }
+  if (action === "readiness") {
+    const id = firstPositional(rest, "proposal id");
+    return requestJson(active, `${base}/${encodeURIComponent(id)}/readiness`);
+  }
+  if (action === "review") {
+    const id = firstPositional(rest, "proposal id");
+    return requestJson(active, `${base}/${encodeURIComponent(id)}/readiness`, { method: "POST" });
+  }
+  if (action === "claims" || action === "findings" || action === "exports") {
+    const id = firstPositional(rest, "proposal id");
+    const payload = objectValue(
+      await requestJson(active, `${base}/${encodeURIComponent(id)}/readiness`)
+    );
+    if (action === "exports") return payload.exports ?? [];
+    const review = objectValue(payload.latestReview);
+    return review[action] ?? [];
+  }
+  if (action === "export") {
+    const id = firstPositional(rest, "proposal id");
+    const format = (readFlag(parsed, "format") ?? "docx").toLowerCase();
+    if (!["docx", "markdown", "md"].includes(format)) {
+      throw new CliError("--format must be docx, markdown, or md.", 2);
+    }
+    const normalizedFormat = format === "md" ? "markdown" : format;
+    const response = await requestRaw(active, `${base}/${encodeURIComponent(id)}/export`, {
+      query: {
+        format: normalizedFormat,
+        override: readBooleanFlag(parsed, "override") ? "1" : void 0
+      }
+    });
+    return saveResponse(
+      response,
+      readFlag(parsed, "output"),
+      `${id}-proposal.${normalizedFormat === "docx" ? "docx" : "md"}`
+    );
   }
   if (action === "draft") {
     const id = firstPositional(rest, "proposal id");
@@ -1098,7 +1202,7 @@ async function handleSource(active, action, rest, parsed) {
   }
   throw new CliError(`Unknown source action: ${action}`, 2);
 }
-async function dispatch(parsed, active) {
+async function dispatch(parsed, active, env) {
   const [resource, action, ...rest] = parsed.positionals;
   if (!resource || !action) {
     throw new CliError("A resource and action are required. Run `mere-projects --help`.", 2);
@@ -1114,7 +1218,10 @@ async function dispatch(parsed, active) {
   if (resource === "proposal" || resource === "proposals") return handleProposal(active, action, rest, parsed);
   if (resource === "source" || resource === "sources") return handleSource(active, action, rest, parsed);
   if (resource === "sam" && action === "search") {
-    return requestJson(active, "/api/sources/sam/opportunities", { method: "POST", body: samBody(parsed) });
+    return requestJson(active, "/api/sources/sam/opportunities", {
+      method: "POST",
+      body: samBody(parsed, env)
+    });
   }
   throw new CliError(`Unknown resource: ${resource}`, 2);
 }
@@ -1233,7 +1340,7 @@ async function runCli(argv, io) {
       return 0;
     }
     const session = await ensureSession(parsed, io);
-    const result = await dispatch(parsed, { session, fetchImpl: io.fetchImpl ?? fetch });
+    const result = await dispatch(parsed, { session, fetchImpl: io.fetchImpl ?? fetch }, io.env);
     writeResult(io, parsed, result);
     return 0;
   } catch (error) {

@@ -443,7 +443,7 @@ Workspace:
   workspace list|current|use <id|slug|host>
   workspace provision|bootstrap|sync --workspace WORKSPACE_ID [--data JSON]
   workspace disconnect --workspace WORKSPACE_ID --yes --confirm WORKSPACE_ID
-  workspace command --workspace WORKSPACE_ID <command> [--data JSON] --yes
+  workspace command --workspace WORKSPACE_ID <command> [--data JSON]
 
 Works:
   work list
@@ -538,8 +538,7 @@ function commandManifest() {
       command(["workspace", "command"], "Run an internal Works workspace command.", {
         auth: "token",
         risk: "external",
-        supportsData: true,
-        requiresYes: true
+        supportsData: true
       }),
       ...["list", "get"].map((action) => command(["work", action], `${action} works.`)),
       command(["work", "create"], "Create a work from JSON.", { risk: "write", supportsData: true }),
@@ -899,9 +898,6 @@ async function handleWorkspace(args, parsed, io) {
   if (command === "command") {
     const workspaceId = requireFlag(parsed, "workspace");
     const remoteCommand = requireArg(args, 1, "Workspace command");
-    if (!boolFlag(parsed, "yes")) {
-      throw new CliError(`Refusing to run workspace command ${remoteCommand}. Re-run with --yes.`, 2);
-    }
     const body = {
       ...objectValue(await readJsonInput(parsed)),
       ...commandBodyFlags(parsed)
