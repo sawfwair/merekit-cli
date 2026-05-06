@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.1.16 - 2026-05-06
+
 - Regenerated bundled app adapters from the current external app CLIs, including the expanded Projects proposal readiness, export, defaults, and SAM search command surface.
 - Updated adapter safety/docs for the Works external workspace command contract and Today local D1 query risk classification.
 
