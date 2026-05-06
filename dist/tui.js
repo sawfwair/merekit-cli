@@ -2,6 +2,7 @@ import process from 'node:process';
 import readline from 'node:readline/promises';
 import { readBooleanFlag, readStringFlag } from './args.js';
 const WIDTH = 78;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function color(io, code, value) {
     if (io.env.NO_COLOR || io.env.TERM === 'dumb')
         return value;
@@ -78,11 +79,29 @@ function buildBusinessOnboardArgs(choices) {
     args.push('--json');
     return args;
 }
+function buildWaitlistArgs(choices) {
+    if (!choices.waitlistEmail?.trim())
+        return null;
+    return ['business', 'waitlist', 'join', '--email', choices.waitlistEmail.trim()];
+}
+async function runWaitlistCommand(io, runCommand, waitlistArgs) {
+    io.stdout(`\n${dim(io, 'Opening waitlist:')} ${humanCommand(waitlistArgs)}\n\n`);
+    const waitlistResult = await runCommand(waitlistArgs);
+    if (waitlistResult.stderr.trim())
+        io.stderr(waitlistResult.stderr);
+    if (waitlistResult.stdout.trim())
+        io.stdout(waitlistResult.stdout);
+    if (waitlistResult.code !== 0) {
+        io.stderr(`Waitlist handoff failed with exit code ${waitlistResult.code}.\n`);
+    }
+    return waitlistResult.code;
+}
 function choicesFromFlags(flags) {
     const target = readStringFlag(flags, 'target') === 'claude' ? 'claude' : 'codex';
     const businessMode = readStringFlag(flags, 'business-mode');
     return {
         inviteCode: readStringFlag(flags, 'invite-code'),
+        waitlistEmail: readStringFlag(flags, 'waitlist-email'),
         workspace: readStringFlag(flags, 'workspace'),
         app: readStringFlag(flags, 'app') ?? 'all',
         target,
@@ -103,6 +122,8 @@ function classifyFirstUseValue(value) {
         return {};
     if (/^(ws_|workspace_)/i.test(trimmed))
         return { workspace: trimmed };
+    if (EMAIL_RE.test(trimmed))
+        return { waitlistEmail: trimmed };
     return { inviteCode: trimmed };
 }
 function parseReport(stdout) {
@@ -208,19 +229,28 @@ async function collectChoices(io, entries, initial) {
     });
     try {
         io.stdout(panel(io, 'Mere First Use', [
-            'Most users start with a Mere invite code.',
-            'The UI can redeem the invite, bootstrap the workspace, then run safe checks.',
+            'Have an invite? Redeem it here and run safe checks.',
+            'No invite yet? Enter an email and the UI opens the protected waitlist.',
             'Workspace IDs are for operators or re-running checks on an existing workspace.'
         ]));
-        const firstUseValue = await ask(rl, 'Invite code (or operator workspace ID)', initial.inviteCode ?? initial.workspace);
+        const firstUseValue = await ask(rl, 'Invite code, waitlist email, or operator workspace ID', initial.waitlistEmail ?? initial.inviteCode ?? initial.workspace);
         const firstUse = classifyFirstUseValue(firstUseValue);
         const inviteCode = firstUse.inviteCode;
+        const waitlistEmail = firstUse.waitlistEmail;
         let workspace = firstUse.workspace;
         let businessName = initial.businessName;
         let workspaceSlug = initial.workspaceSlug;
         let businessMode = initial.businessMode;
         let baseDomain = initial.baseDomain;
         let existingWebsiteUrl = initial.existingWebsiteUrl;
+        if (waitlistEmail) {
+            return {
+                waitlistEmail,
+                app: initial.app ?? 'all',
+                target: initial.target,
+                noWait: initial.noWait
+            };
+        }
         if (inviteCode) {
             businessName = await ask(rl, 'Business name override (optional)', initial.businessName);
             workspaceSlug = await ask(rl, 'Workspace slug override (optional)', initial.workspaceSlug);
@@ -266,16 +296,25 @@ async function collectChoices(io, entries, initial) {
 export async function runFirstUseTui(input) {
     const initial = choicesFromFlags(input.flags);
     if (readBooleanFlag(input.flags, 'dry-run')) {
-        const commands = [buildBusinessOnboardArgs(initial), buildOnboardArgs(initial)]
+        const waitlistArgs = buildWaitlistArgs(initial);
+        const commands = (waitlistArgs ? [waitlistArgs] : [buildBusinessOnboardArgs(initial), buildOnboardArgs(initial)])
             .filter((args) => Array.isArray(args))
             .map(humanCommand);
         input.io.stdout(`${commands.join('\n')}\n`);
         return 0;
     }
+    const directWaitlistArgs = buildWaitlistArgs(initial);
+    if (directWaitlistArgs) {
+        return runWaitlistCommand(input.io, input.runCommand, directWaitlistArgs);
+    }
     if (!isInteractive(input.io)) {
-        throw new Error('The Mere first-use TUI requires an interactive terminal. Use `mere business onboard start INVITE_CODE --json` or `mere onboard --workspace WORKSPACE_ID --json` for headless runs.');
+        throw new Error('The Mere first-use TUI requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs.');
     }
     const choices = await collectChoices(input.io, input.entries, initial);
+    const waitlistArgs = buildWaitlistArgs(choices);
+    if (waitlistArgs) {
+        return runWaitlistCommand(input.io, input.runCommand, waitlistArgs);
+    }
     const businessArgs = buildBusinessOnboardArgs(choices);
     if (businessArgs) {
         input.io.stdout(`\n${dim(input.io, 'Running invite:')} ${humanCommand(businessArgs)}\n\n`);

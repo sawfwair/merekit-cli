@@ -38,5 +38,6 @@ gitleaks detect --source . --log-opts=--all --redact
 - Confirm `SECURITY.md` still describes the adapter/API-shape model.
 - Confirm `CHANGELOG.md`, `package.json`, and the npm version all agree.
 - Confirm the dry-run tarball contains only intended files.
-- Publish through the manual `Publish` GitHub Actions workflow. It uses OIDC trusted publishing, so no long-lived npm publish token is required.
+- Merge the release PR to `main`; the `Publish` GitHub Actions workflow runs automatically when `package.json` contains a version newer than npm. It uses OIDC trusted publishing, so no long-lived npm publish token is required.
+- Use the manual `Publish` workflow only for an intentional rerun or non-`latest` dist-tag.
 - Confirm the workflow created the matching GitHub Release after npm publish succeeds.

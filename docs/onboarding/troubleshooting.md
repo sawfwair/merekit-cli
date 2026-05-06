@@ -2,6 +2,12 @@
 
 Start with the generated `ONBOARDING.md`. It already orders the most important next command per app. Use this page when you need to interpret a blocker or warning.
 
+If the user does not have an invite yet, there is no workspace to troubleshoot. Start with the protected waitlist handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
 ## Missing Workspace
 
 Symptom:

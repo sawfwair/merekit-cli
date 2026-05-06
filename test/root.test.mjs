@@ -5,6 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { runCli } from '../dist/root.js';
 import { redactArgv, redactOutput } from '../dist/audit.js';
+import { runFirstUseTui } from '../dist/tui.js';
 
 async function writeFakeProjectsCli(fake) {
   await mkdir(path.dirname(fake), { recursive: true });
@@ -192,6 +193,7 @@ test('renders help and completion', async () => {
   assert.equal(help.code, 0);
   assert.match(help.stdout, /Human first run:/);
   assert.match(help.stdout, /mere tui/);
+  assert.match(help.stdout, /mere business waitlist join --email EMAIL/);
   assert.match(help.stdout, /Operator\/agent first run:/);
   assert.match(help.stdout, /mere help agent/);
   const agentHelp = await run(['help', 'agent']);
@@ -207,6 +209,7 @@ test('renders help and completion', async () => {
   assert.match(completion.stdout, /tui/);
   assert.match(completion.stdout, /--interactive/);
   assert.match(completion.stdout, /--invite-code/);
+  assert.match(completion.stdout, /--waitlist-email/);
   assert.match(completion.stdout, /workspace-snapshot/);
   assert.match(completion.stdout, /finance profiles/);
 });
@@ -226,6 +229,44 @@ test('tui dry-run shows the onboarding command it will execute', async () => {
   ]);
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout.trim(), 'mere onboard --app projects --workspace ws_1 --target claude --output /tmp/mere-onboarding --json');
+});
+
+test('tui dry-run opens the waitlist when an email is provided', async () => {
+  const result = await run([
+    'tui',
+    '--dry-run',
+    '--waitlist-email',
+    'person@example.com',
+  ]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'mere business waitlist join --email person@example.com');
+});
+
+test('tui waitlist email flag delegates directly without prompting', async () => {
+  let stdout = '';
+  let stderr = '';
+  const commands = [];
+  const code = await runFirstUseTui({
+    io: {
+      env: { NO_COLOR: '1' },
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: (text) => {
+        stderr += text;
+      },
+    },
+    entries: [],
+    flags: { 'waitlist-email': 'person@example.com' },
+    runCommand: async (args) => {
+      commands.push(args);
+      return { code: 0, stdout: 'opened\n', stderr: '' };
+    },
+  });
+  assert.equal(code, 0, stderr);
+  assert.deepEqual(commands, [['business', 'waitlist', 'join', '--email', 'person@example.com']]);
+  assert.match(stdout, /Opening waitlist:/);
+  assert.match(stdout, /opened/);
 });
 
 test('tui dry-run starts from an invite code when provided', async () => {
@@ -257,6 +298,7 @@ test('tui explains non-interactive terminal requirements', async () => {
   const result = await run(['tui']);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /requires an interactive terminal/);
+  assert.match(result.stderr, /mere business waitlist join --email EMAIL/);
   assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
   assert.match(result.stderr, /mere onboard --workspace WORKSPACE_ID --json/);
 });

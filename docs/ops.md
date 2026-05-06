@@ -4,6 +4,14 @@ Ops commands are root-owned read/check workflows for humans and agents. They pre
 
 ## Agent Bootstrap
 
+Pre-invite waitlist handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
+That opens the Turnstile and magic-link protected waitlist page. It does not create a workspace or write an onboarding pack.
+
 Invite-code bootstrap for a normal first run:
 
 ```sh

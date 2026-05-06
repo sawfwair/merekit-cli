@@ -23,6 +23,13 @@ For full cross-stack operation, make sure `mere apps list --json` reports the ta
 
 ## First-Use Sequence
 
+If the user does not have a customer invite yet, use the protected waitlist handoff:
+
+```sh
+npm install -g @merekit/cli
+mere business waitlist join --email you@example.com
+```
+
 If the task starts from a customer invite code, redeem and bootstrap that invite first:
 
 ```sh
@@ -40,6 +47,8 @@ mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
 ```
 
 `mere business onboard start` is the zero-state invite bootstrap path: it signs in or signs up through the browser when needed and creates/provisions the workspace from the invite. `mere onboard` is the readiness path after a workspace exists. It runs discovery/check/status commands, stores the workspace when provided, writes a secret-free context pack under `~/.config/mere/agents/default` unless `--output DIR` is passed, and adds a readiness report with exact next commands. `agent bootstrap` remains the lower-level context-pack primitive.
+
+`mere business waitlist join` is the pre-invite path. It opens a Turnstile and magic-link protected page on `merekit.com`; the CLI does not post the email directly.
 
 Generated files:
 
@@ -63,6 +72,7 @@ Manual sequence:
 mere --help
 mere help onboard
 mere help agent
+mere business waitlist join --email you@example.com
 mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
 mere apps list --json

@@ -1,6 +1,6 @@
 # First Run
 
-The first run has one intentional setup action when the user has an invite code: redeem the invite and create or provision the workspace. After that, onboarding should produce evidence, not product changes. Operators, agents, and automation that already have a workspace can start directly with the read-first readiness report.
+The first run has two intentional public setup paths. Before an invite exists, join the protected waitlist through a browser handoff. When the user has an invite code, redeem the invite and create or provision the workspace. After that, onboarding should produce evidence, not product changes. Operators, agents, and automation that already have a workspace can start directly with the read-first readiness report.
 
 ## Run Onboarding
 
@@ -10,8 +10,9 @@ For a human first run:
 mere tui
 ```
 
-This asks for an invite code. There is also an operator-only workspace ID path for support, agents, automation, or re-running checks on an already-provisioned workspace. Those paths are exclusive:
+This asks for an invite code, waitlist email, or operator workspace ID. The paths are exclusive:
 
+- Waitlist email: the UI runs `mere business waitlist join --email EMAIL`. That opens the Turnstile and magic-link protected browser handoff. It does not submit the email directly from the CLI.
 - Invite code: the UI runs `mere business onboard start CODE --json` first. That command signs in or signs up through the browser when needed, bootstraps the workspace, and waits for provisioning unless you pass `--no-wait`.
 - Operator workspace ID: the UI skips invite redemption and runs the root readiness report directly.
 
@@ -26,6 +27,12 @@ For a headless invite-code flow:
 ```sh
 mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
+```
+
+For a headless waitlist handoff before an invite exists:
+
+```sh
+mere business waitlist join --email you@example.com
 ```
 
 For an operator, agent, or headless shell entering an already-provisioned workspace:

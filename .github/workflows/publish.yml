@@ -4,6 +4,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       npm_tag:
@@ -17,7 +19,39 @@ permissions:
   id-token: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      npm_tag: ${{ steps.package.outputs.npm_tag }}
+      should_publish: ${{ steps.package.outputs.should_publish }}
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - id: package
+        env:
+          NPM_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          published="$(npm view @merekit/cli version 2>/dev/null || true)"
+          should_publish=true
+          if [[ "$version" == "$published" ]]; then
+            should_publish=false
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "npm_tag=${NPM_TAG}" >> "$GITHUB_OUTPUT"
+          echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
+          echo "local version: ${version}"
+          echo "published version: ${published:-none}"
+          echo "should publish: ${should_publish}"
+
   npm:
+    needs: version
+    if: needs.version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     environment: npm
     steps:
@@ -36,11 +70,11 @@ jobs:
       - run: pnpm pack:dry
       - run: npm publish --access public --tag "$NPM_TAG"
         env:
-          NPM_TAG: ${{ inputs.npm_tag }}
+          NPM_TAG: ${{ needs.version.outputs.npm_tag }}
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          NPM_TAG: ${{ inputs.npm_tag }}
+          NPM_TAG: ${{ needs.version.outputs.npm_tag }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"

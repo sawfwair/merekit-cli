@@ -6,6 +6,12 @@ It is created by `mere onboard` and by the lower-level `mere agent bootstrap` co
 
 ## Create The Pack
 
+Before a user has an invite, the context pack does not exist yet. Start with the protected waitlist handoff:
+
+```sh
+mere business waitlist join --email you@example.com
+```
+
 Normal users start by redeeming an invite, which creates or provisions the workspace:
 
 ```sh

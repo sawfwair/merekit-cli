@@ -28,6 +28,7 @@ Usage:
 
 Human first run:
   mere tui
+  mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
 
@@ -55,7 +56,7 @@ Global:
 
 Commands:
   help [agent|onboard|safety|skills|mcp]
-  tui [--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
+  tui [--waitlist-email EMAIL|--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   completion [bash|zsh|fish]
   apps list|manifest|doctor
   auth login|whoami|logout|status [--app APP|--all]
@@ -83,6 +84,7 @@ Goal:
 
 Human first-use:
   mere tui
+  mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
 
@@ -117,6 +119,7 @@ Goal:
 
 Usage:
   mere tui
+  mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
