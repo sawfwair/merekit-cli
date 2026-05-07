@@ -31,13 +31,14 @@ export function renderCompletion(shell: string | undefined, registry: RegistryEn
 		mcp: ['serve'],
 		onboard: ['--app', '--base-domain', '--business-mode', '--existing-website-url', '--finance-base-url', '--finance-profile', '--interactive', '--invite-code', '--json', '--name', '--no-interactive', '--no-wait', '--output', '--slug', '--target', '--workspace'],
 		ops: ['audit', 'doctor', 'smoke', 'workspace-snapshot'],
-		setup: ['build', 'check', 'smoke'],
+		setup: ['build', 'check', 'mere-run', 'smoke'],
 		skills: ['install', 'list', 'publish', 'show'],
 		tui: ['--app', '--base-domain', '--business-mode', '--dry-run', '--existing-website-url', '--finance-base-url', '--finance-profile', '--invite-code', '--name', '--no-wait', '--output', '--slug', '--target', '--waitlist-email', '--workspace'],
 		...dynamicCommands
 	};
 	const thirdCommands: Record<string, string[]> = {
-		'finance profiles': ['current', 'list', 'login', 'use']
+		'finance profiles': ['current', 'list', 'login', 'use'],
+		'setup mere-run': ['model', 'models']
 	};
 	const bashCases = Object.entries(subcommands)
 		.map(([command, words]) => `    ${command}) words="${words.join(' ')}" ;;`)

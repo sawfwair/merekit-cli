@@ -8,7 +8,8 @@ export type AppKey =
 	| 'network'
 	| 'email'
 	| 'gives'
-	| 'works';
+	| 'works'
+	| 'media';
 
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
 export type CommandRisk = 'read' | 'write' | 'destructive' | 'external';

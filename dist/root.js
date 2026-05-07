@@ -6,6 +6,7 @@ import { parseArgs, extractPassthroughFlags, flagArgs, readBooleanFlag, readStri
 import { renderCompletion } from './completion.js';
 import { clearState, loadState, saveState } from './context.js';
 import { loadManifest, loadManifests, manifestForJson, findManifestCommand, supportedFlagNames } from './manifest.js';
+import { appMereRunModelRequests, inspectMereRun, inspectMereRunModels, pullMereRunModels, setupMereRun } from './mere-run.js';
 import { runMcpServer } from './mcp.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
@@ -66,11 +67,12 @@ Commands:
   skills list|show|install|publish
   finance profiles list|current|use|login
   setup build|check|smoke [--app APP|--all]
+  setup mere-run [models --app APP|model pull MODEL] [--force] [--source-dir DIR] [--install-bin FILE]
   ops doctor|smoke|audit|workspace-snapshot
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects today zone video network email gives works
+  business finance projects today zone video network email gives works media
 `;
 }
 function helpTopicText(topic) {
@@ -542,9 +544,19 @@ export async function delegateToApp(io, entry, appArgs, passthroughFlags, option
     }
     return result;
 }
-async function runSetup(io, action, flags) {
+function readStringListFlag(flags, name) {
+    const value = flags[name];
+    if (typeof value === 'string')
+        return [value];
+    if (Array.isArray(value))
+        return value;
+    return [];
+}
+async function runSetup(io, action, args, flags) {
+    if (action === 'mere-run')
+        return runSetupMereRun(io, args, flags);
     if (!['build', 'check', 'smoke'].includes(action ?? ''))
-        throw new Error('Usage: mere setup build|check|smoke [--app APP|--all]');
+        throw new Error('Usage: mere setup build|check|smoke [--app APP|--all]\n       mere setup mere-run [--force] [--source-dir DIR] [--install-bin FILE]');
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
     const entries = selectedEntries(registry, flags);
@@ -568,6 +580,90 @@ async function runSetup(io, action, flags) {
     if (readBooleanFlag(flags, 'json'))
         writeJson(io, { action, results });
     return results.every((result) => result.ok || result.skipped) ? 0 : 1;
+}
+function mereRunSetupOptions(paths, io, flags) {
+    return {
+        env: io.env,
+        mereRoot: paths.mereRoot,
+        explicitBin: readStringFlag(flags, 'bin'),
+        installBin: readStringFlag(flags, 'install-bin'),
+        sourceDir: readStringFlag(flags, 'source-dir'),
+        downloadUrl: readStringFlag(flags, 'download-url'),
+        sha256: readStringFlag(flags, 'sha256') ?? readStringFlag(flags, 'download-sha256'),
+        force: readBooleanFlag(flags, 'force'),
+        noSource: readBooleanFlag(flags, 'no-source'),
+        noDownload: readBooleanFlag(flags, 'no-download')
+    };
+}
+async function runSetupMereRun(io, args, flags) {
+    const paths = resolveMerePaths(io.env);
+    const started = Date.now();
+    const options = mereRunSetupOptions(paths, io, flags);
+    if (args[0] === 'models' || (args[0] === 'model' && args[1] === 'pull')) {
+        const directModels = args[0] === 'model' && args[1] === 'pull' ? [args[2]].filter((value) => Boolean(value)) : [];
+        const app = readStringFlag(flags, 'app');
+        const modelFlags = readStringListFlag(flags, 'model');
+        const requests = [
+            ...appMereRunModelRequests(app),
+            ...directModels.map((id) => ({ app: 'manual', id, reason: 'Requested explicitly with `mere setup mere-run model pull`.', commands: [`mere.run model pull ${id}`] })),
+            ...modelFlags.map((id) => ({ app: app ?? 'manual', id, reason: 'Requested explicitly with `--model`.', commands: [`mere.run model pull ${id}`] }))
+        ];
+        if (requests.length === 0) {
+            throw new Error('Usage: mere setup mere-run models [--app APP] [--model MODEL] [--json]\n       mere setup mere-run model pull MODEL [--json]');
+        }
+        const result = await pullMereRunModels(options, requests);
+        await appendAudit(paths, {
+            timestamp: new Date(started).toISOString(),
+            kind: 'root',
+            app: app ?? 'mere-run',
+            command: ['setup', 'mere-run', args[0] ?? 'models'],
+            argv: ['setup', 'mere-run', ...args],
+            exitCode: result.ok ? 0 : 1,
+            durationMs: Date.now() - started,
+            cwd: result.runtime.sourceDir
+        }).catch(() => undefined);
+        if (readBooleanFlag(flags, 'json')) {
+            writeJson(io, result);
+        }
+        else {
+            io.stdout(`mere.run models: ${result.ok ? 'ready' : 'needs attention'}\n`);
+            for (const model of result.models)
+                io.stdout(`${model.id}: ${model.status}\n`);
+            for (const pull of result.pulls)
+                io.stdout(`${pull.id}: ${pull.skipped ? 'already installed' : pull.ok ? 'pulled' : 'failed'}\n`);
+            if (result.error)
+                io.stderr(`${result.error}\n`);
+        }
+        return result.ok ? 0 : 1;
+    }
+    if (args.length > 0) {
+        throw new Error('Usage: mere setup mere-run [models --app APP|model pull MODEL] [--json]');
+    }
+    const result = await setupMereRun(options);
+    await appendAudit(paths, {
+        timestamp: new Date(started).toISOString(),
+        kind: 'root',
+        app: 'media',
+        command: ['setup', 'mere-run'],
+        argv: ['setup', 'mere-run'],
+        exitCode: result.ok ? 0 : 1,
+        durationMs: Date.now() - started,
+        cwd: result.sourceDir
+    }).catch(() => undefined);
+    if (readBooleanFlag(flags, 'json')) {
+        writeJson(io, result);
+    }
+    else if (result.ok) {
+        io.stdout(`mere.run: ${result.installed ? 'installed' : 'ready'} (${result.source})\n`);
+        io.stdout(`binary: ${result.bin ?? 'not resolved'}\n`);
+        io.stdout(`install target: ${result.installBin}\n`);
+        if (result.version)
+            io.stdout(`version: ${result.version}\n`);
+    }
+    else {
+        throw new Error(result.error ?? 'mere.run setup failed.');
+    }
+    return result.ok ? 0 : 1;
 }
 function financeConfigPath(env) {
     const configured = env.FINANCE_CONFIG_PATH?.trim();
@@ -908,6 +1004,9 @@ async function opsDoctor(io, flags) {
         stdout: '',
         stderr: error instanceof Error ? error.message : String(error)
     }));
+    const mereRun = await inspectMereRun({ env: io.env, mereRoot: paths.mereRoot });
+    const mereRunModelRequests = entries.flatMap((entry) => appMereRunModelRequests(entry.key));
+    const mereRunModels = mereRunModelRequests.length > 0 ? await inspectMereRunModels({ env: io.env, mereRoot: paths.mereRoot }, mereRunModelRequests, mereRun) : null;
     const apps = [];
     for (const entry of entries) {
         const resolved = await resolveCli(entry, io.env);
@@ -929,7 +1028,7 @@ async function opsDoctor(io, flags) {
             authStatus: whoami?.code === 0 ? 'authenticated' : 'unauthenticated'
         });
     }
-    const payload = { node, pnpm: { ok: pnpm.code === 0, version: pnpm.stdout.trim(), error: pnpm.stderr.trim() }, apps };
+    const payload = { node, pnpm: { ok: pnpm.code === 0, version: pnpm.stdout.trim(), error: pnpm.stderr.trim() }, mereRun, mereRunModels, apps };
     if (readBooleanFlag(flags, 'json'))
         writeJson(io, payload);
     else
@@ -940,7 +1039,7 @@ async function opsSmoke(io, flags) {
     const nextFlags = { ...flags };
     if (!readStringFlag(flags, 'app'))
         nextFlags.all = true;
-    return runSetup(io, 'smoke', nextFlags);
+    return runSetup(io, 'smoke', [], nextFlags);
 }
 function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -1254,6 +1353,10 @@ function buildOnboardingReport(entries, artifacts, flags) {
     const manifestRows = recordsFrom(artifacts.manifest.value, 'apps');
     const authRows = recordsFrom(artifacts.authStatus.value, 'results');
     const snapshotRows = recordsFrom(artifacts.snapshot.value, 'apps');
+    const doctorPayload = isRecord(artifacts.doctor.value) ? artifacts.doctor.value : {};
+    const mereRun = isRecord(doctorPayload.mereRun) ? doctorPayload.mereRun : null;
+    const mereRunModels = isRecord(doctorPayload.mereRunModels) ? doctorPayload.mereRunModels : null;
+    const missingMereRunModels = Array.isArray(mereRunModels?.missing) ? mereRunModels.missing.filter((item) => typeof item === 'string') : [];
     const workspace = artifacts.workspace;
     const remediation = [];
     const apps = [];
@@ -1335,6 +1438,32 @@ function buildOnboardingReport(entries, artifacts, flags) {
                 blocking: false
             });
         }
+        if (entry.key === 'media' && mereRun?.ok !== true) {
+            warnings.push('mere.run runtime is not installed.');
+            const nextCommand = 'mere setup mere-run --json';
+            nextCommands.push(nextCommand);
+            remediation.push({
+                id: 'media.mereRun',
+                severity: 'warning',
+                app: 'media',
+                reason: 'Media local processing needs the public mere.run runtime.',
+                nextCommand,
+                blocking: false
+            });
+        }
+        if (entry.key === 'media' && missingMereRunModels.length > 0) {
+            warnings.push(`mere.run models are missing: ${missingMereRunModels.join(', ')}.`);
+            const nextCommand = 'mere setup mere-run models --app media --json';
+            nextCommands.push(nextCommand);
+            remediation.push({
+                id: 'media.mereRunModels',
+                severity: 'warning',
+                app: 'media',
+                reason: `Media local processing needs mere.run models: ${missingMereRunModels.join(', ')}.`,
+                nextCommand,
+                blocking: false
+            });
+        }
         if (doctor?.manifestOk === false || doctor?.cliExists === false) {
             warnings.push('Doctor reported setup needs attention.');
         }
@@ -1369,7 +1498,7 @@ function buildOnboardingReport(entries, artifacts, flags) {
         blocked: apps.filter((app) => app.status === 'blocked').length,
         needsAuth: remediation.filter((item) => item.id.endsWith('.auth')).length,
         needsSelector: remediation.filter((item) => item.id.endsWith('.workspace')).length + selectors.missing.length,
-        needsInstall: remediation.filter((item) => item.id.endsWith('.adapter')).length,
+        needsInstall: remediation.filter((item) => item.id.endsWith('.adapter') || item.id === 'media.mereRun' || item.id === 'media.mereRunModels').length,
         optional: selectors.missing.length
     };
     const readinessScore = apps.length ? Math.round(apps.reduce((sum, app) => sum + app.readinessScore, 0) / apps.length) : 0;
@@ -1511,8 +1640,8 @@ export async function runCli(argv, io) {
             writeText(io, renderCompletion(rest[1], registry, await completionCommandMap(registry, io.env)));
             return 0;
         }
-        if (rest[0] === 'setup')
-            return await runSetup(io, rest[1], parsed.flags);
+        if (parsed.positionals[0] === 'setup')
+            return await runSetup(io, parsed.positionals[1], parsed.positionals.slice(2), parsed.flags);
         if (rest[0] === 'auth')
             return await runAuth(io, rest[1], parsed.flags);
         if (rest[0] === 'context')

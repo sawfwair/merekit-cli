@@ -15,6 +15,9 @@ mere apps manifest --app APP --json
 - `mere apps list|manifest|doctor [--app APP] [--json]`
 - `mere context get|set-workspace|clear`
 - `mere setup build|check|smoke (--app APP|--all) [--json]`
+- `mere setup mere-run [--force] [--source-dir DIR] [--install-bin FILE] [--json]`
+- `mere setup mere-run models [--app APP] [--model MODEL] [--force] [--json]`
+- `mere setup mere-run model pull MODEL [--force] [--json]`
 - `mere auth login|whoami|logout|status (--app APP|--all) [--json]`
 - `mere finance profiles list|current|use|login [--json]`
 - `mere ops doctor|smoke|audit|workspace-snapshot [--app APP] [--workspace ID] [--json]`
@@ -107,6 +110,8 @@ mere network calls list --json
 mere email threads search invoice --json
 mere gives donations list --tenant ten_1 --json
 mere works work list --workspace ws_123 --json
+mere media items list --workspace ws_123 --json
+mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
 ```
 
 The business waitlist command opens a Turnstile and magic-link protected browser page with the email prefilled; the CLI does not submit the email directly.
@@ -122,7 +127,7 @@ Global pass-through flags are only forwarded when the target manifest supports t
 - `--data`
 - `--data-file`
 
-Additional app selectors such as `--tenant`, `--store`, `--remote`, `--local`, `--db`, and `--persist-to` are also passed when the app manifest exposes them.
+Additional app selectors such as `--tenant`, `--store`, `--local-db`, `--remote`, `--local`, `--db`, and `--persist-to` are also passed when the app manifest exposes them.
 
 Destructive commands keep the app-local contract, typically `--yes --confirm <exact-target>`.
 
@@ -131,6 +136,18 @@ Video browser-host commands such as `video agent join --runtime browser` and `vi
 ```sh
 npm install -g @merekit/cli @playwright/test
 ```
+
+Media cloud and local-store commands are packaged in the bundled media adapter. Local transcription and embedding, including `mere media process ... --transcribe --embed`, delegates to the public `mere.run` runtime. Run `mere setup mere-run` to orchestrate that install from an existing binary, the local `~/mere/run-public` source checkout, or a verified DMG:
+
+```sh
+mere setup mere-run --json
+mere setup mere-run models --app media --json
+mere setup mere-run --force --source-dir ~/mere/run-public --json
+```
+
+The default DMG URL is `https://public.stereovoid.com/mere-run-releases/mere-run.dmg`. Download installs require `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256` so the root CLI can verify the artifact before mounting it.
+
+The Media model request currently pulls `speech-asr-parakeet` for transcription and `text-embed-qwen3-0.6b` for transcript search embeddings.
 
 ## Manifest Contract
 
@@ -186,6 +203,7 @@ This matrix is generated from the current local app manifests.
 | `email` | 31 | 4 | 15 read, 11 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `gives` | 40 | 6 | 22 read, 13 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
+| `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
 
 ## Output And Exit Codes
 

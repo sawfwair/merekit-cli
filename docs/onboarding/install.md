@@ -56,6 +56,8 @@ When `mere` delegates to an app CLI, it resolves the adapter in this order:
 
 Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source while debugging install behavior.
 
+The media adapter is resolved the same way, but local media processing has extra runtime dependencies: `mere media process ... --transcribe --embed` calls the public `mere.run` executable and needs local ASR/embedding models. Run `mere setup mere-run --json` to orchestrate the runtime install, then `mere setup mere-run models --app media --json` to pull app-requested models. In a local Mere checkout, it builds from `~/mere/run-public`; installed users can download `https://public.stereovoid.com/mere-run-releases/mere-run.dmg` by providing a verified checksum with `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256`.
+
 ## Check The Command Plane
 
 ```sh

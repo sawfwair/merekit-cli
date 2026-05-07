@@ -180,6 +180,8 @@ Root-owned commands:
 - `mere context get|set-workspace|clear`
 - `mere finance profiles list|current|use|login`
 - `mere setup build|check|smoke`
+- `mere setup mere-run`
+- `mere setup mere-run models --app media`
 - `mere ops doctor|smoke|audit|workspace-snapshot`
 - `mere mcp serve`
 - `mere help agent|onboard|safety|mcp`
@@ -193,6 +195,9 @@ mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json
 mere works work list --workspace ws_123 --json
+mere media items list --workspace ws_123 --json
+mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
+mere media --store local store info --json
 ```
 
 The waitlist command is intentionally a browser handoff; it does not post the email directly from the root CLI process.
@@ -213,6 +218,9 @@ Registered namespaces:
 | `email` | browser | Mailboxes, threads, sending, providers, domains, drafts |
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
 | `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
+| `media` | browser | Audio imports, transcripts, embeddings, media search, and local processing through `mere.run` |
+
+`mere media` cloud and local-store reads work through the bundled media adapter. Local processing commands such as `mere media process ... --transcribe --embed` additionally require the public `mere.run` runtime and local models. Run `mere setup mere-run` to orchestrate runtime install from an existing binary, the local `~/mere/run-public` source checkout, or the verified DMG at `https://public.stereovoid.com/mere-run-releases/mere-run.dmg`. Then run `mere setup mere-run models --app media` to pull Media-requested models. Use `MERE_MEDIA_MERE_RUN_BIN` or `MERE_RUN_BIN` only for explicit runtime overrides.
 
 ## Auth And Context
 
