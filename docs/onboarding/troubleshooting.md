@@ -112,6 +112,24 @@ If you know the profile and URL in advance:
 mere onboard --app finance --workspace WORKSPACE_ID --finance-profile books --finance-base-url https://finance.example.com --json
 ```
 
+## Media Runtime Is Missing
+
+Symptom:
+
+- App status is `needs_attention`.
+- Warning says `mere.run` runtime is not installed.
+- Remediation id is `media.mereRun`.
+
+Fix:
+
+```sh
+mere setup mere-run --json
+mere setup mere-run models --app media --json
+mere onboard --app media --workspace WORKSPACE_ID --json
+```
+
+For local Mere development, `mere setup mere-run` builds from `~/mere/run-public` by default. Installed users can download `https://public.stereovoid.com/mere-run-releases/mere-run.dmg` by providing a verified checksum with `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256`.
+
 ## Selector Hints Are Missing
 
 Symptom:

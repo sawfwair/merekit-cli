@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { runCli } from '../dist/root.js';
 import { redactArgv, redactOutput } from '../dist/audit.js';
 import { runFirstUseTui } from '../dist/tui.js';
+import { createRegistry } from '../dist/registry.js';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function writeFakeProjectsCli(fake) {
   await mkdir(path.dirname(fake), { recursive: true });
@@ -173,6 +177,69 @@ async function fakePackageRoot() {
   return packageRoot;
 }
 
+async function writeFakeSwift(binDir) {
+  await mkdir(binDir, { recursive: true });
+  const swift = path.join(binDir, 'swift');
+  await writeFile(
+    swift,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const out = path.join(process.cwd(), '.build', 'release');
+if (args.includes('--show-bin-path')) {
+  console.log(out);
+  process.exit(0);
+}
+if (args[0] === 'build') {
+  fs.mkdirSync(out, { recursive: true });
+  const bin = path.join(out, 'mere.run');
+  fs.writeFileSync(bin, '#!/usr/bin/env node\\nif (process.argv.includes("--version")) { console.log("mere.run fake 1.0.0"); } else { console.log("mere.run fake help"); }\\n');
+  fs.chmodSync(bin, 0o755);
+  process.exit(0);
+}
+console.error('unexpected swift args ' + args.join(' '));
+process.exit(1);
+`,
+    'utf8',
+  );
+  await chmod(swift, 0o755);
+}
+
+async function writeFakeMereRun(bin, stateFile) {
+  await mkdir(path.dirname(bin), { recursive: true });
+  await writeFile(
+    bin,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const stateFile = ${JSON.stringify(stateFile)};
+const args = process.argv.slice(2);
+const installed = fs.existsSync(stateFile) ? new Set(JSON.parse(fs.readFileSync(stateFile, 'utf8'))) : new Set();
+function save() { fs.mkdirSync(require('node:path').dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify([...installed])); }
+if (args.includes('--version')) {
+  console.log('mere.run fake 1.0.0');
+  process.exit(0);
+}
+if (args[0] === 'model' && args[1] === 'list') {
+  for (const id of ['speech-asr-parakeet', 'text-embed-qwen3-0.6b']) {
+    console.log(id + ' text ' + (installed.has(id) ? 'installed' : 'missing') + ' —');
+  }
+  process.exit(0);
+}
+if (args[0] === 'model' && args[1] === 'pull') {
+  installed.add(args[2]);
+  save();
+  console.log('pulled ' + args[2]);
+  process.exit(0);
+}
+console.error('unexpected mere.run args ' + args.join(' '));
+process.exit(1);
+`,
+    'utf8',
+  );
+  await chmod(bin, 0o755);
+}
+
 async function run(args, env = {}) {
   let stdout = '';
   let stderr = '';
@@ -212,6 +279,8 @@ test('renders help and completion', async () => {
   assert.match(completion.stdout, /--waitlist-email/);
   assert.match(completion.stdout, /workspace-snapshot/);
   assert.match(completion.stdout, /finance profiles/);
+  assert.match(help.stdout, /setup mere-run/);
+  assert.match(completion.stdout, /mere-run/);
 });
 
 test('tui dry-run shows the onboarding command it will execute', async () => {
@@ -347,8 +416,85 @@ test('lists apps from the registry', async () => {
   const result = await run(['apps', 'list', '--json'], { MERE_ROOT: root, MERE_CLI_SOURCE: 'local' });
   assert.equal(result.code, 0);
   const payload = JSON.parse(result.stdout);
+  assert.deepEqual(payload.apps.map((app) => app.app), createRegistry(root).map((entry) => entry.key));
+  assert.equal(payload.apps.length, 11);
   assert.ok(payload.apps.some((app) => app.app === 'projects' && app.exists === true && app.source === 'local'));
   assert.ok(payload.apps.some((app) => app.app === 'works' && app.auth === 'browser'));
+});
+
+test('adapter registry is covered by bundle metadata and docs', async () => {
+  const registryKeys = createRegistry(path.resolve(repoRoot, '..'), repoRoot).map((entry) => entry.key);
+  assert.equal(registryKeys.length, 11);
+
+  const bundledManifest = JSON.parse(await readFile(path.join(repoRoot, 'adapters', 'manifest.json'), 'utf8'));
+  assert.deepEqual(bundledManifest.adapters.map((adapter) => adapter.app), registryKeys);
+
+  const readme = await readFile(path.join(repoRoot, 'README.md'), 'utf8');
+  const commandsDoc = await readFile(path.join(repoRoot, 'docs', 'commands.md'), 'utf8');
+  const installDoc = await readFile(path.join(repoRoot, 'docs', 'onboarding', 'install.md'), 'utf8');
+  const adaptersReadme = await readFile(path.join(repoRoot, 'adapters', 'README.md'), 'utf8');
+
+  for (const key of registryKeys) {
+    assert.match(readme, new RegExp(`\\| \`${key}\` \\|`));
+    assert.match(commandsDoc, new RegExp(`\\| \`${key}\` \\| \\d+ \\|`));
+    assert.match(adaptersReadme, new RegExp(`- \`${key}\``));
+  }
+  for (const doc of [readme, commandsDoc, installDoc, adaptersReadme]) {
+    assert.match(doc, /mere\.run/);
+    assert.match(doc, /~\/mere\/run-public/);
+    assert.match(doc, /mere setup mere-run/);
+    assert.match(doc, /mere setup mere-run models --app media/);
+  }
+  for (const doc of [readme, commandsDoc, installDoc, adaptersReadme]) {
+    assert.match(doc, /https:\/\/public\.stereovoid\.com\/mere-run-releases\/mere-run\.dmg/);
+  }
+});
+
+test('setup mere-run installs from local run-public source', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-mere-run-home-'));
+  const sourceDir = path.join(home, 'run-public');
+  const fakeBin = path.join(home, 'bin');
+  const installBin = path.join(home, '.local', 'bin', 'mere.run');
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(path.join(sourceDir, 'Package.swift'), '// fake package\n', 'utf8');
+  await writeFakeSwift(fakeBin);
+
+  const result = await run(['setup', 'mere-run', '--source-dir', sourceDir, '--install-bin', installBin, '--force', '--json'], {
+    HOME: home,
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.installed, true);
+  assert.equal(payload.source, 'source');
+  assert.equal(payload.bin, installBin);
+  assert.equal(payload.version, 'mere.run fake 1.0.0');
+  assert.ok(payload.steps.some((step) => step.action === 'swift build' && step.ok === true));
+});
+
+test('setup mere-run models pulls app-requested media models', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-mere-run-models-'));
+  const bin = path.join(home, 'bin', 'mere.run');
+  const stateFile = path.join(home, 'state', 'models.json');
+  await writeFakeMereRun(bin, stateFile);
+
+  const result = await run(['setup', 'mere-run', 'models', '--app', 'media', '--bin', bin, '--json'], {
+    HOME: home,
+    PATH: `${path.dirname(bin)}${path.delimiter}${process.env.PATH ?? ''}`,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(
+    payload.models.map((model) => [model.id, model.status]),
+    [
+      ['speech-asr-parakeet', 'installed'],
+      ['text-embed-qwen3-0.6b', 'installed'],
+    ],
+  );
+  assert.deepEqual(payload.pulls.map((pull) => pull.id), ['speech-asr-parakeet', 'text-embed-qwen3-0.6b']);
+  assert.equal(payload.missing.length, 0);
 });
 
 test('resolves bundled adapters before local CLIs by default', async () => {

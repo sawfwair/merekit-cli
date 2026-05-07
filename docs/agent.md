@@ -119,6 +119,7 @@ mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json
 mere gives campaigns list --tenant ws_123 --json
+mere media items list --workspace ws_123 --json
 ```
 
 Root pass-through flags are filtered by manifest support:
@@ -147,6 +148,8 @@ Resolution order is:
 `MERE_CLI_SOURCE=auto|bundled|local|path` forces a source for debugging. App-local CLIs are internal/dev escape hatches; agents should prefer the installed `mere` command and live manifests.
 
 Video browser-host commands are present in the bundled adapter, but actually launching the browser requires Playwright in the same npm prefix as `@merekit/cli`. Read-only Video diagnostics and room/meeting operator commands do not require it.
+
+Media local processing is a two-layer path: `mere media` delegates to the bundled media adapter, and `mere media process ... --transcribe --embed` shells out to the public `mere.run` runtime. Run `mere setup mere-run --json` first; it can use an existing binary, build from `~/mere/run-public`, or install a verified DMG. Then run `mere setup mere-run models --app media --json` so the app-requested ASR and embedding models are pulled before processing.
 
 ## Workspace Snapshot Notes
 

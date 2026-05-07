@@ -114,6 +114,8 @@ Every remediation item is meant to be actionable:
 
 Treat `nextCommand` as the primary path forward. Onboarding writes commands, but it does not run browser login, token login, skill installation, write commands, or destructive commands for you.
 
+Media local processing can also add non-blocking `media.mereRun` and `media.mereRunModels` remediations. Their next commands install or verify the public `mere.run` runtime, then pull app-requested models with `mere setup mere-run models --app media --json`.
+
 ## `artifacts` And `files`
 
 `artifacts` points to the most important generated files:

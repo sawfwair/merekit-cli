@@ -49,6 +49,14 @@ mere finance profiles login default --base-url https://<tenant>.mere.finance --j
 
 Browser-auth apps keep app-local sessions. Finance stores scoped token profiles in `~/.config/merefi/config.json`.
 
+## Media Local Processing
+
+```sh
+mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
+```
+
+`mere media` is resolved through the normal app adapter chain. Local transcription and embedding then delegate to the public `mere.run` runtime. Run `mere setup mere-run --json` before processing; it can use an existing binary, build from `~/mere/run-public`, or install a verified DMG. Then run `mere setup mere-run models --app media --json` to pull the models Media asks for.
+
 ## Smoke
 
 ```sh

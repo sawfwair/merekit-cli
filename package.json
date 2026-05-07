@@ -62,7 +62,7 @@
     "build:adapters": "node scripts/build-adapters.mjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:package": "node scripts/check-package-contents.mjs",
-    "check:adapters": "pnpm build && node scripts/check-adapter-safety.mjs",
+    "check:adapters": "pnpm build && node scripts/check-adapter-coverage.mjs && node scripts/check-adapter-safety.mjs",
     "test": "pnpm build && node --test test/*.test.mjs",
     "smoke": "pnpm build && node dist/run.js --help >/dev/null && node dist/run.js completion bash >/dev/null && node dist/run.js apps list --json >/dev/null && node scripts/mcp-tools-smoke.mjs",
     "smoke:mcp": "pnpm build && node scripts/mcp-tools-smoke.mjs",
