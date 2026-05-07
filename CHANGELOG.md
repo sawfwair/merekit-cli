@@ -8,6 +8,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 - Nothing yet.
 
+## 0.1.17 - 2026-05-07
+
+- Added the bundled Media adapter and documented the full 11-adapter command surface.
+- Added `mere setup mere-run` to orchestrate `mere.run` runtime setup from an existing binary, `~/mere/run-public`, or a verified DMG.
+- Added app-requested `mere.run` model pulls, with Media requesting local transcription and embedding models.
+- Added adapter coverage checks so registry, bundled metadata, and docs stay in sync.
+
 ## 0.1.16 - 2026-05-06
 
 - Regenerated bundled app adapters from the current external app CLIs, including the expanded Projects proposal readiness, export, defaults, and SAM search command surface.
