@@ -70,7 +70,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects today zone video network email gives works
+  business finance projects today zone video network email gives works media
 `;
 }
 function helpTopicText(topic) {

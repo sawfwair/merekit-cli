@@ -34,6 +34,7 @@ export const ROOT_PASSTHROUGH_FLAGS = new Set([
 	'bucket',
 	'tenant',
 	'store',
+	'local-db',
 	'remote',
 	'db',
 	'persist-to'

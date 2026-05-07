@@ -32,7 +32,8 @@ const appBuilds = [
 	{ repo: 'network', script: 'build:cli' },
 	{ repo: 'email', script: 'build:cli' },
 	{ repo: 'gives', script: 'build:cli' },
-	{ repo: 'works', script: 'build:cli' }
+	{ repo: 'works', script: 'build:cli' },
+	{ repo: 'media', script: 'build:cli' }
 ];
 
 const adapters = [
@@ -80,6 +81,11 @@ const adapters = [
 		key: 'works',
 		sourceRepoPath: path.join(mereRoot, 'works'),
 		sourceArtifactPath: path.join(mereRoot, 'works', 'dist', 'run.js')
+	},
+	{
+		key: 'media',
+		sourceRepoPath: path.join(mereRoot, 'media'),
+		sourceArtifactPath: path.join(mereRoot, 'media', 'dist', 'run.js')
 	}
 ];
 

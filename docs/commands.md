@@ -122,7 +122,7 @@ Global pass-through flags are only forwarded when the target manifest supports t
 - `--data`
 - `--data-file`
 
-Additional app selectors such as `--tenant`, `--store`, `--remote`, `--local`, `--db`, and `--persist-to` are also passed when the app manifest exposes them.
+Additional app selectors such as `--tenant`, `--store`, `--local-db`, `--remote`, `--local`, `--db`, and `--persist-to` are also passed when the app manifest exposes them.
 
 Destructive commands keep the app-local contract, typically `--yes --confirm <exact-target>`.
 
@@ -186,6 +186,7 @@ This matrix is generated from the current local app manifests.
 | `email` | 31 | 4 | 15 read, 11 write, 3 destructive, 2 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `gives` | 40 | 6 | 22 read, 13 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
+| `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
 
 ## Output And Exit Codes
 

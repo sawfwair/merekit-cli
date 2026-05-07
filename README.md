@@ -193,6 +193,8 @@ mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json
 mere works work list --workspace ws_123 --json
+mere media items list --workspace ws_123 --json
+mere media --store local store info --json
 ```
 
 The waitlist command is intentionally a browser handoff; it does not post the email directly from the root CLI process.
@@ -213,6 +215,7 @@ Registered namespaces:
 | `email` | browser | Mailboxes, threads, sending, providers, domains, drafts |
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
 | `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
+| `media` | browser | Audio imports, transcripts, embeddings, and media search |
 
 ## Auth And Context
 
