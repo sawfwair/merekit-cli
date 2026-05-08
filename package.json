@@ -78,6 +78,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "sqlite-vec": "^0.1.9",
+    "yaml": "^2.8.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ export const PRODUCT_APP_KEYS: AppKey[] = [
 	'business',
 	'finance',
 	'projects',
+	'agent',
 	'today',
 	'zone',
 	'video',
@@ -14,7 +15,8 @@ export const PRODUCT_APP_KEYS: AppKey[] = [
 	'email',
 	'gives',
 	'works',
-	'media'
+	'media',
+	'link'
 ];
 
 export const APP_KEYS: AppKey[] = [...PRODUCT_APP_KEYS];
@@ -76,6 +78,19 @@ export function createRegistry(mereRoot: string, packageRoot = repo(mereRoot, 'c
 			pathBins: ['mere-projects', 'pastperf', 'projects'],
 			authKind: 'browser',
 			packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
+		},
+		{
+			key: 'agent',
+			label: 'Agent',
+			namespace: 'agent',
+			aliases: ['agent', 'agents', 'mere-agent'],
+			repoDir: repo(mereRoot, 'agent'),
+			envCliPath: 'MERE_AGENT_CLI',
+			bundledCliPath: adapter(packageRoot, 'agent'),
+			localCliPath: path.join(repo(mereRoot, 'agent'), 'cli-dist', 'run.js'),
+			pathBins: ['mere-agent'],
+			authKind: 'browser',
+			packageScripts: { build: 'build:cli', check: 'check:cli' }
 		},
 		{
 			key: 'today',
@@ -180,6 +195,19 @@ export function createRegistry(mereRoot: string, packageRoot = repo(mereRoot, 'c
 			pathBins: ['mere-media'],
 			authKind: 'browser',
 			packageScripts: { build: 'build:cli', check: 'check' }
+		},
+		{
+			key: 'link',
+			label: 'Link',
+			namespace: 'link',
+			aliases: ['link', 'links', 'mere-link', 'merekit-link'],
+			repoDir: repo(mereRoot, 'merekit-link'),
+			envCliPath: 'MERE_LINK_CLI',
+			bundledCliPath: adapter(packageRoot, 'link'),
+			localCliPath: path.join(repo(mereRoot, 'merekit-link'), 'dist', 'run.js'),
+			pathBins: ['mere-link'],
+			authKind: 'none',
+			packageScripts: { build: 'build', check: 'check', smoke: 'smoke' }
 		}
 	];
 }

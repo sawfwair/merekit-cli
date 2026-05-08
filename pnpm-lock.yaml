@@ -19,6 +19,9 @@ importers:
       sqlite-vec:
         specifier: ^0.1.9
         version: 0.1.9
+      yaml:
+        specifier: ^2.8.4
+        version: 2.8.4
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -34,7 +37,7 @@ importers:
         version: 5.9.3
       vitepress:
         specifier: 1.6.4
-        version: 1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(postcss@8.5.13)(search-insights@2.17.3)(typescript@5.9.3)
+        version: 1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(postcss@8.5.13)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4)
 
 packages:
 
@@ -1261,6 +1264,11 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
+  yaml@2.8.4:
+    resolution: {integrity: sha512-ml/JPOj9fOQK8RNnWojA67GbZ0ApXAUlN2UQclwv2eVgTgn7O9gg9o7paZWKMp4g0H3nTLtS9LVzhkpOFIKzog==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
@@ -1681,10 +1689,10 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vitejs/plugin-vue@6.0.6(vite@6.4.2(@types/node@24.12.2))(vue@3.5.33(typescript@5.9.3))':
+  '@vitejs/plugin-vue@6.0.6(vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))':
     dependencies:
       '@rolldown/pluginutils': 1.0.0-rc.13
-      vite: 6.4.2(@types/node@24.12.2)
+      vite: 6.4.2(@types/node@24.12.2)(yaml@2.8.4)
       vue: 3.5.33(typescript@5.9.3)
 
   '@vue/compiler-core@3.5.33':
@@ -2451,7 +2459,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@6.4.2(@types/node@24.12.2):
+  vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -2462,8 +2470,9 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.12.2
       fsevents: 2.3.3
+      yaml: 2.8.4
 
-  vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(postcss@8.5.13)(search-insights@2.17.3)(typescript@5.9.3):
+  vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(postcss@8.5.13)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4):
     dependencies:
       '@docsearch/css': 3.8.2
       '@docsearch/js': 3.8.2(@algolia/client-search@5.52.0)(search-insights@2.17.3)
@@ -2472,7 +2481,7 @@ snapshots:
       '@shikijs/transformers': 2.5.0
       '@shikijs/types': 2.5.0
       '@types/markdown-it': 14.1.2
-      '@vitejs/plugin-vue': 6.0.6(vite@6.4.2(@types/node@24.12.2))(vue@3.5.33(typescript@5.9.3))
+      '@vitejs/plugin-vue': 6.0.6(vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))
       '@vue/devtools-api': 7.7.9
       '@vue/shared': 3.5.33
       '@vueuse/core': 12.8.2(typescript@5.9.3)
@@ -2481,7 +2490,7 @@ snapshots:
       mark.js: 8.11.1
       minisearch: 7.2.0
       shiki: 2.5.0
-      vite: 6.4.2(@types/node@24.12.2)
+      vite: 6.4.2(@types/node@24.12.2)(yaml@2.8.4)
       vue: 3.5.33(typescript@5.9.3)
     optionalDependencies:
       postcss: 8.5.13
@@ -2530,6 +2539,8 @@ snapshots:
       isexe: 2.0.0
 
   wrappy@1.0.2: {}
+
+  yaml@2.8.4: {}
 
   zod-to-json-schema@3.25.2(zod@4.3.6):
     dependencies:

@@ -112,6 +112,8 @@ mere gives donations list --tenant ten_1 --json
 mere works work list --workspace ws_123 --json
 mere media items list --workspace ws_123 --json
 mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
+mere link config init --output mere.link.yaml
+mere link generate workspace --workspace ws_123 --output mere.link.yaml --yes
 ```
 
 The business waitlist command opens a Turnstile and magic-link protected browser page with the email prefilled; the CLI does not submit the email directly.
@@ -196,6 +198,7 @@ This matrix is generated from the current local app manifests.
 | `business` | 138 | 2 | 52 read, 59 write, 15 destructive, 12 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 38 | 2 | 27 read, 7 write, 4 destructive | `base-url`, `profile`, `json`, `yes`, `confirm` |
 | `projects` | 59 | 4 | 27 read, 23 write, 9 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
+| `agent` | 26 | 5 | 10 read, 11 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `today` | 58 | 2 | 22 read, 25 write, 10 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `persist-to` |
 | `zone` | 29 | 5 | 15 read, 9 write, 2 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `store` |
 | `video` | 33 | 7 | 22 read, 7 write, 1 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm` |
@@ -204,6 +207,7 @@ This matrix is generated from the current local app manifests.
 | `gives` | 40 | 6 | 22 read, 13 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 | `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
+| `link` | 11 | 0 | 9 read, 2 write | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `json`, `yes` |
 
 ## Output And Exit Codes
 

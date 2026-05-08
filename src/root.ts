@@ -83,7 +83,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects today zone video network email gives works media
+  business finance projects agent today zone video network email gives works media link
 `;
 }
 
@@ -1796,8 +1796,11 @@ async function completionCommandMap(registry: RegistryEntry[], env: NodeJS.Proce
 			.filter((part): part is string => typeof part === 'string' && part.length > 0)
 			.filter((part, index, list) => list.indexOf(part) === index)
 			.sort();
-		for (const alias of result.entry.aliases) output[alias] = firstSegments;
-		output[result.entry.key] = firstSegments;
+		const commands = result.entry.key === 'agent'
+			? [...new Set([...firstSegments, 'bootstrap', 'help', 'list', 'get', 'create', 'update', 'deploy', 'pause', 'archive', 'delete'])].sort()
+			: firstSegments;
+		for (const alias of result.entry.aliases) output[alias] = commands;
+		output[result.entry.key] = commands;
 	}
 	return output;
 }
@@ -1828,7 +1831,9 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 		if (parsed.positionals[0] === 'setup') return await runSetup(io, parsed.positionals[1], parsed.positionals.slice(2), parsed.flags);
 		if (rest[0] === 'auth') return await runAuth(io, rest[1], parsed.flags);
 		if (rest[0] === 'context') return await runContext(io, rest[1], parsed.flags);
-		if (rest[0] === 'agent') return await runAgent(io, rest[1], parsed.flags);
+		if (rest[0] === 'agent' && (!rest[1] || rest[1] === 'help' || rest[1] === 'bootstrap')) {
+			return await runAgent(io, rest[1], parsed.flags);
+		}
 		if (rest[0] === 'tui') return await runTui(io, parsed.flags);
 		if (rest[0] === 'onboard' && readBooleanFlag(parsed.flags, 'interactive')) return await runTui(io, parsed.flags);
 		if (rest[0] === 'onboard') return await runOnboard(io, rest[1]?.startsWith('--') ? undefined : rest[1], parsed.flags);

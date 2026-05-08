@@ -2,6 +2,7 @@ export type AppKey =
 	| 'business'
 	| 'finance'
 	| 'projects'
+	| 'agent'
 	| 'today'
 	| 'zone'
 	| 'video'
@@ -9,7 +10,8 @@ export type AppKey =
 	| 'email'
 	| 'gives'
 	| 'works'
-	| 'media';
+	| 'media'
+	| 'link';
 
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
 export type CommandRisk = 'read' | 'write' | 'destructive' | 'external';

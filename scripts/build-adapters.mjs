@@ -7,6 +7,7 @@ import { build as esbuild } from 'esbuild';
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mereRoot = path.resolve(process.env.MERE_ROOT ?? path.join(packageRoot, '..'));
 const adaptersDir = path.join(packageRoot, 'adapters');
+const linkPackageRoot = path.join(mereRoot, 'merekit-link');
 const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
 function createAdaptersReadme(adapterKeys) {
 	return `# Generated Adapters
@@ -18,7 +19,9 @@ Bundled adapters in this build:
 
 ${adapterKeys.map((key) => `- \`${key}\``).join('\n')}
 
-The `media` adapter is generated from the Mere media app, but local transcription and embedding commands delegate to the public `mere.run` runtime and local models. Run `mere setup mere-run` to orchestrate the runtime install from an existing binary, the local `~/mere/run-public` source checkout, or the verified DMG at `https://public.stereovoid.com/mere-run-releases/mere-run.dmg`. Run `mere setup mere-run models --app media` to pull Media-requested models. Set `MERE_MEDIA_MERE_RUN_BIN` or `MERE_RUN_BIN` only when you need an explicit runtime override.
+The \`link\` adapter is bundled from the public \`@merekit/link\` TypeScript package source. It provides standalone YAML-based cross-surface linking and can bootstrap configuration from a Mere workspace snapshot.
+
+The \`media\` adapter is generated from the Mere media app, but local transcription and embedding commands delegate to the public \`mere.run\` runtime and local models. Run \`mere setup mere-run\` to orchestrate the runtime install from an existing binary, the local \`~/mere/run-public\` source checkout, or the verified DMG at \`https://public.stereovoid.com/mere-run-releases/mere-run.dmg\`. Run \`mere setup mere-run models --app media\` to pull Media-requested models. Set \`MERE_MEDIA_MERE_RUN_BIN\` or \`MERE_RUN_BIN\` only when you need an explicit runtime override.
 
 The adapters intentionally expose command names, public API route shapes, environment variable names, and default service URLs. They do not contain credentials or grant access to Mere hosted services.
 
@@ -34,6 +37,7 @@ const appBuilds = [
 	{ repo: 'business', args: ['--dir', path.join(mereRoot, 'business'), '--filter', '@zerosmb/cli', 'build'] },
 	{ repo: 'finance', script: 'build:cli' },
 	{ repo: 'projects', script: 'build:cli' },
+	{ repo: 'agent', script: 'build:cli' },
 	{ repo: 'today', script: 'build:cli' },
 	{ repo: 'zone', script: 'build:cli' },
 	{ repo: 'video', script: 'build:cli' },
@@ -54,6 +58,11 @@ const adapters = [
 		key: 'projects',
 		sourceRepoPath: path.join(mereRoot, 'projects'),
 		sourceArtifactPath: path.join(mereRoot, 'projects', 'dist', 'run.js')
+	},
+	{
+		key: 'agent',
+		sourceRepoPath: path.join(mereRoot, 'agent'),
+		sourceArtifactPath: path.join(mereRoot, 'agent', 'cli-dist', 'run.js')
 	},
 	{
 		key: 'today',
@@ -94,6 +103,15 @@ const adapters = [
 		key: 'media',
 		sourceRepoPath: path.join(mereRoot, 'media'),
 		sourceArtifactPath: path.join(mereRoot, 'media', 'dist', 'run.js')
+	}
+];
+
+const staticAdapters = [
+	{
+		key: 'link',
+		sourceRepoPath: linkPackageRoot,
+		sourceArtifactPath: path.join(linkPackageRoot, 'dist', 'run.js'),
+		buildArgs: ['--dir', linkPackageRoot, 'build']
 	}
 ];
 
@@ -167,6 +185,10 @@ for (const build of appBuilds) {
 	run(pnpm, build.args ?? ['--dir', path.join(mereRoot, build.repo), build.script]);
 }
 
+for (const adapter of staticAdapters) {
+	if (adapter.buildArgs) run(pnpm, adapter.buildArgs);
+}
+
 await rm(adaptersDir, { recursive: true, force: true });
 await mkdir(adaptersDir, { recursive: true });
 const rootPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
@@ -175,7 +197,7 @@ await writeFile(
 	`${JSON.stringify({ name: '@merekit/cli-adapters', private: true, version: rootPackage.version ?? '0.0.0', type: 'module' }, null, 2)}\n`,
 	'utf8'
 );
-await writeFile(path.join(adaptersDir, 'README.md'), createAdaptersReadme(appBuilds.map((build) => build.repo)), 'utf8');
+await writeFile(path.join(adaptersDir, 'README.md'), createAdaptersReadme([...appBuilds.map((build) => build.repo), ...staticAdapters.map((adapter) => adapter.key)]), 'utf8');
 
 const builtAt = new Date().toISOString();
 const manifest = {
@@ -185,6 +207,18 @@ const manifest = {
 };
 
 for (const adapter of adapters) {
+	const target = await copyAdapter(adapter);
+	validateAdapter(adapter.key, target);
+	manifest.adapters.push({
+		app: adapter.key,
+		sourceRepoPath: path.relative(mereRoot, adapter.sourceRepoPath),
+		sourceArtifactPath: path.relative(mereRoot, adapter.sourceArtifactPath),
+		adapterPath: path.relative(packageRoot, target),
+		builtAt
+	});
+}
+
+for (const adapter of staticAdapters) {
 	const target = await copyAdapter(adapter);
 	validateAdapter(adapter.key, target);
 	manifest.adapters.push({
