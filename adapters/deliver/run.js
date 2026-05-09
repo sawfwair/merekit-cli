@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // @ts-check
-import { spawnSync } from 'node:child_process';
 import { pbkdf2Sync, randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
 const VERSION = 'mere-deliver 0.1.0';
-const DEFAULT_DATABASE = 'mere-deliver';
 const DEFAULT_BASE_URL = 'https://share.mere.ink';
+const API_PREFIX = '/api/cli/v1';
+const SESSION_PATH = '~/.local/state/mere-deliver/session.json';
 const PASSWORD_HASH_SCHEME = 'pbkdf2-sha256';
 const PASSWORD_HASH_ITERATIONS = 100_000;
 const STATUSES = new Set(['active', 'disabled', 'archived']);
@@ -21,7 +21,8 @@ const MODES = new Set(['structured', 'custom_html']);
  * @typedef {{ positionals: string[]; flags: Flags }} ParsedArgs
  * @typedef {Record<string, unknown>} JsonObject
  * @typedef {Record<string, unknown>} Row
- * @typedef {{ code: number; stdout: string; stderr: string }} WranglerResult
+ * @typedef {'GET' | 'PUT' | 'PATCH' | 'DELETE'} HttpMethod
+ * @typedef {{ baseUrl: string; token: string; createdAt?: string }} Session
  * @typedef {{
  *   auth?: string;
  *   risk?: string;
@@ -33,7 +34,6 @@ const MODES = new Set(['structured', 'custom_html']);
  *   flags?: string[];
  *   auditDefault?: boolean;
  * }} CommandOptions
- * @typedef {ReturnType<typeof command>} CommandDescriptor
  */
 
 class CliError extends Error {
@@ -52,24 +52,26 @@ const HELP_TEXT = `mere-deliver
 Usage:
   mere-deliver commands --json
   mere-deliver completion bash|zsh|fish
-  mere-deliver db info [--database NAME] [--local|--remote] [--json]
-  mere-deliver auth login|whoami|logout [--json]
+  mere-deliver db info [--base-url URL] [--json]
+  mere-deliver auth login --token TOKEN [--base-url URL] [--json]
+  mere-deliver auth whoami [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver auth logout [--json]
   mere-deliver hash-password [password] [--json]
-  mere-deliver packages list [--status active|disabled|archived|all] [--workspace ID] [--limit N] [--json]
-  mere-deliver packages get <slug> [--json]
-  mere-deliver packages upsert <slug> --title TITLE --password PASSWORD [--customer-name NAME] [--workspace ID] [--sign-url URL] [--json]
-  mere-deliver packages set-status <slug> --status active|disabled|archived [--json]
-  mere-deliver packages set-sign-url <slug> --sign-url URL [--json]
-  mere-deliver packages delete <slug> --yes --confirm <slug> [--json]
-  mere-deliver same-page get <slug> [--json]
-  mere-deliver same-page upsert <slug> --mode structured --payload-json JSON [--json]
-  mere-deliver same-page upsert <slug> --mode custom_html --custom-html-file FILE [--json]
-  mere-deliver same-page delete <slug> --yes --confirm <slug> [--json]
+  mere-deliver packages list [--status active|disabled|archived|all] [--workspace ID] [--limit N] [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages get <slug> [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages upsert <slug> --title TITLE --password PASSWORD [--customer-name NAME] [--workspace ID] [--sign-url URL] [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages set-status <slug> --status active|disabled|archived [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages set-sign-url <slug> [--sign-url URL] [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages delete <slug> --yes --confirm <slug> [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver same-page get <slug> [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver same-page upsert <slug> --mode structured --payload-json JSON [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver same-page upsert <slug> --mode custom_html --custom-html-file FILE [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver same-page delete <slug> --yes --confirm <slug> [--base-url URL] [--token TOKEN] [--json]
   mere-deliver url <slug> [--base-url URL] [--json]
 
-Wrangler:
-  Set WRANGLER_BIN="cfman personal wrangler" to run through cfman.
-  Set MERE_DELIVER_WRANGLER_CONFIG to point at wrangler.jsonc when running outside ~/mere/deliver.`;
+Auth:
+  Set MERE_DELIVER_API_TOKEN or run auth login --token TOKEN.
+  Set MERE_DELIVER_BASE_URL to target a non-production hosted Deliver API.`;
 
 /**
  * @param {string[]} pathParts
@@ -81,7 +83,7 @@ function command(pathParts, summary, options = {}) {
 		id: pathParts.join('.'),
 		path: pathParts,
 		summary,
-		auth: options.auth ?? 'none',
+		auth: options.auth ?? 'token',
 		risk: options.risk ?? 'read',
 		supportsJson: options.supportsJson ?? true,
 		supportsData: options.supportsData ?? false,
@@ -93,59 +95,58 @@ function command(pathParts, summary, options = {}) {
 	};
 }
 
-const WRANGLER_FLAGS = ['database', 'remote', 'local', 'config', 'cwd', 'json'];
+const API_FLAGS = ['base-url', 'token', 'json'];
 const MANIFEST_COMMANDS = [
-	command(['commands'], 'Print the machine-readable mere-deliver command manifest.', { flags: ['json'] }),
-	command(['completion'], 'Print shell completion for mere-deliver.', { supportsJson: false, positionals: ['shell'] }),
-	command(['db', 'info'], 'Show the configured Cloudflare D1 target for delivery packages.', { flags: WRANGLER_FLAGS, auditDefault: true }),
-	command(['auth', 'login'], 'Start Wrangler Cloudflare login for delivery package administration.', { risk: 'external', flags: ['config', 'cwd', 'json'] }),
-	command(['auth', 'whoami'], 'Show the Cloudflare account visible to Wrangler.', { flags: ['config', 'cwd', 'json'], auditDefault: true }),
-	command(['auth', 'logout'], 'Clear the active Wrangler Cloudflare login.', { risk: 'write', flags: ['config', 'cwd', 'json'] }),
-	command(['hash-password'], 'Hash one delivery package password using the Worker-compatible PBKDF2 format.', { positionals: ['password'], flags: ['json'] }),
-	command(['packages', 'list'], 'List delivery packages from D1.', {
-		flags: [...WRANGLER_FLAGS, 'status', 'workspace', 'limit'],
-		positionals: [],
+	command(['commands'], 'Print the machine-readable mere-deliver command manifest.', { auth: 'none', flags: ['json'] }),
+	command(['completion'], 'Print shell completion for mere-deliver.', { auth: 'none', supportsJson: false, positionals: ['shell'] }),
+	command(['db', 'info'], 'Show the hosted Deliver API target and local auth state.', { auth: 'none', flags: ['base-url', 'json'], auditDefault: true }),
+	command(['auth', 'login'], 'Store a Deliver API token for hosted package administration.', { auth: 'none', risk: 'external', flags: API_FLAGS }),
+	command(['auth', 'whoami'], 'Show the hosted Deliver API identity for the active token.', { flags: API_FLAGS, auditDefault: true }),
+	command(['auth', 'logout'], 'Clear the stored Deliver API token.', { auth: 'none', risk: 'write', flags: ['json'] }),
+	command(['hash-password'], 'Hash one delivery package password using the Worker-compatible PBKDF2 format.', { auth: 'none', positionals: ['password'], flags: ['json'] }),
+	command(['packages', 'list'], 'List delivery packages from the hosted Deliver API.', {
+		flags: [...API_FLAGS, 'status', 'workspace', 'limit'],
 		auditDefault: true
 	}),
-	command(['packages', 'get'], 'Show one delivery package by slug.', { flags: WRANGLER_FLAGS, positionals: ['slug'] }),
+	command(['packages', 'get'], 'Show one delivery package by slug.', { flags: API_FLAGS, positionals: ['slug'] }),
 	command(['packages', 'upsert'], 'Create or replace a delivery package row.', {
 		risk: 'write',
 		supportsData: true,
-		flags: [...WRANGLER_FLAGS, 'title', 'customer-name', 'workspace', 'status', 'password', 'password-hash', 'sign-url', 'document-id', 'data', 'data-file'],
+		flags: [...API_FLAGS, 'title', 'customer-name', 'workspace', 'status', 'password', 'password-hash', 'sign-url', 'document-id', 'data', 'data-file'],
 		positionals: ['slug']
 	}),
 	command(['packages', 'set-status'], 'Set a delivery package status.', {
 		risk: 'write',
-		flags: [...WRANGLER_FLAGS, 'status'],
+		flags: [...API_FLAGS, 'status'],
 		positionals: ['slug']
 	}),
 	command(['packages', 'set-sign-url'], 'Set or clear a delivery package signing URL.', {
 		risk: 'write',
-		flags: [...WRANGLER_FLAGS, 'sign-url'],
+		flags: [...API_FLAGS, 'sign-url'],
 		positionals: ['slug']
 	}),
 	command(['packages', 'delete'], 'Delete a delivery package row and cascading Same Page content.', {
 		risk: 'destructive',
 		requiresYes: true,
 		requiresConfirm: true,
-		flags: [...WRANGLER_FLAGS, 'yes', 'confirm'],
+		flags: [...API_FLAGS, 'yes', 'confirm'],
 		positionals: ['slug']
 	}),
-	command(['same-page', 'get'], 'Show Same Page content for one delivery package.', { flags: WRANGLER_FLAGS, positionals: ['slug'] }),
+	command(['same-page', 'get'], 'Show Same Page content for one delivery package.', { flags: API_FLAGS, positionals: ['slug'] }),
 	command(['same-page', 'upsert'], 'Create or replace Same Page content for one delivery package.', {
 		risk: 'write',
 		supportsData: true,
-		flags: [...WRANGLER_FLAGS, 'mode', 'payload-json', 'payload-file', 'custom-html', 'custom-html-file', 'data', 'data-file'],
+		flags: [...API_FLAGS, 'mode', 'payload-json', 'payload-file', 'custom-html', 'custom-html-file', 'data', 'data-file'],
 		positionals: ['slug']
 	}),
 	command(['same-page', 'delete'], 'Delete Same Page content for one delivery package.', {
 		risk: 'destructive',
 		requiresYes: true,
 		requiresConfirm: true,
-		flags: [...WRANGLER_FLAGS, 'yes', 'confirm'],
+		flags: [...API_FLAGS, 'yes', 'confirm'],
 		positionals: ['slug']
 	}),
-	command(['url'], 'Print the share URL for one delivery package slug.', { flags: ['base-url', 'json'], positionals: ['slug'] })
+	command(['url'], 'Print the share URL for one delivery package slug.', { auth: 'none', flags: ['base-url', 'json'], positionals: ['slug'] })
 ];
 
 /** @returns {JsonObject} */
@@ -155,10 +156,11 @@ function manifest() {
 		app: 'mere-deliver',
 		namespace: 'deliver',
 		aliases: ['deliver', 'mere-deliver', 'share'],
-		auth: { kind: 'none' },
+		auth: { kind: 'token' },
 		baseUrlEnv: ['MERE_DELIVER_BASE_URL'],
-		sessionPath: null,
-		globalFlags: ['database', 'remote', 'local', 'config', 'cwd', 'json'],
+		tokenEnv: ['MERE_DELIVER_API_TOKEN'],
+		sessionPath: SESSION_PATH,
+		globalFlags: API_FLAGS,
 		commands: MANIFEST_COMMANDS
 	};
 }
@@ -263,18 +265,7 @@ async function readStdinPassword() {
 	process.stdin.setEncoding('utf8');
 	let value = '';
 	for await (const chunk of process.stdin) value += chunk;
-	return value.replace(/\r?\n$/, '');
-}
-
-/**
- * @param {string} value
- * @returns {string[]}
- */
-function splitCommand(value) {
-	const parts = [];
-	const pattern = /"([^"]*)"|'([^']*)'|[^\s]+/gu;
-	for (const match of value.matchAll(pattern)) parts.push(match[1] ?? match[2] ?? match[0]);
-	return parts;
+	return value.replace(/\r?\n$/u, '');
 }
 
 /**
@@ -287,108 +278,131 @@ function homePath(value) {
 	return value;
 }
 
-/** @returns {string | undefined} */
-function defaultWranglerConfig() {
-	const configured = process.env.MERE_DELIVER_WRANGLER_CONFIG?.trim();
-	if (configured) return homePath(configured);
-	const candidate = path.join(os.homedir(), 'mere', 'deliver', 'wrangler.jsonc');
-	return existsSync(candidate) ? candidate : undefined;
+/** @returns {string} */
+function deliverSessionPath() {
+	return homePath(process.env.MERE_DELIVER_SESSION_PATH?.trim() || SESSION_PATH);
 }
 
-/** @returns {string[]} */
-function wranglerPrefix() {
-	return splitCommand(process.env.WRANGLER_BIN?.trim() || 'wrangler');
+/** @returns {Session | null} */
+function readSession() {
+	try {
+		const parsed = JSON.parse(readFileSync(deliverSessionPath(), 'utf8'));
+		if (!isRecord(parsed)) return null;
+		const baseUrl = textValue(parsed.baseUrl);
+		const token = textValue(parsed.token);
+		const createdAt = textValue(parsed.createdAt);
+		return baseUrl && token ? { baseUrl, token, ...(createdAt ? { createdAt } : {}) } : null;
+	} catch {
+		return null;
+	}
 }
 
-/**
- * @param {Flags} flags
- * @returns {string[]}
- */
-function wranglerGlobalArgs(flags) {
-	/** @type {string[]} */
-	const args = [];
-	const config = stringFlag(flags, 'config') ?? defaultWranglerConfig();
-	const cwd = stringFlag(flags, 'cwd') ?? process.env.MERE_DELIVER_CWD?.trim();
-	if (config) args.push('--config', homePath(config));
-	if (cwd) args.push('--cwd', homePath(cwd));
-	return args;
+/** @param {Session} session */
+function writeSession(session) {
+	const target = deliverSessionPath();
+	mkdirSync(path.dirname(target), { recursive: true });
+	writeFileSync(target, `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
 }
 
-/**
- * @param {string[]} args
- * @param {Flags} flags
- * @returns {WranglerResult}
- */
-function runWrangler(args, flags) {
-	const [commandName, ...prefixArgs] = wranglerPrefix();
-	if (!commandName) throw new CliError('WRANGLER_BIN did not resolve to a command.');
-	const result = spawnSync(commandName, [...prefixArgs, ...wranglerGlobalArgs(flags), ...args], {
-		encoding: 'utf8',
-		env: process.env
-	});
-	if (result.error) throw result.error;
-	return {
-		code: result.status ?? 1,
-		stdout: result.stdout ?? '',
-		stderr: result.stderr ?? ''
-	};
+function clearSession() {
+	rmSync(deliverSessionPath(), { force: true });
 }
 
 /**
  * @param {Flags} flags
+ * @param {Session | null} session
  * @returns {string}
  */
-function databaseName(flags) {
-	return stringFlag(flags, 'database') ?? process.env.MERE_DELIVER_DATABASE?.trim() ?? process.env.MERE_DELIVER_D1_DATABASE?.trim() ?? DEFAULT_DATABASE;
+function serviceBaseUrl(flags, session) {
+	return (stringFlag(flags, 'base-url')
+		?? process.env.MERE_DELIVER_BASE_URL?.trim()
+		?? session?.baseUrl
+		?? DEFAULT_BASE_URL).replace(/\/+$/u, '');
 }
 
 /**
  * @param {Flags} flags
- * @returns {string[]}
+ * @param {Session | null} session
+ * @returns {string | undefined}
  */
-function d1ScopeArgs(flags) {
-	if (boolFlag(flags, 'local') || process.env.MERE_DELIVER_D1_MODE === 'local') return ['--local'];
-	return ['--remote'];
+function authToken(flags, session) {
+	return stringFlag(flags, 'token')
+		?? process.env.MERE_DELIVER_API_TOKEN?.trim()
+		?? session?.token;
 }
 
 /**
- * @param {string} sql
+ * @template T
  * @param {Flags} flags
- * @returns {{ raw: unknown; rows: Row[]; meta: unknown }}
+ * @param {HttpMethod} method
+ * @param {string} requestPath
+ * @param {JsonObject} [body]
+ * @returns {Promise<T>}
  */
-function runD1(sql, flags) {
-	const result = runWrangler(['d1', 'execute', databaseName(flags), ...d1ScopeArgs(flags), '--command', sql, '--json'], flags);
-	if (result.code !== 0) throw new CliError(result.stderr.trim() || result.stdout.trim() || `wrangler d1 execute failed with ${result.code}`, result.code);
+async function apiRequest(flags, method, requestPath, body) {
+	const session = readSession();
+	const baseUrl = serviceBaseUrl(flags, session);
+	const token = authToken(flags, session);
+	if (!token) {
+		throw new CliError('Deliver API token is required. Run `mere-deliver auth login --token TOKEN` or set MERE_DELIVER_API_TOKEN.');
+	}
+
+	const response = await globalThis.fetch(`${baseUrl}${API_PREFIX}${requestPath}`, {
+		method,
+		headers: {
+			authorization: `Bearer ${token}`,
+			accept: 'application/json',
+			...(body ? { 'content-type': 'application/json' } : {})
+		},
+		...(body ? { body: JSON.stringify(body) } : {})
+	});
+	const text = await response.text();
+	const parsed = text ? parseJson(text, 'API response') : {};
+	if (!response.ok) {
+		throw new CliError((errorMessage(parsed) ?? text.trim()) || `Deliver API request failed with HTTP ${response.status}.`, response.status === 404 ? 2 : 1);
+	}
+	return /** @type {T} */ (parsed);
+}
+
+/**
+ * @param {string} text
+ * @param {string} label
+ * @returns {unknown}
+ */
+function parseJson(text, label) {
 	try {
-		const parsed = JSON.parse(result.stdout);
-		const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-		if (entry?.success === false) throw new CliError(JSON.stringify(entry.error ?? entry, null, 2));
-		return {
-			raw: parsed,
-			rows: Array.isArray(entry?.results) ? entry.results : [],
-			meta: entry?.meta ?? null
-		};
+		return JSON.parse(text);
 	} catch (error) {
-		if (error instanceof CliError) throw error;
-		throw new CliError(`Unable to parse wrangler D1 JSON output: ${error instanceof Error ? error.message : String(error)}`);
+		throw new CliError(`${label} was not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 
 /**
  * @param {unknown} value
- * @returns {string}
+ * @returns {string | undefined}
  */
-function sqlString(value) {
-	return `'${String(value).replaceAll("'", "''")}'`;
+function errorMessage(value) {
+	if (!isRecord(value)) return undefined;
+	const error = value.error;
+	if (typeof error === 'string') return error;
+	if (isRecord(error) && typeof error.message === 'string') return error.message;
+	return undefined;
 }
 
 /**
  * @param {unknown} value
- * @returns {string}
+ * @returns {value is JsonObject}
  */
-function sqlNullable(value) {
-	if (value === undefined || value === null || value === '') return 'NULL';
-	return sqlString(value);
+function isRecord(value) {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+function textValue(value) {
+	return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /**
@@ -397,7 +411,7 @@ function sqlNullable(value) {
  */
 function validateSlug(value) {
 	const slug = String(value ?? '').trim();
-	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) throw new CliError('Slug must be lowercase letters, numbers, and hyphens, up to 64 characters.');
+	if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(slug)) throw new CliError('Slug must be lowercase letters, numbers, and hyphens, up to 64 characters.');
 	return slug;
 }
 
@@ -422,18 +436,32 @@ function validateMode(value) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+function validateSignUrl(value) {
+	const text = typeof value === 'string' ? value.trim() : '';
+	if (!text) return undefined;
+	try {
+		const url = new URL(text);
+		if (url.protocol === 'https:' && url.hostname === 'mere.ink' && url.pathname.startsWith('/packet/')) {
+			return url.toString();
+		}
+	} catch {
+		// Fall through to the uniform validation error below.
+	}
+	throw new CliError('--sign-url must be an https://mere.ink/packet/... URL.');
+}
+
+/**
  * @param {string} text
  * @param {string} label
  * @returns {JsonObject}
  */
 function parseJsonObject(text, label) {
-	try {
-		const value = JSON.parse(text);
-		if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('expected object');
-		return value;
-	} catch (error) {
-		throw new CliError(`${label} must be a JSON object: ${error instanceof Error ? error.message : String(error)}`);
-	}
+	const parsed = parseJson(text, label);
+	if (!isRecord(parsed)) throw new CliError(`${label} must be a JSON object.`);
+	return parsed;
 }
 
 /**
@@ -462,6 +490,19 @@ function pick(data, ...names) {
 }
 
 /**
+ * @param {JsonObject} data
+ * @param {...string} names
+ * @returns {string | undefined}
+ */
+function pickText(data, ...names) {
+	for (const name of names) {
+		const value = textValue(data[name]);
+		if (value) return value;
+	}
+	return undefined;
+}
+
+/**
  * @param {Row[]} rows
  * @param {Flags} flags
  * @param {string} label
@@ -476,9 +517,19 @@ function outputRows(rows, flags, label) {
 	}
 }
 
-/** @returns {string} */
-function packageSelect() {
-	return 'slug, title, customer_name, workspace_id, status, sign_url, mereink_document_id, created_at, updated_at';
+/**
+ * @param {Row | null | undefined} row
+ * @param {Flags} flags
+ * @param {string} label
+ */
+function outputRow(row, flags, label) {
+	if (boolFlag(flags, 'json')) {
+		writeJson({ [label]: row ?? null });
+	} else if (row) {
+		writeText(Object.entries(row).map(([key, value]) => `${key}: ${value ?? ''}`).join('\n'));
+	} else {
+		writeText(`${label}: null`);
+	}
 }
 
 /**
@@ -538,38 +589,47 @@ async function runHashPassword(positionals, flags) {
 
 /** @param {Flags} flags */
 function runDbInfo(flags) {
+	const session = readSession();
+	const baseUrl = serviceBaseUrl(flags, session);
 	const payload = {
-		database: databaseName(flags),
-		mode: d1ScopeArgs(flags).includes('--local') ? 'local' : 'remote',
-		wrangler: wranglerPrefix().join(' '),
-		config: stringFlag(flags, 'config') ?? defaultWranglerConfig() ?? null,
-		baseUrl: process.env.MERE_DELIVER_BASE_URL?.trim() || DEFAULT_BASE_URL
+		service: 'mere-deliver',
+		baseUrl,
+		apiUrl: `${baseUrl}${API_PREFIX}`,
+		auth: 'token',
+		sessionPath: deliverSessionPath(),
+		hasSession: Boolean(session?.token),
+		tokenEnv: Boolean(process.env.MERE_DELIVER_API_TOKEN?.trim())
 	};
 	if (boolFlag(flags, 'json')) writeJson(payload);
-	else writeText(Object.entries(payload).map(([key, value]) => `${key}: ${value ?? ''}`).join('\n'));
+	else writeText(Object.entries(payload).map(([key, value]) => `${key}: ${value}`).join('\n'));
 }
 
 /**
  * @param {string | undefined} action
  * @param {Flags} flags
  */
-function runAuth(action, flags) {
-	if (action === 'whoami') {
-		const result = runWrangler(['whoami', '--json'], flags);
-		if (result.code !== 0) throw new CliError(result.stderr.trim() || result.stdout.trim() || 'Not authenticated with Wrangler.', result.code);
-		if (boolFlag(flags, 'json')) process.stdout.write(result.stdout);
-		else writeText(result.stdout.trim());
+async function runAuth(action, flags) {
+	if (action === 'login') {
+		const token = stringFlag(flags, 'token') ?? process.env.MERE_DELIVER_API_TOKEN?.trim();
+		if (!token) throw new CliError('Usage: mere-deliver auth login --token TOKEN');
+		const baseUrl = serviceBaseUrl(flags, null);
+		const requestFlags = { ...flags, token, 'base-url': baseUrl };
+		const whoami = await apiRequest(requestFlags, 'GET', '/whoami');
+		writeSession({ baseUrl, token, createdAt: new Date().toISOString() });
+		if (boolFlag(flags, 'json')) writeJson({ ok: true, baseUrl, sessionPath: deliverSessionPath(), whoami });
+		else writeText(`Logged in to ${baseUrl}.`);
 		return;
 	}
-	if (action === 'login' || action === 'logout') {
-		const result = runWrangler([action], flags);
-		if (boolFlag(flags, 'json')) {
-			writeJson({ ok: result.code === 0, code: result.code, stdout: result.stdout.trim(), stderr: result.stderr.trim() });
-		} else {
-			if (result.stdout) process.stdout.write(result.stdout);
-			if (result.stderr) process.stderr.write(result.stderr);
-		}
-		if (result.code !== 0) throw new CliError(`${action} failed.`, result.code);
+	if (action === 'whoami') {
+		const whoami = await apiRequest(flags, 'GET', '/whoami');
+		if (boolFlag(flags, 'json')) writeJson(whoami);
+		else writeText(Object.entries(/** @type {JsonObject} */ (whoami)).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n'));
+		return;
+	}
+	if (action === 'logout') {
+		clearSession();
+		if (boolFlag(flags, 'json')) writeJson({ ok: true, sessionPath: deliverSessionPath() });
+		else writeText('Logged out of mere-deliver.');
 		return;
 	}
 	throw new CliError('Usage: mere-deliver auth login|whoami|logout');
@@ -580,83 +640,72 @@ function runAuth(action, flags) {
  * @param {string[]} positionals
  * @param {Flags} flags
  */
-function runPackages(action, positionals, flags) {
+async function runPackages(action, positionals, flags) {
 	if (action === 'list') {
-		const status = stringFlag(flags, 'status') ?? 'active';
+		const query = new globalThis.URLSearchParams();
+		query.set('status', stringFlag(flags, 'status') ?? 'active');
 		const workspace = stringFlag(flags, 'workspace');
-		const limit = intFlag(flags, 'limit', 100);
-		const where = [];
-		if (status !== 'all') where.push(`status = ${sqlString(validateStatus(status))}`);
-		if (workspace) where.push(`workspace_id = ${sqlString(workspace)}`);
-		const sql = `SELECT ${packageSelect()} FROM delivery_packages ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC, slug ASC LIMIT ${limit}`;
-		outputRows(runD1(sql, flags).rows, flags, 'packages');
+		if (workspace) query.set('workspace', workspace);
+		query.set('limit', String(intFlag(flags, 'limit', 100)));
+		const result = await apiRequest(flags, 'GET', `/packages?${query.toString()}`);
+		const rows = Array.isArray(/** @type {JsonObject} */ (result).packages) ? /** @type {Row[]} */ (/** @type {JsonObject} */ (result).packages) : [];
+		outputRows(rows, flags, 'packages');
 		return;
 	}
 
 	const slug = validateSlug(positionals[2]);
 	if (action === 'get') {
-		const rows = runD1(`SELECT ${packageSelect()} FROM delivery_packages WHERE slug = ${sqlString(slug)} LIMIT 1`, flags).rows;
-		if (boolFlag(flags, 'json')) writeJson({ package: rows[0] ?? null });
-		else if (rows[0]) writeText(Object.entries(rows[0]).map(([key, value]) => `${key}: ${value ?? ''}`).join('\n'));
-		else throw new CliError(`Package not found: ${slug}`, 2);
+		const result = await apiRequest(flags, 'GET', `/packages/${encodeURIComponent(slug)}`);
+		outputRow(/** @type {Row | null | undefined} */ (/** @type {JsonObject} */ (result).package), flags, 'package');
 		return;
 	}
 
 	if (action === 'upsert') {
 		const data = readJsonData(flags);
-		const title = stringFlag(flags, 'title') ?? pick(data, 'title');
+		const title = stringFlag(flags, 'title') ?? pickText(data, 'title');
 		if (!title) throw new CliError('packages upsert requires --title or data.title.');
-		const password = stringFlag(flags, 'password') ?? pick(data, 'password');
-		const passwordHash = stringFlag(flags, 'password-hash') ?? pick(data, 'passwordHash', 'password_hash') ?? (password ? hashPassword(String(password)) : undefined);
+		const password = stringFlag(flags, 'password') ?? pickText(data, 'password');
+		const passwordHash = stringFlag(flags, 'password-hash') ?? pickText(data, 'passwordHash', 'password_hash') ?? (password ? hashPassword(password) : undefined);
 		if (!passwordHash) throw new CliError('packages upsert requires --password, --password-hash, data.password, or data.passwordHash.');
-		const customerName = stringFlag(flags, 'customer-name') ?? pick(data, 'customerName', 'customer_name');
-		const workspaceId = stringFlag(flags, 'workspace') ?? pick(data, 'workspaceId', 'workspace_id');
+		const customerName = stringFlag(flags, 'customer-name') ?? pickText(data, 'customerName', 'customer_name');
+		const workspaceId = stringFlag(flags, 'workspace') ?? pickText(data, 'workspaceId', 'workspace_id');
 		const status = validateStatus(stringFlag(flags, 'status') ?? pick(data, 'status') ?? 'active');
-		const signUrl = stringFlag(flags, 'sign-url') ?? pick(data, 'signUrl', 'sign_url');
-		const documentId = stringFlag(flags, 'document-id') ?? pick(data, 'documentId', 'mereinkDocumentId', 'mereink_document_id');
-		const sql = `
-			INSERT INTO delivery_packages (slug, title, customer_name, workspace_id, status, password_hash, sign_url, mereink_document_id, created_at, updated_at)
-			VALUES (${sqlString(slug)}, ${sqlString(title)}, ${sqlNullable(customerName)}, ${sqlNullable(workspaceId)}, ${sqlString(status)}, ${sqlString(passwordHash)}, ${sqlNullable(signUrl)}, ${sqlNullable(documentId)}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			ON CONFLICT(slug) DO UPDATE SET
-				title = excluded.title,
-				customer_name = excluded.customer_name,
-				workspace_id = excluded.workspace_id,
-				status = excluded.status,
-				password_hash = excluded.password_hash,
-				sign_url = excluded.sign_url,
-				mereink_document_id = excluded.mereink_document_id,
-				updated_at = CURRENT_TIMESTAMP
-			RETURNING ${packageSelect()}
-		`;
-		const row = runD1(sql, flags).rows[0] ?? null;
-		if (boolFlag(flags, 'json')) writeJson({ package: row });
-		else writeText(`upserted package: ${row?.slug ?? slug}`);
+		const signUrl = validateSignUrl(stringFlag(flags, 'sign-url') ?? pick(data, 'signUrl', 'sign_url'));
+		const documentId = stringFlag(flags, 'document-id') ?? pickText(data, 'documentId', 'mereinkDocumentId', 'mereink_document_id');
+		const result = await apiRequest(flags, 'PUT', `/packages/${encodeURIComponent(slug)}`, {
+			title,
+			customerName: customerName ?? null,
+			workspaceId: workspaceId ?? null,
+			status,
+			passwordHash,
+			signUrl: signUrl ?? null,
+			documentId: documentId ?? null
+		});
+		if (boolFlag(flags, 'json')) writeJson(result);
+		else writeText(`upserted package: ${slug}`);
 		return;
 	}
 
 	if (action === 'set-status') {
 		const status = validateStatus(stringFlag(flags, 'status'));
-		const rows = runD1(`UPDATE delivery_packages SET status = ${sqlString(status)}, updated_at = CURRENT_TIMESTAMP WHERE slug = ${sqlString(slug)} RETURNING ${packageSelect()}`, flags).rows;
-		if (!rows[0]) throw new CliError(`Package not found: ${slug}`, 2);
-		if (boolFlag(flags, 'json')) writeJson({ package: rows[0] });
+		const result = await apiRequest(flags, 'PATCH', `/packages/${encodeURIComponent(slug)}/status`, { status });
+		if (boolFlag(flags, 'json')) writeJson(result);
 		else writeText(`status set: ${slug} -> ${status}`);
 		return;
 	}
 
 	if (action === 'set-sign-url') {
-		const signUrl = stringFlag(flags, 'sign-url') ?? '';
-		const rows = runD1(`UPDATE delivery_packages SET sign_url = ${sqlNullable(signUrl)}, updated_at = CURRENT_TIMESTAMP WHERE slug = ${sqlString(slug)} RETURNING ${packageSelect()}`, flags).rows;
-		if (!rows[0]) throw new CliError(`Package not found: ${slug}`, 2);
-		if (boolFlag(flags, 'json')) writeJson({ package: rows[0] });
+		const signUrl = validateSignUrl(stringFlag(flags, 'sign-url') ?? '');
+		const result = await apiRequest(flags, 'PATCH', `/packages/${encodeURIComponent(slug)}/sign-url`, { signUrl: signUrl ?? null });
+		if (boolFlag(flags, 'json')) writeJson(result);
 		else writeText(`sign url set: ${slug}`);
 		return;
 	}
 
 	if (action === 'delete') {
 		requireDestructive(slug, flags);
-		const rows = runD1(`DELETE FROM delivery_packages WHERE slug = ${sqlString(slug)} RETURNING slug`, flags).rows;
-		if (!rows[0]) throw new CliError(`Package not found: ${slug}`, 2);
-		if (boolFlag(flags, 'json')) writeJson({ deleted: rows[0] });
+		const result = await apiRequest(flags, 'DELETE', `/packages/${encodeURIComponent(slug)}?confirm=${encodeURIComponent(slug)}`);
+		if (boolFlag(flags, 'json')) writeJson(result);
 		else writeText(`deleted package: ${slug}`);
 		return;
 	}
@@ -669,13 +718,11 @@ function runPackages(action, positionals, flags) {
  * @param {string[]} positionals
  * @param {Flags} flags
  */
-function runSamePage(action, positionals, flags) {
+async function runSamePage(action, positionals, flags) {
 	const slug = validateSlug(positionals[2]);
 	if (action === 'get') {
-		const rows = runD1(`SELECT package_slug, mode, payload_json, custom_html, created_at, updated_at FROM delivery_package_pages WHERE package_slug = ${sqlString(slug)} LIMIT 1`, flags).rows;
-		if (boolFlag(flags, 'json')) writeJson({ samePage: rows[0] ?? null });
-		else if (rows[0]) writeText(Object.entries(rows[0]).map(([key, value]) => `${key}: ${value ?? ''}`).join('\n'));
-		else throw new CliError(`Same Page content not found: ${slug}`, 2);
+		const result = await apiRequest(flags, 'GET', `/same-page/${encodeURIComponent(slug)}`);
+		outputRow(/** @type {Row | null | undefined} */ (/** @type {JsonObject} */ (result).samePage), flags, 'samePage');
 		return;
 	}
 
@@ -685,27 +732,20 @@ function runSamePage(action, positionals, flags) {
 		const payloadJson = readPayloadText(flags, data);
 		const customHtml = mode === 'custom_html' ? readCustomHtml(flags, data) : null;
 		if (mode === 'custom_html' && !customHtml) throw new CliError('custom_html mode requires --custom-html, --custom-html-file, or data.customHtml.');
-		const sql = `
-			INSERT INTO delivery_package_pages (package_slug, mode, payload_json, custom_html, created_at, updated_at)
-			VALUES (${sqlString(slug)}, ${sqlString(mode)}, ${sqlString(payloadJson)}, ${sqlNullable(customHtml)}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-			ON CONFLICT(package_slug) DO UPDATE SET
-				mode = excluded.mode,
-				payload_json = excluded.payload_json,
-				custom_html = excluded.custom_html,
-				updated_at = CURRENT_TIMESTAMP
-			RETURNING package_slug, mode, payload_json, custom_html, created_at, updated_at
-		`;
-		const row = runD1(sql, flags).rows[0] ?? null;
-		if (boolFlag(flags, 'json')) writeJson({ samePage: row });
+		const result = await apiRequest(flags, 'PUT', `/same-page/${encodeURIComponent(slug)}`, {
+			mode,
+			payloadJson,
+			customHtml: customHtml ?? null
+		});
+		if (boolFlag(flags, 'json')) writeJson(result);
 		else writeText(`upserted same-page: ${slug}`);
 		return;
 	}
 
 	if (action === 'delete') {
 		requireDestructive(slug, flags);
-		const rows = runD1(`DELETE FROM delivery_package_pages WHERE package_slug = ${sqlString(slug)} RETURNING package_slug`, flags).rows;
-		if (!rows[0]) throw new CliError(`Same Page content not found: ${slug}`, 2);
-		if (boolFlag(flags, 'json')) writeJson({ deleted: rows[0] });
+		const result = await apiRequest(flags, 'DELETE', `/same-page/${encodeURIComponent(slug)}?confirm=${encodeURIComponent(slug)}`);
+		if (boolFlag(flags, 'json')) writeJson(result);
 		else writeText(`deleted same-page: ${slug}`);
 		return;
 	}
@@ -719,7 +759,7 @@ function runSamePage(action, positionals, flags) {
  */
 function runUrl(positionals, flags) {
 	const slug = validateSlug(positionals[1]);
-	const baseUrl = (stringFlag(flags, 'base-url') ?? process.env.MERE_DELIVER_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/u, '');
+	const baseUrl = serviceBaseUrl(flags, null);
 	const url = `${baseUrl}/${slug}/`;
 	if (boolFlag(flags, 'json')) writeJson({ slug, url });
 	else writeText(url);
@@ -791,10 +831,10 @@ async function main(argv) {
 		return;
 	}
 	if (positionals[0] === 'db' && positionals[1] === 'info') return runDbInfo(flags);
-	if (positionals[0] === 'auth') return runAuth(positionals[1], flags);
+	if (positionals[0] === 'auth') return await runAuth(positionals[1], flags);
 	if (positionals[0] === 'hash-password') return await runHashPassword(positionals, flags);
-	if (positionals[0] === 'packages') return runPackages(positionals[1], positionals, flags);
-	if (positionals[0] === 'same-page') return runSamePage(positionals[1], positionals, flags);
+	if (positionals[0] === 'packages') return await runPackages(positionals[1], positionals, flags);
+	if (positionals[0] === 'same-page') return await runSamePage(positionals[1], positionals, flags);
 	if (positionals[0] === 'url') return runUrl(positionals, flags);
 	throw new CliError(`Unknown command: ${positionals[0]}`);
 }

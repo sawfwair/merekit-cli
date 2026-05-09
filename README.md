@@ -222,12 +222,12 @@ Registered namespaces:
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
 | `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
 | `media` | browser | Audio imports, transcripts, embeddings, media search, and local processing through `mere.run` |
-| `deliver` | none | Password-gated delivery packages, Same Page payloads, and share URLs via Wrangler/D1 |
+| `deliver` | token | Password-gated delivery packages, Same Page payloads, and share URLs via the hosted Deliver API |
 | `link` | none | YAML-based links between work surfaces; runs standalone or bootstraps from Mere workspace state |
 
 `mere media` cloud and local-store reads work through the bundled media adapter. Local processing commands such as `mere media process ... --transcribe --embed` additionally require the public `mere.run` runtime and local models. Run `mere setup mere-run` to orchestrate runtime install from an existing binary, the local `~/mere/run-public` source checkout, or the verified DMG at `https://mere.run/releases/mere-run.dmg`. Then run `mere setup mere-run models --app media` to pull Media-requested models. Use `MERE_MEDIA_MERE_RUN_BIN` or `MERE_RUN_BIN` only for explicit runtime overrides.
 
-`mere deliver` is backed by the Cloudflare Wrangler/D1 command surface for `share.mere.ink`. Set `WRANGLER_BIN="cfman personal wrangler"` when using cfman, or `MERE_DELIVER_WRANGLER_CONFIG=~/mere/deliver/wrangler.jsonc` when the bundled adapter needs the private Worker config.
+`mere deliver` calls the hosted Deliver API at `https://share.mere.ink` and stores its bearer token in `~/.local/state/mere-deliver/session.json`. Run `mere deliver auth login --token TOKEN`, or set `MERE_DELIVER_API_TOKEN` for one-off automation. Use `MERE_DELIVER_BASE_URL` only when intentionally targeting a non-production Deliver API.
 
 `mere link` is intentionally usable without hosted Mere services. It is bundled into `@merekit/cli` for convenience and also ships as the standalone TypeScript package `@merekit/link` with the `mere-link` binary. It validates `mere.link.yaml`, resolves entity/project role surfaces, lists explicit links, and can generate starter YAML from `mere ops workspace-snapshot` when a workspace is available:
 
