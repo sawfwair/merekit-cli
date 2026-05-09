@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,9 +11,10 @@ const VERSION = 'mere-link 0.1.0';
 const DEFAULT_CONFIG = 'mere.link.yaml';
 const WRITES = ['create', 'update', 'delete', 'comment', 'message', 'bookmark', 'pin', 'topic', 'purpose', 'sync'];
 const PLUGINS = {
-    mere: { kinds: ['workspace', 'app', 'record', 'link'], writes: [] },
+    mere: { kinds: ['workspace', 'app', 'record', 'link'], writes: ['sync'] },
+    monday: { kinds: ['board', 'workspace', 'folder', 'item'], writes: ['create', 'update', 'comment'] },
     'github-cli': { kinds: ['repo', 'issue-tracker', 'link'], writes: ['create', 'update', 'comment'] },
-    slack: { kinds: ['channel'], writes: ['topic', 'purpose', 'message', 'bookmark', 'pin'] },
+    slack: { kinds: ['channel'], writes: ['topic', 'purpose', 'canvas', 'message', 'bookmark', 'pin'] },
     linear: { kinds: ['team', 'project', 'issue-tracker'], writes: ['create', 'update', 'comment'] },
     jira: { kinds: ['project', 'issue-tracker'], writes: ['create', 'update', 'comment'] },
     url: { kinds: ['link', 'document'], writes: [] },
@@ -30,7 +32,12 @@ const MANIFEST_COMMANDS = [
     command(['projects', 'list'], 'List configured projects for one entity or all entities.', { flags: ['config'], positionals: ['entity'] }),
     command(['surfaces', 'list'], 'List configured role surfaces.', { flags: ['config'], positionals: ['entity', 'project'] }),
     command(['links', 'list'], 'List explicit links between configured surfaces.', { flags: ['config'] }),
-    command(['context', 'inspect'], 'Show one entity/project context and optional role surface.', { flags: ['config', 'role'], positionals: ['entity', 'project'] })
+    command(['context', 'inspect'], 'Show one entity/project context and optional role surface.', { flags: ['config', 'role'], positionals: ['entity', 'project'] }),
+    command(['sync', 'projects'], 'Plan or apply Mere Projects project/link materialization from this graph.', {
+        risk: 'write',
+        flags: ['config', 'workspace', 'apply', 'mere-bin', 'role', 'date-start', 'json'],
+        positionals: ['entity', 'project']
+    })
 ];
 const HELP_TEXT = `mere-link
 
@@ -47,6 +54,7 @@ Usage:
   mere-link surfaces list [entity] [project] [--config FILE] [--json]
   mere-link links list [--config FILE] [--json]
   mere-link context inspect <entity> [project] [--role ROLE] [--config FILE] [--json]
+  mere-link sync projects [entity] [project] [--config FILE] [--workspace ID] [--apply] [--json]
 
 mere.link.yaml declares entities, projects, integrations, role surfaces, and links.
 It can be used by itself, with a few Mere apps, or with a full Mere workspace.`;
@@ -75,7 +83,7 @@ function manifest() {
         auth: { kind: 'none' },
         baseUrlEnv: [],
         sessionPath: null,
-        globalFlags: ['config', 'workspace', 'snapshot-file', 'output', 'name', 'role', 'json', 'yes'],
+        globalFlags: ['config', 'workspace', 'snapshot-file', 'output', 'name', 'role', 'date-start', 'json', 'yes', 'apply', 'mere-bin'],
         commands: MANIFEST_COMMANDS
     };
 }
@@ -164,7 +172,11 @@ function resolvePath(value) {
         return os.homedir();
     if (value.startsWith('~/'))
         return path.join(os.homedir(), value.slice(2));
-    return path.resolve(value);
+    if (path.isAbsolute(value))
+        return value;
+    const callerCwd = process.env.PWD?.trim();
+    const base = callerCwd ? path.resolve(callerCwd) : process.cwd();
+    return path.resolve(base, value);
 }
 async function fileExists(filePath) {
     try {
@@ -436,6 +448,255 @@ function printTable(rows, columns) {
     for (const row of rows)
         writeText(columns.map((column) => String(row[column] ?? '').padEnd(widths[column] ?? column.length)).join('  '));
 }
+function selectSyncTargets(config, entityRef, projectRef) {
+    if (projectRef && !entityRef)
+        throw new Error('Project filter requires an entity filter for sync projects.');
+    const entityEntries = entityRef ? [resolveEntity(config, entityRef)] : Object.entries(config.entities).map(([key, entity]) => ({ key, entity }));
+    return entityEntries.flatMap(({ key: entityKey, entity }) => {
+        const projects = projectRef ? [resolveProject(entityKey, entity, projectRef)] : Object.entries(entity.projects).map(([key, project]) => ({ key, project }));
+        return projects
+            .filter(({ project }) => Boolean(project.surfaces.work))
+            .map(({ key: projectKey, project }) => ({
+            key: `${entityKey}/${projectKey}`,
+            entityKey,
+            projectKey,
+            entity,
+            project
+        }));
+    });
+}
+function findProjectsSyncSurface(config) {
+    const candidates = [];
+    for (const [entityKey, entity] of Object.entries(config.entities)) {
+        for (const [projectKey, project] of Object.entries(entity.projects)) {
+            for (const [role, surface] of Object.entries(project.surfaces)) {
+                const integration = config.integrations[surface.integration];
+                if (integration?.plugin === 'mere' && surface.kind === 'app' && normalizeKey(surface.id) === 'projects') {
+                    candidates.push({ path: `${entityKey}/${projectKey}:${role}`, surface, integration });
+                }
+            }
+        }
+    }
+    const allowed = candidates.find((candidate) => candidate.surface.policy?.writes.includes('sync'));
+    if (allowed)
+        return allowed;
+    const hint = candidates[0]?.path ?? 'a mere app surface with id: projects';
+    throw new Error(`Mere Projects sync denied. Add policy.writes: [sync] to ${hint} before applying or planning sync.`);
+}
+function syncWorkspace(config, flags, syncSurface) {
+    const workspace = stringFlag(flags, 'workspace') ?? syncSurface.integration.workspace ?? config.integrations.mere?.workspace;
+    if (!workspace)
+        throw new Error('Mere Projects sync requires --workspace or a workspace on the target mere integration.');
+    return workspace;
+}
+function todayIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+}
+function syncRole(flags) {
+    const role = stringFlag(flags, 'role') ?? 'subcontract';
+    if (role !== 'prime' && role !== 'subcontract')
+        throw new Error('--role must be prime or subcontract.');
+    return role;
+}
+function stableId(prefix, value) {
+    return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 20)}`;
+}
+function surfaceForAttributes(surface) {
+    return {
+        integration: surface.integration,
+        plugin: surface.plugin,
+        kind: surface.kind,
+        id: surface.id,
+        ...(surface.name ? { name: surface.name } : {}),
+        ...(surface.optional ? { optional: true } : {})
+    };
+}
+function projectPayload(target, flags, existing) {
+    const surfaces = Object.fromEntries(Object.entries(target.project.surfaces).map(([role, surface]) => [role, surfaceForAttributes(surface)]));
+    return {
+        kind: 'project.default',
+        schemaVersion: 1,
+        attributes: {
+            mereLinkKey: target.key,
+            mereLinkEntity: target.entityKey,
+            mereLinkProject: target.projectKey,
+            mereLinkSource: 'mere.link.yaml',
+            surfaces
+        },
+        title: target.project.name,
+        client: target.entity.name,
+        contractVehicle: null,
+        role: syncRole(flags),
+        dateStart: typeof existing?.dateStart === 'string' && existing.dateStart ? existing.dateStart : stringFlag(flags, 'date-start') ?? todayIsoDate(),
+        dateEnd: null,
+        isOngoing: true,
+        description: [
+            `Operational surface record synced from ${target.key} in mere.link.yaml.`,
+            'This record connects Mere Projects to the configured systems of record for live delivery work.'
+        ].join('\n\n'),
+        outcomes: 'Keeps Mere Projects connected to the work, discussion, code, and operational surfaces declared in mere.link.yaml.',
+        capabilities: ['Mere Link', ...new Set(Object.values(target.project.surfaces).map((surface) => surface.plugin ?? surface.integration))],
+        tags: ['mere-link', normalizeKey(target.entity.name), normalizeKey(target.project.name), ...Object.keys(target.project.surfaces).map(normalizeKey)].filter(Boolean),
+        status: 'active'
+    };
+}
+function configuredMereProjectId(target) {
+    const surface = Object.values(target.project.surfaces).find((candidate) => candidate.plugin === 'mere' && candidate.kind === 'record');
+    return surface?.id ?? null;
+}
+function projectAttributesFromPayload(payload) {
+    return isRecord(payload.attributes) ? payload.attributes : {};
+}
+function mergedProjectAttributes(existing, plan) {
+    return {
+        ...(isRecord(existing.attributes) ? existing.attributes : {}),
+        ...projectAttributesFromPayload(plan.payload)
+    };
+}
+function httpUrl(value) {
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+    }
+    catch {
+        return null;
+    }
+}
+function surfaceUrl(surface, integration) {
+    const plugin = surface.plugin ?? integration.plugin;
+    if (plugin === 'monday' && surface.kind === 'board') {
+        const baseUrl = integration.baseUrl?.replace(/\/+$/u, '') || 'https://monday.com';
+        return `${baseUrl}/boards/${encodeURIComponent(surface.id)}`;
+    }
+    if (plugin === 'github-cli' && surface.kind === 'repo')
+        return `https://github.com/${surface.id}`;
+    if (plugin === 'slack' && surface.kind === 'channel' && integration.workspace) {
+        return `https://${integration.workspace}.slack.com/archives/${surface.id}`;
+    }
+    if (plugin === 'url')
+        return httpUrl(surface.id);
+    return null;
+}
+function linkPlansForTarget(config, target) {
+    return Object.entries(target.project.surfaces).flatMap(([role, surface]) => {
+        const integration = config.integrations[surface.integration];
+        if (!integration)
+            return [];
+        const url = surfaceUrl(surface, integration);
+        if (!url)
+            return [];
+        const kind = `${surface.plugin ?? integration.plugin}.${surface.kind}`;
+        const label = `${target.project.name} ${role}`;
+        const payload = {
+            id: stableId('lnk_mlk', `${target.key}:${role}:${url}`),
+            label,
+            url,
+            kind
+        };
+        return [{
+                projectKey: target.key,
+                role,
+                label,
+                url,
+                kind,
+                payload
+            }];
+    });
+}
+function buildProjectsSyncPlan(config, flags, entityRef, projectRef) {
+    const syncSurface = findProjectsSyncSurface(config);
+    const workspace = syncWorkspace(config, flags, syncSurface);
+    const targets = selectSyncTargets(config, entityRef, projectRef);
+    const projects = targets.map((target) => {
+        const existingId = configuredMereProjectId(target);
+        return {
+            key: target.key,
+            entity: target.entityKey,
+            project: target.projectKey,
+            title: target.project.name,
+            client: target.entity.name,
+            action: 'upsert',
+            existingId,
+            payload: projectPayload(target, flags)
+        };
+    });
+    const links = targets.flatMap((target) => linkPlansForTarget(config, target));
+    return {
+        apply: boolFlag(flags, 'apply'),
+        workspace,
+        policySurface: syncSurface.path,
+        projectCount: projects.length,
+        linkCount: links.length,
+        projects,
+        links
+    };
+}
+function findExistingProject(existing, plan) {
+    if (plan.existingId) {
+        const byId = existing.find((project) => project.id === plan.existingId);
+        if (!byId)
+            throw new Error(`Configured Mere project ${plan.existingId} for ${plan.key} was not found in the target workspace.`);
+        return byId;
+    }
+    return existing.find((project) => isRecord(project.attributes) && project.attributes.mereLinkKey === plan.key);
+}
+function mereBin(flags) {
+    return stringFlag(flags, 'mere-bin') ?? process.env.MERE_BIN?.trim() ?? 'mere';
+}
+function runMereJson(flags, args, data) {
+    const finalArgs = [...args, '--json'];
+    if (data)
+        finalArgs.push('--data', JSON.stringify(data));
+    const result = spawnSync(mereBin(flags), finalArgs, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: process.env
+    });
+    if (result.error)
+        throw result.error;
+    if (result.status !== 0) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || `mere ${finalArgs.join(' ')} exited ${result.status}`);
+    }
+    return JSON.parse(result.stdout);
+}
+function requireProjectId(value) {
+    if (!isRecord(value) || typeof value.id !== 'string' || !value.id.trim()) {
+        throw new Error('Mere Projects did not return a project id.');
+    }
+    return value.id;
+}
+function applyProjectsSyncPlan(plan, flags) {
+    const existing = asArray(runMereJson(flags, ['projects', 'project', 'list', '--workspace', plan.workspace]), 'Mere Projects project list')
+        .filter(isRecord);
+    const projectResults = [];
+    const linkResults = [];
+    const projectIds = new Map();
+    for (const projectPlan of plan.projects) {
+        const existingProject = findExistingProject(existing, projectPlan);
+        const payload = existingProject
+            ? { attributes: mergedProjectAttributes(existingProject, projectPlan) }
+            : projectPlan.payload;
+        const result = existingProject?.id && typeof existingProject.id === 'string'
+            ? runMereJson(flags, ['projects', 'project', 'update', existingProject.id, '--workspace', plan.workspace], payload)
+            : runMereJson(flags, ['projects', 'project', 'create', '--workspace', plan.workspace], payload);
+        const projectId = requireProjectId(result);
+        projectIds.set(projectPlan.key, projectId);
+        projectResults.push({ key: projectPlan.key, action: existingProject ? 'updated' : 'created', id: projectId });
+    }
+    for (const linkPlan of plan.links) {
+        const projectId = projectIds.get(linkPlan.projectKey);
+        if (!projectId)
+            continue;
+        const result = runMereJson(flags, ['projects', 'link', 'upsert', '--workspace', plan.workspace, '--project', projectId], linkPlan.payload);
+        linkResults.push({ projectKey: linkPlan.projectKey, role: linkPlan.role, result });
+    }
+    return {
+        ok: true,
+        workspace: plan.workspace,
+        projects: projectResults,
+        links: linkResults
+    };
+}
 function starterConfig(input = {}) {
     const workspace = input.workspace ?? 'workspace-id';
     const name = input.name ?? 'Workspace';
@@ -551,15 +812,15 @@ function renderCompletion(shell) {
     if (shell === 'bash') {
         return `# mere-link bash completion
 _mere_link_completion() {
-  COMPREPLY=($(compgen -W "commands completion config generate entities projects surfaces links context" -- "\${COMP_WORDS[COMP_CWORD]}"))
+  COMPREPLY=($(compgen -W "commands completion config generate entities projects surfaces links context sync" -- "\${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _mere_link_completion mere-link`;
     }
     if (shell === 'zsh')
-        return '#compdef mere-link\n_arguments "1:command:(commands completion config generate entities projects surfaces links context)"';
+        return '#compdef mere-link\n_arguments "1:command:(commands completion config generate entities projects surfaces links context sync)"';
     if (shell === 'fish')
-        return 'complete -c mere-link -f -a "commands completion config generate entities projects surfaces links context"';
-    return 'commands completion config generate entities projects surfaces links context';
+        return 'complete -c mere-link -f -a "commands completion config generate entities projects surfaces links context sync"';
+    return 'commands completion config generate entities projects surfaces links context sync';
 }
 async function main(argv) {
     const { positionals, flags } = parseArgs(argv);
@@ -664,6 +925,31 @@ async function main(argv) {
                 ...config,
                 entities: { [context.entity.key]: { ...context.entity, projects: { [context.project.key]: context.project } } }
             }, context.entity.key, context.project.key), ['role', 'integration', 'plugin', 'kind', 'id', 'optional']);
+        }
+        return 0;
+    }
+    if (group === 'sync' && action === 'projects') {
+        const { config } = await loadConfig(flags);
+        const plan = buildProjectsSyncPlan(config, flags, rest[0], rest[1]);
+        if (plan.apply) {
+            const result = applyProjectsSyncPlan(plan, flags);
+            if (boolFlag(flags, 'json'))
+                writeJson({ plan, result });
+            else {
+                writeText(`Applied Mere Projects sync to ${plan.workspace}.`);
+                printTable(result.projects ?? [], ['key', 'action', 'id']);
+            }
+        }
+        else if (boolFlag(flags, 'json')) {
+            writeJson(plan);
+        }
+        else {
+            writeText(`Mere Projects sync plan for ${plan.workspace}`);
+            writeText(`Policy surface: ${plan.policySurface}`);
+            writeText(`Projects: ${plan.projectCount}`);
+            writeText(`Links: ${plan.linkCount}`);
+            writeText('Dry run only. Re-run with --apply to write project/link records.');
+            printTable(plan.projects.map((project) => ({ key: project.key, title: project.title, client: project.client, action: project.action })), ['key', 'title', 'client', 'action']);
         }
         return 0;
     }

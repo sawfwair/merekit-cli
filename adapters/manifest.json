@@ -87,6 +87,13 @@
       "builtAt": "2026-05-07T20:23:22.479Z"
     },
     {
+      "app": "deliver",
+      "sourceRepoPath": "deliver",
+      "sourceArtifactPath": "deliver/cli/run.js",
+      "adapterPath": "adapters/deliver/run.js",
+      "builtAt": "2026-05-09T00:00:00.000Z"
+    },
+    {
       "app": "link",
       "sourceRepoPath": "merekit-link",
       "sourceArtifactPath": "merekit-link/dist/run.js",

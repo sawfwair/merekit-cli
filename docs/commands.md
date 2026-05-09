@@ -114,6 +114,7 @@ mere media items list --workspace ws_123 --json
 mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
 mere link config init --output mere.link.yaml
 mere link generate workspace --workspace ws_123 --output mere.link.yaml --yes
+mere link sync projects --config mere.link.yaml --json
 ```
 
 The business waitlist command opens a Turnstile and magic-link protected browser page with the email prefilled; the CLI does not submit the email directly.
@@ -207,7 +208,8 @@ This matrix is generated from the current local app manifests.
 | `gives` | 40 | 6 | 22 read, 13 write, 5 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant` |
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 | `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
-| `link` | 11 | 0 | 9 read, 2 write | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `json`, `yes` |
+| `deliver` | 17 | 3 | 9 read, 5 write, 2 destructive, 1 external | `database`, `remote`, `local`, `config`, `cwd`, `json` |
+| `link` | 12 | 0 | 9 read, 3 write | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin` |
 
 ## Output And Exit Codes
 

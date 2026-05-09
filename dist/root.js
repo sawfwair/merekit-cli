@@ -72,7 +72,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects agent today zone video network email gives works media link
+  business finance projects agent today zone video network email gives works media deliver link
 `;
 }
 function helpTopicText(topic) {

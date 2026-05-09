@@ -17,6 +17,7 @@ Bundled adapters in this build:
 - `gives`
 - `works`
 - `media`
+- `deliver`
 - `link`
 
 The `link` adapter is bundled from the public `@merekit/link` TypeScript package source. It provides standalone YAML-based cross-surface linking and can bootstrap configuration from a Mere workspace snapshot.

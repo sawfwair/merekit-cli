@@ -16,6 +16,7 @@ export const PRODUCT_APP_KEYS: AppKey[] = [
 	'gives',
 	'works',
 	'media',
+	'deliver',
 	'link'
 ];
 
@@ -195,6 +196,19 @@ export function createRegistry(mereRoot: string, packageRoot = repo(mereRoot, 'c
 			pathBins: ['mere-media'],
 			authKind: 'browser',
 			packageScripts: { build: 'build:cli', check: 'check' }
+		},
+		{
+			key: 'deliver',
+			label: 'Deliver',
+			namespace: 'deliver',
+			aliases: ['deliver', 'mere-deliver', 'share'],
+			repoDir: repo(mereRoot, 'deliver'),
+			envCliPath: 'MERE_DELIVER_CLI',
+			bundledCliPath: adapter(packageRoot, 'deliver'),
+			localCliPath: path.join(repo(mereRoot, 'deliver'), 'cli', 'run.js'),
+			pathBins: ['mere-deliver'],
+			authKind: 'none',
+			packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
 		},
 		{
 			key: 'link',

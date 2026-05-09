@@ -11,6 +11,7 @@ export type AppKey =
 	| 'gives'
 	| 'works'
 	| 'media'
+	| 'deliver'
 	| 'link';
 
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
