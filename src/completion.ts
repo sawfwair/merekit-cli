@@ -49,7 +49,7 @@ export function renderCompletion(shell: string | undefined, registry: RegistryEn
 	const fishLines = [
 		`complete -c mere -f -n '__fish_use_subcommand' -a "${topWords}"`,
 		...Object.entries(subcommands).map(([command, words]) => `complete -c mere -f -n '__fish_seen_subcommand_from ${command}' -a "${words.join(' ')}"`),
-		`complete -c mere -f -n '__fish_seen_subcommand_from finance; and __fish_seen_subcommand_from profiles' -a "${thirdCommands['finance profiles'].join(' ')}"`
+		`complete -c mere -f -n '__fish_seen_subcommand_from finance; and __fish_seen_subcommand_from profiles' -a "${(thirdCommands['finance profiles'] ?? []).join(' ')}"`
 	].join('\n');
 
 	switch ((shell ?? 'bash').trim().toLowerCase()) {

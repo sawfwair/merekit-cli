@@ -1,19 +1,18 @@
 import { z } from 'zod';
 import { appendAudit, redactOutput } from './audit.js';
-import type { CliIO } from './root.js';
 import { loadManifest } from './manifest.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
 import { createRegistry, executionCwd, resolveCli } from './registry.js';
 import { isWriteLikeCommand } from './safety.js';
-import type { ManifestCommand, RegistryEntry } from './types.js';
+import type { CliIO, ManifestCommand, RegistryEntry } from './types.js';
 
 type McpOptions = {
 	io: CliIO;
 	allowWrites: boolean;
 };
 
-type ToolSpec = {
+export type ToolSpec = {
 	name: string;
 	description: string;
 	entry: RegistryEntry;
@@ -59,6 +58,12 @@ export async function listMcpTools(
 		}
 	}
 	return tools;
+}
+
+export function registerMcpToolSpecs(server: unknown, io: CliIO, tools: ToolSpec[]): void {
+	for (const spec of tools) {
+		registerToolCompat(server, spec, (input) => invokeTool(io, spec, input));
+	}
 }
 
 function inputToArgs(input: ToolInput, command: ManifestCommand): string[] {
@@ -145,9 +150,7 @@ export async function runMcpServer(options: McpOptions): Promise<void> {
 	const server = new McpServer({ name: 'mere', version: '0.1.0' });
 	const tools = await listMcpTools(registry, options.allowWrites, options.io.env);
 
-	for (const spec of tools) {
-		registerToolCompat(server, spec, (input) => invokeTool(options.io, spec, input));
-	}
+	registerMcpToolSpecs(server, options.io, tools);
 
 	await server.connect(new StdioServerTransport());
 }

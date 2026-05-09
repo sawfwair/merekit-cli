@@ -1,104 +1,104 @@
 {
   "schemaVersion": 1,
-  "builtAt": "2026-05-07T20:23:22.479Z",
+  "builtAt": "2026-05-09T10:59:42.141Z",
   "adapters": [
     {
       "app": "business",
       "sourceRepoPath": "business",
       "sourceArtifactPath": "business/packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "finance",
       "sourceRepoPath": "finance",
       "sourceArtifactPath": "finance/packages/cli/bin/merefi.ts",
       "adapterPath": "adapters/finance/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "projects",
       "sourceRepoPath": "projects",
       "sourceArtifactPath": "projects/dist/run.js",
       "adapterPath": "adapters/projects/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "agent",
       "sourceRepoPath": "agent",
       "sourceArtifactPath": "agent/cli-dist/run.js",
       "adapterPath": "adapters/agent/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "today",
       "sourceRepoPath": "today",
       "sourceArtifactPath": "today/dist/run.js",
       "adapterPath": "adapters/today/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "zone",
       "sourceRepoPath": "zone",
       "sourceArtifactPath": "zone/dist/run.js",
       "adapterPath": "adapters/zone/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "video",
       "sourceRepoPath": "video",
       "sourceArtifactPath": "video/dist/run.js",
       "adapterPath": "adapters/video/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "network",
       "sourceRepoPath": "network",
       "sourceArtifactPath": "network/dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "email",
       "sourceRepoPath": "email",
       "sourceArtifactPath": "email/dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "gives",
       "sourceRepoPath": "gives",
       "sourceArtifactPath": "gives/dist/run.js",
       "adapterPath": "adapters/gives/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "works",
       "sourceRepoPath": "works",
       "sourceArtifactPath": "works/dist/run.js",
       "adapterPath": "adapters/works/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "media",
       "sourceRepoPath": "media",
       "sourceArtifactPath": "media/dist/run.js",
       "adapterPath": "adapters/media/run.js",
-      "builtAt": "2026-05-07T20:23:22.479Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "deliver",
       "sourceRepoPath": "deliver",
       "sourceArtifactPath": "deliver/cli/run.js",
       "adapterPath": "adapters/deliver/run.js",
-      "builtAt": "2026-05-09T00:00:00.000Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     },
     {
       "app": "link",
       "sourceRepoPath": "merekit-link",
       "sourceArtifactPath": "merekit-link/dist/run.js",
       "adapterPath": "adapters/link/run.js",
-      "builtAt": "2026-05-08T16:57:01.828Z"
+      "builtAt": "2026-05-09T10:59:42.141Z"
     }
   ]
 }

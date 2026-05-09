@@ -10,12 +10,20 @@ Please read `SECURITY.md` before changing adapter handling, MCP behavior, auth f
 
 ```sh
 pnpm install
+pnpm lint
 pnpm check
-pnpm check:adapters
 pnpm test
+pnpm coverage
+pnpm check:adapters
 pnpm smoke
 pnpm smoke:mcp
 pnpm check:package
+```
+
+For the full agent-readiness gate, run:
+
+```sh
+pnpm verify
 ```
 
 For docs-only changes, also run:

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runCapture } from './process.js';
 
-export const DEFAULT_MERE_RUN_DMG_URL = 'https://public.stereovoid.com/mere-run-releases/mere-run.dmg';
+export const DEFAULT_MERE_RUN_DMG_URL = 'https://mere.run/releases/mere-run.dmg';
 const GLOBAL_CANDIDATES = ['/usr/local/bin/mere.run', '/opt/homebrew/bin/mere.run'];
 
 export type MereRunSource = 'explicit' | 'path' | 'global' | 'cached' | 'source' | 'dmg' | 'missing';
@@ -15,14 +15,14 @@ export type MereRunSource = 'explicit' | 'path' | 'global' | 'cached' | 'source'
 export type MereRunSetupOptions = {
 	env: NodeJS.ProcessEnv;
 	mereRoot: string;
-	explicitBin?: string;
-	installBin?: string;
-	sourceDir?: string;
-	downloadUrl?: string;
-	sha256?: string;
-	force?: boolean;
-	noSource?: boolean;
-	noDownload?: boolean;
+	explicitBin?: string | undefined;
+	installBin?: string | undefined;
+	sourceDir?: string | undefined;
+	downloadUrl?: string | undefined;
+	sha256?: string | undefined;
+	force?: boolean | undefined;
+	noSource?: boolean | undefined;
+	noDownload?: boolean | undefined;
 };
 
 export type MereRunSetupResult = {

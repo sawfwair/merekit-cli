@@ -148,7 +148,7 @@ mere setup mere-run models --app media --json
 mere setup mere-run --force --source-dir ~/mere/run-public --json
 ```
 
-The default DMG URL is `https://public.stereovoid.com/mere-run-releases/mere-run.dmg`. Download installs require `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256` so the root CLI can verify the artifact before mounting it.
+The default DMG URL is `https://mere.run/releases/mere-run.dmg`. Download installs require `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256` so the root CLI can verify the artifact before mounting it.
 
 The Media model request currently pulls `speech-asr-parakeet` for transcription and `text-embed-qwen3-0.6b` for transcript search embeddings.
 

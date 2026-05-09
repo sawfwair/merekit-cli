@@ -114,7 +114,7 @@ export function manifestCommandSafetyErrors(command: ManifestCommand): string[] 
 	if (risk === 'read' && hasWriteLikeShape(command)) {
 		errors.push('write-shaped command is marked read');
 	}
-	if (risk === 'destructive' && command.requiresYes !== true) {
+	if (risk === 'destructive' && !command.requiresYes) {
 		errors.push('destructive commands must require yes');
 	}
 	return errors;

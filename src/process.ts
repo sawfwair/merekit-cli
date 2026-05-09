@@ -3,10 +3,10 @@ import process from 'node:process';
 import type { ProcessResult } from './types.js';
 
 export type RunOptions = {
-	cwd?: string;
-	env?: NodeJS.ProcessEnv;
-	stdin?: 'ignore' | 'pipe';
-	timeoutMs?: number;
+	cwd?: string | undefined;
+	env?: NodeJS.ProcessEnv | undefined;
+	stdin?: 'ignore' | 'pipe' | undefined;
+	timeoutMs?: number | undefined;
 };
 
 export async function runCapture(

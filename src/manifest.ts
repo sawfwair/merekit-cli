@@ -1,6 +1,8 @@
+import { z } from 'zod';
 import type { AppCommandManifest, ManifestCommand, RegistryEntry, ResolvedCli } from './types.js';
 import { executionCwd, resolveCli } from './registry.js';
 import { runCapture } from './process.js';
+import { parseJson } from './json.js';
 
 export type ManifestLoadResult = {
 	entry: RegistryEntry;
@@ -10,18 +12,35 @@ export type ManifestLoadResult = {
 	error?: string;
 };
 
+const manifestCommandSchema = z.object({
+	id: z.string().min(1),
+	path: z.array(z.string().min(1)).min(1),
+	summary: z.string().min(1),
+	auth: z.enum(['none', 'session', 'workspace', 'token']),
+	risk: z.enum(['read', 'write', 'destructive', 'external']),
+	supportsJson: z.boolean(),
+	supportsData: z.boolean(),
+	requiresYes: z.boolean(),
+	requiresConfirm: z.boolean(),
+	positionals: z.array(z.string()).default([]),
+	flags: z.array(z.string()).default([]),
+	auditDefault: z.boolean().optional()
+});
+
+const appCommandManifestSchema = z.object({
+	schemaVersion: z.literal(1),
+	app: z.string().min(1),
+	namespace: z.string().min(1),
+	aliases: z.array(z.string()).default([]),
+	auth: z.object({ kind: z.enum(['browser', 'token', 'device', 'none', 'mixed']) }),
+	baseUrlEnv: z.array(z.string()),
+	sessionPath: z.string().nullable(),
+	globalFlags: z.array(z.string()).optional(),
+	commands: z.array(manifestCommandSchema)
+});
+
 export function validateManifest(value: unknown): AppCommandManifest {
-	if (!value || typeof value !== 'object') throw new Error('Manifest must be an object.');
-	const manifest = value as Partial<AppCommandManifest>;
-	if (manifest.schemaVersion !== 1) throw new Error('Manifest schemaVersion must be 1.');
-	if (!manifest.app || !manifest.namespace) throw new Error('Manifest app and namespace are required.');
-	if (!Array.isArray(manifest.commands)) throw new Error('Manifest commands must be an array.');
-	for (const command of manifest.commands) {
-		if (!command.id || !Array.isArray(command.path) || !command.summary) {
-			throw new Error(`Invalid command entry in ${manifest.app}.`);
-		}
-	}
-	return manifest as AppCommandManifest;
+	return appCommandManifestSchema.parse(value);
 }
 
 export async function loadManifest(
@@ -50,7 +69,7 @@ export async function loadManifest(
 			entry,
 			resolved,
 			ok: true,
-			manifest: validateManifest(JSON.parse(result.stdout) as unknown)
+			manifest: validateManifest(parseJson(result.stdout))
 		};
 	} catch (error) {
 		return {

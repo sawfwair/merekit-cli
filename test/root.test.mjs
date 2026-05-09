@@ -334,7 +334,7 @@ test('tui waitlist email flag delegates directly without prompting', async () =>
   });
   assert.equal(code, 0, stderr);
   assert.deepEqual(commands, [['business', 'waitlist', 'join', '--email', 'person@example.com']]);
-  assert.match(stdout, /Opening waitlist:/);
+  assert.match(stdout, /Opening waitlist/);
   assert.match(stdout, /opened/);
 });
 
@@ -447,7 +447,7 @@ test('adapter registry is covered by bundle metadata and docs', async () => {
     assert.match(doc, /mere setup mere-run models --app media/);
   }
   for (const doc of [readme, commandsDoc, installDoc, adaptersReadme]) {
-    assert.match(doc, /https:\/\/public\.stereovoid\.com\/mere-run-releases\/mere-run\.dmg/);
+    assert.match(doc, /https:\/\/mere\.run\/releases\/mere-run\.dmg/);
   }
 });
 

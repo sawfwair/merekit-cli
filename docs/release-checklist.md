@@ -5,13 +5,16 @@ Use this before publishing `@merekit/cli` or making release-facing repository ch
 ## Preflight
 
 ```sh
+pnpm verify
+pnpm docs:build
 pnpm check
+pnpm lint
 pnpm check:adapters
 pnpm test
+pnpm coverage
 pnpm smoke
 pnpm smoke:mcp
 pnpm check:package
-pnpm docs:build
 pnpm test:pack
 pnpm pack:dry
 gitleaks detect --source . --log-opts=--all --redact

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 import { spawnSync } from 'node:child_process';
 import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -14,7 +15,32 @@ const PASSWORD_HASH_ITERATIONS = 100_000;
 const STATUSES = new Set(['active', 'disabled', 'archived']);
 const MODES = new Set(['structured', 'custom_html']);
 
+/**
+ * @typedef {string | boolean | undefined} FlagValue
+ * @typedef {Record<string, FlagValue>} Flags
+ * @typedef {{ positionals: string[]; flags: Flags }} ParsedArgs
+ * @typedef {Record<string, unknown>} JsonObject
+ * @typedef {Record<string, unknown>} Row
+ * @typedef {{ code: number; stdout: string; stderr: string }} WranglerResult
+ * @typedef {{
+ *   auth?: string;
+ *   risk?: string;
+ *   supportsJson?: boolean;
+ *   supportsData?: boolean;
+ *   requiresYes?: boolean;
+ *   requiresConfirm?: boolean;
+ *   positionals?: string[];
+ *   flags?: string[];
+ *   auditDefault?: boolean;
+ * }} CommandOptions
+ * @typedef {ReturnType<typeof command>} CommandDescriptor
+ */
+
 class CliError extends Error {
+	/**
+	 * @param {string} message
+	 * @param {number} [code]
+	 */
 	constructor(message, code = 1) {
 		super(message);
 		this.code = code;
@@ -45,6 +71,11 @@ Wrangler:
   Set WRANGLER_BIN="cfman personal wrangler" to run through cfman.
   Set MERE_DELIVER_WRANGLER_CONFIG to point at wrangler.jsonc when running outside ~/mere/deliver.`;
 
+/**
+ * @param {string[]} pathParts
+ * @param {string} summary
+ * @param {CommandOptions} [options]
+ */
 function command(pathParts, summary, options = {}) {
 	return {
 		id: pathParts.join('.'),
@@ -117,6 +148,7 @@ const MANIFEST_COMMANDS = [
 	command(['url'], 'Print the share URL for one delivery package slug.', { flags: ['base-url', 'json'], positionals: ['slug'] })
 ];
 
+/** @returns {JsonObject} */
 function manifest() {
 	return {
 		schemaVersion: 1,
@@ -131,8 +163,13 @@ function manifest() {
 	};
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {ParsedArgs}
+ */
 function parseArgs(argv) {
 	const positionals = [];
+	/** @type {Flags} */
 	const flags = {};
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -157,29 +194,51 @@ function parseArgs(argv) {
 	return { positionals, flags };
 }
 
+/**
+ * @param {Flags} flags
+ * @param {string} name
+ * @returns {boolean}
+ */
 function boolFlag(flags, name) {
 	return flags[name] === true || flags[name] === 'true' || flags[name] === '1';
 }
 
+/**
+ * @param {Flags} flags
+ * @param {string} name
+ * @returns {string | undefined}
+ */
 function stringFlag(flags, name) {
 	const value = flags[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * @param {Flags} flags
+ * @param {string} name
+ * @param {number} fallback
+ * @returns {number}
+ */
 function intFlag(flags, name, fallback) {
 	const value = Number(stringFlag(flags, name) ?? fallback);
 	if (!Number.isSafeInteger(value) || value <= 0) throw new CliError(`--${name} must be a positive integer.`);
 	return value;
 }
 
+/** @param {unknown} value */
 function writeJson(value) {
 	process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** @param {string} value */
 function writeText(value) {
 	process.stdout.write(`${value}\n`);
 }
 
+/**
+ * @param {Uint8Array} buffer
+ * @returns {string}
+ */
 function base64Url(buffer) {
 	return Buffer.from(buffer)
 		.toString('base64')
@@ -188,12 +247,17 @@ function base64Url(buffer) {
 		.replaceAll('=', '');
 }
 
+/**
+ * @param {string} password
+ * @returns {string}
+ */
 function hashPassword(password) {
 	const salt = randomBytes(16);
 	const hash = pbkdf2Sync(password, salt, PASSWORD_HASH_ITERATIONS, 32, 'sha256');
 	return `${PASSWORD_HASH_SCHEME}$${PASSWORD_HASH_ITERATIONS}$${base64Url(salt)}$${base64Url(hash)}`;
 }
 
+/** @returns {Promise<string | undefined>} */
 async function readStdinPassword() {
 	if (process.stdin.isTTY) return undefined;
 	process.stdin.setEncoding('utf8');
@@ -202,6 +266,10 @@ async function readStdinPassword() {
 	return value.replace(/\r?\n$/, '');
 }
 
+/**
+ * @param {string} value
+ * @returns {string[]}
+ */
 function splitCommand(value) {
 	const parts = [];
 	const pattern = /"([^"]*)"|'([^']*)'|[^\s]+/gu;
@@ -209,12 +277,17 @@ function splitCommand(value) {
 	return parts;
 }
 
+/**
+ * @param {string} value
+ * @returns {string}
+ */
 function homePath(value) {
 	if (value === '~') return os.homedir();
 	if (value.startsWith('~/')) return path.join(os.homedir(), value.slice(2));
 	return value;
 }
 
+/** @returns {string | undefined} */
 function defaultWranglerConfig() {
 	const configured = process.env.MERE_DELIVER_WRANGLER_CONFIG?.trim();
 	if (configured) return homePath(configured);
@@ -222,11 +295,17 @@ function defaultWranglerConfig() {
 	return existsSync(candidate) ? candidate : undefined;
 }
 
+/** @returns {string[]} */
 function wranglerPrefix() {
 	return splitCommand(process.env.WRANGLER_BIN?.trim() || 'wrangler');
 }
 
+/**
+ * @param {Flags} flags
+ * @returns {string[]}
+ */
 function wranglerGlobalArgs(flags) {
+	/** @type {string[]} */
 	const args = [];
 	const config = stringFlag(flags, 'config') ?? defaultWranglerConfig();
 	const cwd = stringFlag(flags, 'cwd') ?? process.env.MERE_DELIVER_CWD?.trim();
@@ -235,6 +314,11 @@ function wranglerGlobalArgs(flags) {
 	return args;
 }
 
+/**
+ * @param {string[]} args
+ * @param {Flags} flags
+ * @returns {WranglerResult}
+ */
 function runWrangler(args, flags) {
 	const [commandName, ...prefixArgs] = wranglerPrefix();
 	if (!commandName) throw new CliError('WRANGLER_BIN did not resolve to a command.');
@@ -250,15 +334,28 @@ function runWrangler(args, flags) {
 	};
 }
 
+/**
+ * @param {Flags} flags
+ * @returns {string}
+ */
 function databaseName(flags) {
 	return stringFlag(flags, 'database') ?? process.env.MERE_DELIVER_DATABASE?.trim() ?? process.env.MERE_DELIVER_D1_DATABASE?.trim() ?? DEFAULT_DATABASE;
 }
 
+/**
+ * @param {Flags} flags
+ * @returns {string[]}
+ */
 function d1ScopeArgs(flags) {
 	if (boolFlag(flags, 'local') || process.env.MERE_DELIVER_D1_MODE === 'local') return ['--local'];
 	return ['--remote'];
 }
 
+/**
+ * @param {string} sql
+ * @param {Flags} flags
+ * @returns {{ raw: unknown; rows: Row[]; meta: unknown }}
+ */
 function runD1(sql, flags) {
 	const result = runWrangler(['d1', 'execute', databaseName(flags), ...d1ScopeArgs(flags), '--command', sql, '--json'], flags);
 	if (result.code !== 0) throw new CliError(result.stderr.trim() || result.stdout.trim() || `wrangler d1 execute failed with ${result.code}`, result.code);
@@ -277,33 +374,58 @@ function runD1(sql, flags) {
 	}
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function sqlString(value) {
 	return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function sqlNullable(value) {
 	if (value === undefined || value === null || value === '') return 'NULL';
 	return sqlString(value);
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function validateSlug(value) {
 	const slug = String(value ?? '').trim();
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) throw new CliError('Slug must be lowercase letters, numbers, and hyphens, up to 64 characters.');
 	return slug;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function validateStatus(value) {
 	const status = String(value ?? 'active').trim();
 	if (!STATUSES.has(status)) throw new CliError(`Status must be one of: ${[...STATUSES].join(', ')}.`);
 	return status;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function validateMode(value) {
 	const mode = String(value ?? 'structured').trim();
 	if (!MODES.has(mode)) throw new CliError('Mode must be structured or custom_html.');
 	return mode;
 }
 
+/**
+ * @param {string} text
+ * @param {string} label
+ * @returns {JsonObject}
+ */
 function parseJsonObject(text, label) {
 	try {
 		const value = JSON.parse(text);
@@ -314,6 +436,10 @@ function parseJsonObject(text, label) {
 	}
 }
 
+/**
+ * @param {Flags} flags
+ * @returns {JsonObject}
+ */
 function readJsonData(flags) {
 	const inline = stringFlag(flags, 'data');
 	const file = stringFlag(flags, 'data-file');
@@ -323,6 +449,11 @@ function readJsonData(flags) {
 	return {};
 }
 
+/**
+ * @param {JsonObject} data
+ * @param {...string} names
+ * @returns {unknown}
+ */
 function pick(data, ...names) {
 	for (const name of names) {
 		if (data[name] !== undefined) return data[name];
@@ -330,6 +461,11 @@ function pick(data, ...names) {
 	return undefined;
 }
 
+/**
+ * @param {Row[]} rows
+ * @param {Flags} flags
+ * @param {string} label
+ */
 function outputRows(rows, flags, label) {
 	if (boolFlag(flags, 'json')) {
 		writeJson({ [label]: rows });
@@ -340,13 +476,21 @@ function outputRows(rows, flags, label) {
 	}
 }
 
+/** @returns {string} */
 function packageSelect() {
 	return 'slug, title, customer_name, workspace_id, status, sign_url, mereink_document_id, created_at, updated_at';
 }
 
+/**
+ * @param {Flags} flags
+ * @param {JsonObject} data
+ * @returns {string}
+ */
 function readPayloadText(flags, data) {
-	const inline = stringFlag(flags, 'payload-json') ?? pick(data, 'payloadJson', 'payload_json');
-	const file = stringFlag(flags, 'payload-file') ?? pick(data, 'payloadFile', 'payload_file');
+	const payloadValue = pick(data, 'payloadJson', 'payload_json');
+	const payloadFile = pick(data, 'payloadFile', 'payload_file');
+	const inline = stringFlag(flags, 'payload-json') ?? (typeof payloadValue === 'string' ? payloadValue : undefined);
+	const file = stringFlag(flags, 'payload-file') ?? (typeof payloadFile === 'string' ? payloadFile : undefined);
 	if (inline && file) throw new CliError('Use either --payload-json or --payload-file, not both.');
 	const text = file ? readFileSync(homePath(String(file)), 'utf8') : inline;
 	if (!text && data.payload !== undefined) return JSON.stringify(data.payload);
@@ -355,20 +499,35 @@ function readPayloadText(flags, data) {
 	return text;
 }
 
+/**
+ * @param {Flags} flags
+ * @param {JsonObject} data
+ * @returns {string | undefined}
+ */
 function readCustomHtml(flags, data) {
-	const inline = stringFlag(flags, 'custom-html') ?? pick(data, 'customHtml', 'custom_html');
-	const file = stringFlag(flags, 'custom-html-file') ?? pick(data, 'customHtmlFile', 'custom_html_file');
+	const customHtmlValue = pick(data, 'customHtml', 'custom_html');
+	const customHtmlFile = pick(data, 'customHtmlFile', 'custom_html_file');
+	const inline = stringFlag(flags, 'custom-html') ?? (typeof customHtmlValue === 'string' ? customHtmlValue : undefined);
+	const file = stringFlag(flags, 'custom-html-file') ?? (typeof customHtmlFile === 'string' ? customHtmlFile : undefined);
 	if (inline && file) throw new CliError('Use either --custom-html or --custom-html-file, not both.');
 	if (file) return readFileSync(homePath(String(file)), 'utf8');
 	return inline;
 }
 
+/**
+ * @param {string} slug
+ * @param {Flags} flags
+ */
 function requireDestructive(slug, flags) {
 	if (!boolFlag(flags, 'yes')) throw new CliError('Destructive commands require --yes.');
 	const confirm = stringFlag(flags, 'confirm');
 	if (confirm !== slug) throw new CliError(`Destructive commands require --confirm ${slug}.`);
 }
 
+/**
+ * @param {string[]} positionals
+ * @param {Flags} flags
+ */
 async function runHashPassword(positionals, flags) {
 	const password = positionals[1] ?? stringFlag(flags, 'password') ?? (await readStdinPassword());
 	if (!password) throw new CliError('Usage: mere-deliver hash-password [password]');
@@ -377,6 +536,7 @@ async function runHashPassword(positionals, flags) {
 	else writeText(passwordHash);
 }
 
+/** @param {Flags} flags */
 function runDbInfo(flags) {
 	const payload = {
 		database: databaseName(flags),
@@ -389,6 +549,10 @@ function runDbInfo(flags) {
 	else writeText(Object.entries(payload).map(([key, value]) => `${key}: ${value ?? ''}`).join('\n'));
 }
 
+/**
+ * @param {string | undefined} action
+ * @param {Flags} flags
+ */
 function runAuth(action, flags) {
 	if (action === 'whoami') {
 		const result = runWrangler(['whoami', '--json'], flags);
@@ -411,6 +575,11 @@ function runAuth(action, flags) {
 	throw new CliError('Usage: mere-deliver auth login|whoami|logout');
 }
 
+/**
+ * @param {string | undefined} action
+ * @param {string[]} positionals
+ * @param {Flags} flags
+ */
 function runPackages(action, positionals, flags) {
 	if (action === 'list') {
 		const status = stringFlag(flags, 'status') ?? 'active';
@@ -495,6 +664,11 @@ function runPackages(action, positionals, flags) {
 	throw new CliError('Usage: mere-deliver packages list|get|upsert|set-status|set-sign-url|delete');
 }
 
+/**
+ * @param {string | undefined} action
+ * @param {string[]} positionals
+ * @param {Flags} flags
+ */
 function runSamePage(action, positionals, flags) {
 	const slug = validateSlug(positionals[2]);
 	if (action === 'get') {
@@ -539,6 +713,10 @@ function runSamePage(action, positionals, flags) {
 	throw new CliError('Usage: mere-deliver same-page get|upsert|delete');
 }
 
+/**
+ * @param {string[]} positionals
+ * @param {Flags} flags
+ */
 function runUrl(positionals, flags) {
 	const slug = validateSlug(positionals[1]);
 	const baseUrl = (stringFlag(flags, 'base-url') ?? process.env.MERE_DELIVER_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/u, '');
@@ -547,6 +725,10 @@ function runUrl(positionals, flags) {
 	else writeText(url);
 }
 
+/**
+ * @param {string | undefined} shell
+ * @returns {string}
+ */
 function renderCompletion(shell) {
 	const top = ['auth', 'commands', 'completion', 'db', 'hash-password', 'packages', 'same-page', 'url'];
 	const second = {
@@ -588,6 +770,7 @@ function renderCompletion(shell) {
 	}
 }
 
+/** @param {string[]} argv */
 async function main(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	if (boolFlag(flags, 'version') || positionals[0] === 'version') {

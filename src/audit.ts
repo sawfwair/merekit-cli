@@ -24,12 +24,12 @@ const SECRET_PROPERTY_PARTS = [
 export type AuditRecord = {
 	timestamp: string;
 	kind: 'delegate' | 'root' | 'mcp';
-	app?: string;
+	app?: string | undefined;
 	command: string[];
 	argv: string[];
 	exitCode: number;
 	durationMs: number;
-	cwd?: string;
+	cwd?: string | undefined;
 };
 
 export function redactArgv(argv: string[]): string[] {
@@ -40,18 +40,19 @@ export function redactArgv(argv: string[]): string[] {
 			redacted.push(token);
 			continue;
 		}
-		const [flagName] = token.slice(2).split('=', 1);
-		const normalized = flagName.toLowerCase();
+			const flagName = token.slice(2).split('=', 1)[0] ?? '';
+			const normalized = flagName.toLowerCase();
 		if (normalized === 'data') {
 			if (token.includes('=')) {
 				redacted.push(`--${flagName}=${redactDataValue(token.slice(token.indexOf('=') + 1))}`);
 				continue;
 			}
 			redacted.push(token);
-			if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
-				redacted.push(redactDataValue(argv[index + 1]));
-				index += 1;
-			}
+				const nextArg = argv[index + 1];
+				if (nextArg && !nextArg.startsWith('--')) {
+					redacted.push(redactDataValue(nextArg));
+					index += 1;
+				}
 			continue;
 		}
 		const shouldRedact = [...SECRET_FLAG_NAMES].some((name) => normalized.includes(name));
@@ -64,10 +65,11 @@ export function redactArgv(argv: string[]): string[] {
 			continue;
 		}
 		redacted.push(token);
-		if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
-			redacted.push('<redacted>');
-			index += 1;
-		}
+			const nextArg = argv[index + 1];
+			if (nextArg && !nextArg.startsWith('--')) {
+				redacted.push('<redacted>');
+				index += 1;
+			}
 	}
 	return redacted;
 }

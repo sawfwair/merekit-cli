@@ -1,0 +1,10 @@
+{
+  "all": true,
+  "include": ["dist/**/*.js"],
+  "exclude": ["dist/run.js", "dist/types.js", "dist/version.js"],
+  "reporter": ["text"],
+  "lines": 80,
+  "branches": 70,
+  "functions": 85,
+  "statements": 80
+}

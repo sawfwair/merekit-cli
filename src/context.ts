@@ -1,26 +1,41 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { z } from 'zod';
 import type { AppKey } from './types.js';
 import type { MerePaths } from './paths.js';
+import { parseJson } from './json.js';
 
 export type MereConfig = {
 	version: 1;
-	repoPaths?: Partial<Record<AppKey, string>>;
+	repoPaths?: Partial<Record<AppKey, string>> | undefined;
 };
 
 export type MereState = {
 	version: 1;
-	defaultWorkspace?: string | null;
-	defaultProfile?: string | null;
-	appWorkspaces?: Partial<Record<AppKey, string>>;
+	defaultWorkspace?: string | null | undefined;
+	defaultProfile?: string | null | undefined;
+	appWorkspaces?: Partial<Record<AppKey, string>> | undefined;
 	updatedAt: string;
 };
 
 export const emptyConfig = (): MereConfig => ({ version: 1, repoPaths: {} });
 export const emptyState = (): MereState => ({ version: 1, updatedAt: new Date(0).toISOString() });
 
-async function readJson<T>(filePath: string, fallback: T): Promise<T> {
+const mereConfigSchema = z.object({
+	version: z.literal(1),
+	repoPaths: z.record(z.string(), z.string()).optional()
+});
+
+const mereStateSchema = z.object({
+	version: z.literal(1),
+	defaultWorkspace: z.string().nullable().optional(),
+	defaultProfile: z.string().nullable().optional(),
+	appWorkspaces: z.record(z.string(), z.string()).optional(),
+	updatedAt: z.string()
+});
+
+async function readJsonFile(filePath: string, fallback: unknown): Promise<unknown> {
 	try {
-		return JSON.parse(await readFile(filePath, 'utf8')) as T;
+		return parseJson(await readFile(filePath, 'utf8'));
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback;
 		throw error;
@@ -28,13 +43,13 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
 }
 
 export async function loadConfig(paths: MerePaths): Promise<MereConfig> {
-	const config = await readJson(paths.configFile, emptyConfig());
-	return config.version === 1 ? config : emptyConfig();
+	const parsed = mereConfigSchema.safeParse(await readJsonFile(paths.configFile, emptyConfig()));
+	return parsed.success ? parsed.data : emptyConfig();
 }
 
 export async function loadState(paths: MerePaths): Promise<MereState> {
-	const state = await readJson(paths.stateFile, emptyState());
-	return state.version === 1 ? state : emptyState();
+	const parsed = mereStateSchema.safeParse(await readJsonFile(paths.stateFile, emptyState()));
+	return parsed.success ? parsed.data : emptyState();
 }
 
 export async function saveConfig(paths: MerePaths, config: MereConfig): Promise<void> {

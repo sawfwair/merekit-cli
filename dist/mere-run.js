@@ -6,7 +6,7 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { runCapture } from './process.js';
-export const DEFAULT_MERE_RUN_DMG_URL = 'https://public.stereovoid.com/mere-run-releases/mere-run.dmg';
+export const DEFAULT_MERE_RUN_DMG_URL = 'https://mere.run/releases/mere-run.dmg';
 const GLOBAL_CANDIDATES = ['/usr/local/bin/mere.run', '/opt/homebrew/bin/mere.run'];
 export const MERE_RUN_APP_MODEL_REQUESTS = {
     media: [

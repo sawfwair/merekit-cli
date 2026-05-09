@@ -5,8 +5,10 @@
 ## Verification
 
 - [ ] `pnpm check`
+- [ ] `pnpm lint`
 - [ ] `pnpm check:adapters`
 - [ ] `pnpm test`
+- [ ] `pnpm coverage`
 - [ ] `pnpm smoke`
 - [ ] `pnpm check:package`
 - [ ] `pnpm docs:build`

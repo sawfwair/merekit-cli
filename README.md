@@ -225,7 +225,7 @@ Registered namespaces:
 | `deliver` | none | Password-gated delivery packages, Same Page payloads, and share URLs via Wrangler/D1 |
 | `link` | none | YAML-based links between work surfaces; runs standalone or bootstraps from Mere workspace state |
 
-`mere media` cloud and local-store reads work through the bundled media adapter. Local processing commands such as `mere media process ... --transcribe --embed` additionally require the public `mere.run` runtime and local models. Run `mere setup mere-run` to orchestrate runtime install from an existing binary, the local `~/mere/run-public` source checkout, or the verified DMG at `https://public.stereovoid.com/mere-run-releases/mere-run.dmg`. Then run `mere setup mere-run models --app media` to pull Media-requested models. Use `MERE_MEDIA_MERE_RUN_BIN` or `MERE_RUN_BIN` only for explicit runtime overrides.
+`mere media` cloud and local-store reads work through the bundled media adapter. Local processing commands such as `mere media process ... --transcribe --embed` additionally require the public `mere.run` runtime and local models. Run `mere setup mere-run` to orchestrate runtime install from an existing binary, the local `~/mere/run-public` source checkout, or the verified DMG at `https://mere.run/releases/mere-run.dmg`. Then run `mere setup mere-run models --app media` to pull Media-requested models. Use `MERE_MEDIA_MERE_RUN_BIN` or `MERE_RUN_BIN` only for explicit runtime overrides.
 
 `mere deliver` is backed by the Cloudflare Wrangler/D1 command surface for `share.mere.ink`. Set `WRANGLER_BIN="cfman personal wrangler"` when using cfman, or `MERE_DELIVER_WRANGLER_CONFIG=~/mere/deliver/wrangler.jsonc` when the bundled adapter needs the private Worker config.
 
@@ -239,7 +239,7 @@ mere link surfaces list --config mere.link.yaml
 mere link sync projects --config mere.link.yaml --json
 ```
 
-`mere link sync projects` plans Mere Projects records and URL links from configured surfaces. It stays dry-run unless `--apply` is passed and the target Projects app surface explicitly allows `policy.writes: [sync]`. When a Link project includes a `mere` `record` surface, sync updates only Link attributes on that existing record before upserting links.
+`mere link sync projects` plans Mere Projects records and URL links from configured surfaces. It stays dry-run unless `--apply` is passed and the target Projects app surface explicitly allows `policy.writes: [sync]`. When a Link project includes a `mere` `record` surface, sync uses that existing record for link upserts without touching the project narrative.
 
 ## Auth And Context
 

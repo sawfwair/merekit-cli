@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { readBooleanFlag, readStringFlag } from './args.js';
+import { parseJson } from './json.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
-import type { CliIO } from './root.js';
+import type { CliIO } from './types.js';
 
 type SkillFile = {
 	path: string;
@@ -65,6 +67,37 @@ const PUBLIC_REGISTRY_SKILLS = new Set([
 	'works-cli',
 	'zone-cli'
 ]);
+
+const skillFileSchema = z.object({
+	path: z.string(),
+	url: z.string(),
+	digest: z.string(),
+	size: z.number()
+});
+
+const skillEntrySchema = z.object({
+	name: z.string(),
+	type: z.literal('skill-md'),
+	description: z.string(),
+	repo: z.string(),
+	sourcePath: z.string(),
+	url: z.string(),
+	digest: z.string(),
+	files: z.array(skillFileSchema),
+	install: z.object({
+		codex: z.string(),
+		claude: z.string()
+	}),
+	updatedAt: z.string()
+});
+
+const skillRegistrySchema = z.object({
+	$schema: z.string(),
+	schemaVersion: z.literal(1),
+	generatedAt: z.string(),
+	baseUrl: z.string(),
+	skills: z.array(skillEntrySchema)
+});
 
 function writeJson(io: CliIO, value: unknown): void {
 	io.stdout(`${JSON.stringify(value, null, 2)}\n`);
@@ -175,12 +208,14 @@ function parseSkillMeta(markdown: string, fallbackName: string): { name: string;
 	if (markdown.startsWith('---\n')) {
 		const end = markdown.indexOf('\n---', 4);
 		if (end > 0) {
-			for (const line of markdown.slice(4, end).split('\n')) {
-				const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-				if (match) meta[match[1]] = match[2].replace(/^["']|["']$/g, '').trim();
+				for (const line of markdown.slice(4, end).split('\n')) {
+					const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+					const key = match?.[1];
+					const value = match?.[2];
+					if (key && value !== undefined) meta[key] = value.replace(/^["']|["']$/g, '').trim();
+				}
 			}
 		}
-	}
 	return {
 		name: meta.name || fallbackName,
 		description:
@@ -308,10 +343,11 @@ async function buildRegistry(skills: LocalSkill[], baseUrl: string, env: NodeJS.
 	};
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson(url: string): Promise<unknown> {
 	const response = await fetch(url, { headers: { accept: 'application/json' } });
 	if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
-	return (await response.json()) as T;
+	const text = await response.text();
+	return parseJson(text);
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -327,9 +363,7 @@ async function fetchBytes(url: string): Promise<Buffer> {
 }
 
 async function loadRemoteRegistry(env: NodeJS.ProcessEnv): Promise<SkillRegistry> {
-	const registry = await fetchJson<SkillRegistry>(remoteRegistryUrl(env));
-	if (!Array.isArray(registry.skills)) throw new Error('Remote skill registry did not include a skills array.');
-	return registry;
+	return skillRegistrySchema.parse(await fetchJson(remoteRegistryUrl(env)));
 }
 
 function findSkill(registry: SkillRegistry, name: string | undefined): SkillEntry {
