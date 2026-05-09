@@ -3,7 +3,7 @@
 // cli/mere-zone.ts
 import { readFile as readFile2 } from "node:fs/promises";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.0_@sveltejs+vite-p_fc52d62c8b0bb19754074949eb0967be/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3010e55f7f1bc76b1ba4a1cb874e4024/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -105,11 +105,11 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.0_@sveltejs+vite-p_fc52d62c8b0bb19754074949eb0967be/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3010e55f7f1bc76b1ba4a1cb874e4024/node_modules/@mere/cli-auth/src/client.ts
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.0_@sveltejs+vite-p_fc52d62c8b0bb19754074949eb0967be/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3010e55f7f1bc76b1ba4a1cb874e4024/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -118,7 +118,7 @@ var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.0_@sveltejs+vite-p_fc52d62c8b0bb19754074949eb0967be/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3010e55f7f1bc76b1ba4a1cb874e4024/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -206,6 +206,9 @@ async function waitForCallback(input) {
           if (input.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input.workspace.trim());
           }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
           const started = await fetchJson(input.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input.notify(
@@ -232,6 +235,7 @@ async function loginWithBrowser(input) {
     fetchImpl: input.fetchImpl ?? fetch,
     notify: input.notify,
     workspace: input.workspace,
+    inviteCode: input.inviteCode,
     productLabel: input.productLabel
   });
   return createLocalSession(payload, {

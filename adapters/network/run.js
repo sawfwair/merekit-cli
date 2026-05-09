@@ -207,6 +207,9 @@ async function waitForCallback(input) {
           if (input.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input.workspace.trim());
           }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
           const started = await fetchJson(input.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input.notify(
@@ -233,6 +236,7 @@ async function loginWithBrowser(input) {
     fetchImpl: input.fetchImpl ?? fetch,
     notify: input.notify,
     workspace: input.workspace,
+    inviteCode: input.inviteCode,
     productLabel: input.productLabel
   });
   return createLocalSession(payload, {

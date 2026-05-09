@@ -200,7 +200,7 @@ export function createRegistry(mereRoot, packageRoot = repo(mereRoot, 'cli')) {
             bundledCliPath: adapter(packageRoot, 'deliver'),
             localCliPath: path.join(repo(mereRoot, 'deliver'), 'cli', 'run.js'),
             pathBins: ['mere-deliver'],
-            authKind: 'none',
+            authKind: 'token',
             packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
         },
         {
