@@ -25,7 +25,7 @@ export function redactArgv(argv) {
             redacted.push(token);
             continue;
         }
-        const [flagName] = token.slice(2).split('=', 1);
+        const flagName = token.slice(2).split('=', 1)[0] ?? '';
         const normalized = flagName.toLowerCase();
         if (normalized === 'data') {
             if (token.includes('=')) {
@@ -33,8 +33,9 @@ export function redactArgv(argv) {
                 continue;
             }
             redacted.push(token);
-            if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
-                redacted.push(redactDataValue(argv[index + 1]));
+            const nextArg = argv[index + 1];
+            if (nextArg && !nextArg.startsWith('--')) {
+                redacted.push(redactDataValue(nextArg));
                 index += 1;
             }
             continue;
@@ -49,7 +50,8 @@ export function redactArgv(argv) {
             continue;
         }
         redacted.push(token);
-        if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
+        const nextArg = argv[index + 1];
+        if (nextArg && !nextArg.startsWith('--')) {
             redacted.push('<redacted>');
             index += 1;
         }

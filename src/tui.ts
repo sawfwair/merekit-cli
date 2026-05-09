@@ -2,15 +2,21 @@ import process from 'node:process';
 import readline from 'node:readline/promises';
 import type { Interface } from 'node:readline/promises';
 import type { ReadStream } from 'node:tty';
+import { Box, Text, renderToString } from 'ink';
+import type { BoxProps, TextProps } from 'ink';
+import { createElement } from 'react';
+import type { ReactNode } from 'react';
 import { readBooleanFlag, readStringFlag } from './args.js';
 import type { FlagValue } from './args.js';
+import { parseJson } from './json.js';
 import type { RegistryEntry } from './types.js';
 
 type TuiIO = {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
 	env: NodeJS.ProcessEnv;
-	stdin?: ReadStream;
+	stdin?: ReadStream | undefined;
+	promptOutput?: NodeJS.WritableStream | undefined;
 };
 
 type CapturedCommand = {
@@ -20,70 +26,156 @@ type CapturedCommand = {
 };
 
 type FirstUseChoices = {
-	inviteCode?: string;
-	waitlistEmail?: string;
-	workspace?: string;
-	app?: string;
+	inviteCode?: string | undefined;
+	waitlistEmail?: string | undefined;
+	workspace?: string | undefined;
+	app?: string | undefined;
 	target: 'codex' | 'claude';
-	output?: string;
-	businessName?: string;
-	workspaceSlug?: string;
-	businessMode?: 'new' | 'existing';
-	baseDomain?: string;
-	existingWebsiteUrl?: string;
-	noWait?: boolean;
-	financeProfile?: string;
-	financeBaseUrl?: string;
+	output?: string | undefined;
+	businessName?: string | undefined;
+	workspaceSlug?: string | undefined;
+	businessMode?: 'new' | 'existing' | undefined;
+	baseDomain?: string | undefined;
+	existingWebsiteUrl?: string | undefined;
+	noWait?: boolean | undefined;
+	financeProfile?: string | undefined;
+	financeBaseUrl?: string | undefined;
 };
 
 const WIDTH = 78;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const h = createElement;
 
-function color(io: TuiIO, code: string, value: string): string {
-	if (io.env.NO_COLOR || io.env.TERM === 'dumb') return value;
-	return `\u001b[${code}m${value}\u001b[0m`;
+type InkTone = 'blue' | 'cyan' | 'green' | 'magenta' | 'red' | 'yellow';
+
+function canUseColor(io: TuiIO): boolean {
+	return !io.env.NO_COLOR && io.env.TERM !== 'dumb';
 }
 
-function cyan(io: TuiIO, value: string): string {
-	return color(io, '36', value);
+function inkColor(useColor: boolean, tone: InkTone): InkTone | undefined {
+	return useColor ? tone : undefined;
 }
 
-function dim(io: TuiIO, value: string): string {
-	return color(io, '2', value);
+function textProps(input: { useColor: boolean; tone?: InkTone | undefined; bold?: boolean | undefined; dim?: boolean | undefined }): TextProps {
+	return {
+		...(input.useColor && input.tone ? { color: input.tone } : {}),
+		...(input.useColor && input.bold ? { bold: true } : {}),
+		...(input.useColor && input.dim ? { dimColor: true } : {})
+	};
 }
 
-function green(io: TuiIO, value: string): string {
-	return color(io, '32', value);
+function renderInk(node: ReactNode): string {
+	return `${renderToString(node, { columns: WIDTH })}\n`;
 }
 
-function yellow(io: TuiIO, value: string): string {
-	return color(io, '33', value);
+function line(content: string, useColor: boolean, tone?: InkTone): ReactNode {
+	return h(Text, textProps({ useColor, tone }), content || ' ');
 }
 
-function red(io: TuiIO, value: string): string {
-	return color(io, '31', value);
+function rows(items: ReactNode[]): ReactNode[] {
+	return items.map((item, index) => h(Box, { key: index }, item));
 }
 
-function stripAnsi(value: string): string {
-	return value.replace(/\u001b\[[0-9;]*m/g, '');
+function Shell(input: {
+	title: string;
+	eyebrow?: string | undefined;
+	tone: InkTone;
+	useColor: boolean;
+	children?: ReactNode;
+	footer?: string | undefined;
+}): ReactNode {
+	const accent = inkColor(input.useColor, input.tone);
+	const boxProps: BoxProps = {
+		borderStyle: 'round',
+		flexDirection: 'column',
+		paddingX: 1,
+		width: WIDTH,
+		...(accent ? { borderColor: accent } : {})
+	};
+	return h(
+		Box,
+		boxProps,
+		h(
+			Box,
+			{ justifyContent: 'space-between' },
+			h(Text, textProps({ useColor: input.useColor, tone: input.tone, bold: true }), input.title),
+			input.eyebrow ? h(Text, textProps({ useColor: input.useColor, dim: true }), input.eyebrow) : null
+		),
+		h(Box, { flexDirection: 'column', marginTop: 1 }, input.children),
+		input.footer ? h(Box, { marginTop: 1 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.footer)) : null
+	);
 }
 
-function fit(value: string, width: number): string {
-	const cleanLength = stripAnsi(value).length;
-	if (cleanLength <= width) return `${value}${' '.repeat(width - cleanLength)}`;
-	return `${value.slice(0, Math.max(0, width - 1))}...`;
+function KeyValue(input: { label: string; value: string; tone?: InkTone | undefined; useColor: boolean }): ReactNode {
+	return h(
+		Box,
+		null,
+		h(Box, { width: 16 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.label)),
+		h(Text, textProps({ useColor: input.useColor, tone: input.tone }), input.value)
+	);
 }
 
-function panel(io: TuiIO, title: string, lines: string[]): string {
-	const inner = WIDTH - 4;
-	const output = [
-		`+${'-'.repeat(WIDTH - 2)}+`,
-		`| ${fit(cyan(io, title), inner)} |`,
-		`+${'-'.repeat(WIDTH - 2)}+`,
-		...lines.map((line) => `| ${fit(line, inner)} |`),
-		`+${'-'.repeat(WIDTH - 2)}+`
-	];
-	return `${output.join('\n')}\n`;
+function Lane(input: { label: string; value: string; command: string; tone: InkTone; useColor: boolean }): ReactNode {
+	return h(
+		Box,
+		{ flexDirection: 'column', marginBottom: 1 },
+		h(Box, null, h(Box, { width: 15 }, h(Text, textProps({ useColor: input.useColor, tone: input.tone, bold: true }), input.label)), h(Text, null, input.value)),
+		h(Box, { marginLeft: 15 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.command))
+	);
+}
+
+function IntroView(input: { entries: RegistryEntry[]; useColor: boolean }): ReactNode {
+	const appNames = input.entries
+		.map((entry) => entry.key)
+		.filter((key) => key !== 'business')
+		.slice(0, 6)
+		.join(', ');
+	return h(
+		Shell,
+		{
+			title: 'Mere First Use',
+			eyebrow: 'invite -> workspace -> agent-ready',
+			tone: 'cyan',
+			useColor: input.useColor,
+			footer: appNames ? `App scopes include all, ${appNames}${input.entries.length > 6 ? ', ...' : ''}` : undefined
+		},
+		...rows([
+			line('Start with whatever you have. The UI turns it into the safest next command.', input.useColor),
+			h(
+				Box,
+				{ flexDirection: 'column', marginTop: 1 },
+				h(Lane, {
+					label: 'Invite code',
+					value: 'Redeem the business invite, then run workspace readiness.',
+					command: 'mere business onboard start INVITE_CODE --json',
+					tone: 'green',
+					useColor: input.useColor
+				}),
+				h(Lane, {
+					label: 'Email',
+					value: 'Open the protected waitlist handoff with your email filled in.',
+					command: 'mere business waitlist join --email EMAIL',
+					tone: 'yellow',
+					useColor: input.useColor
+				}),
+				h(Lane, {
+					label: 'Workspace',
+					value: 'Operator path for re-running checks on an existing workspace.',
+					command: 'mere onboard --workspace WORKSPACE_ID --json',
+					tone: 'magenta',
+					useColor: input.useColor
+				})
+			)
+		])
+	);
+}
+
+function CommandBanner(input: { title: string; command: string; tone: InkTone; useColor: boolean }): ReactNode {
+	return h(
+		Shell,
+		{ title: input.title, eyebrow: 'command handoff', tone: input.tone, useColor: input.useColor },
+		h(Text, textProps({ useColor: input.useColor, tone: input.tone }), input.command)
+	);
 }
 
 function humanCommand(args: string[]): string {
@@ -92,7 +184,7 @@ function humanCommand(args: string[]): string {
 
 function isInteractive(io: TuiIO): boolean {
 	const stdin = io.stdin ?? process.stdin;
-	return Boolean(stdin.isTTY && process.stdout.isTTY);
+	return stdin.isTTY && process.stdout.isTTY;
 }
 
 function withOptionalFlag(args: string[], name: string, value: string | undefined): void {
@@ -134,7 +226,7 @@ async function runWaitlistCommand(
 	runCommand: (args: string[]) => Promise<CapturedCommand>,
 	waitlistArgs: string[]
 ): Promise<number> {
-	io.stdout(`\n${dim(io, 'Opening waitlist:')} ${humanCommand(waitlistArgs)}\n\n`);
+	io.stdout(`\n${renderCommandBanner(io, 'Opening waitlist:', waitlistArgs, 'yellow')}\n`);
 	const waitlistResult = await runCommand(waitlistArgs);
 	if (waitlistResult.stderr.trim()) io.stderr(waitlistResult.stderr);
 	if (waitlistResult.stdout.trim()) io.stdout(waitlistResult.stdout);
@@ -175,7 +267,7 @@ function classifyFirstUseValue(value: string | undefined): Pick<FirstUseChoices,
 
 function parseReport(stdout: string): Record<string, unknown> | null {
 	try {
-		const value = JSON.parse(stdout) as unknown;
+		const value = parseJson(stdout);
 		return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 	} catch {
 		return null;
@@ -199,7 +291,19 @@ function workspaceFromInvitePayload(payload: Record<string, unknown> | null): st
 }
 
 function renderInviteSummary(io: TuiIO, payload: Record<string, unknown> | null): string {
-	if (!payload) return panel(io, 'Invite', [yellow(io, 'Invite command finished, but its output was not JSON.'), 'Continuing to the readiness report.']);
+	const useColor = canUseColor(io);
+	if (!payload) {
+		return renderInk(
+			h(
+				Shell,
+				{ title: 'Invite', eyebrow: 'handoff complete', tone: 'yellow', useColor },
+				...rows([
+					line('Invite command finished, but its output was not JSON.', useColor, 'yellow'),
+					line('Continuing to the readiness report.', useColor)
+				])
+			)
+		);
+	}
 	const workspace = isRecord(payload.workspace) ? payload.workspace : null;
 	const state = String(payload.state ?? 'unknown');
 	const workspaceLabel =
@@ -209,20 +313,28 @@ function renderInviteSummary(io: TuiIO, payload: Record<string, unknown> | null)
 				? workspace.id
 				: 'not returned yet';
 	const nextUrl = typeof payload.nextUrl === 'string' ? payload.nextUrl : undefined;
-	return panel(io, 'Invite Redeemed', [
-		`state: ${state}`,
-		`workspace: ${workspaceLabel}`,
-		...(nextUrl ? [`next: ${nextUrl}`] : [])
-	]);
+	return renderInk(
+		h(
+			Shell,
+			{ title: 'Invite Redeemed', eyebrow: 'workspace seed ready', tone: 'green', useColor },
+			...rows([
+				h(KeyValue, { label: 'state', value: state, tone: state === 'ready' ? 'green' : 'yellow', useColor }),
+				h(KeyValue, { label: 'workspace', value: workspaceLabel, tone: 'cyan', useColor }),
+				...(nextUrl ? [h(KeyValue, { label: 'next', value: nextUrl, tone: 'magenta', useColor })] : [])
+			])
+		)
+	);
 }
 
 function renderSummary(io: TuiIO, report: Record<string, unknown>): string {
+	const useColor = canUseColor(io);
 	const score = typeof report.readinessScore === 'number' ? report.readinessScore : 0;
 	const workspace = String(report.workspace ?? 'not selected');
 	const apps = records(report.apps);
 	const remediation = records(report.remediation);
 	const blocked = remediation.some((item) => item.blocking === true);
-	const status = score >= 90 ? green(io, 'Ready') : blocked ? red(io, 'Blocked') : yellow(io, 'Needs attention');
+	const status = score >= 90 ? 'Ready' : blocked ? 'Blocked' : 'Needs attention';
+	const tone: InkTone = score >= 90 ? 'green' : blocked ? 'red' : 'yellow';
 	const appLines = apps.slice(0, 8).map((app) => {
 		const appName = String(app.app ?? 'app');
 		const appStatus = String(app.status ?? 'unknown');
@@ -237,16 +349,30 @@ function renderSummary(io: TuiIO, report: Record<string, unknown>): string {
 		})
 		.filter(Boolean)
 		.slice(0, 8);
-	return panel(io, 'Mere First Use', [
-		`${status} (${score}/100)`,
-		`workspace: ${workspace}`,
-		'',
-		...(appLines.length ? appLines : ['No apps reported.']),
-		'',
-		...(nextLines.length ? ['Next commands:', ...nextLines] : ['Next commands: none']),
-		'',
-		`Artifacts: ${String(report.outputDir ?? 'not written')}`
-	]);
+	return renderInk(
+		h(
+			Shell,
+			{ title: 'Mere First Use', eyebrow: 'readiness report', tone, useColor },
+			h(
+				Box,
+				{ flexDirection: 'column' },
+				h(Text, textProps({ useColor, tone, bold: true }), `${status} (${score}/100)`),
+				h(KeyValue, { label: 'workspace', value: workspace, tone: 'cyan', useColor }),
+				h(KeyValue, { label: 'artifacts', value: String(report.outputDir ?? 'not written'), tone: 'magenta', useColor }),
+				h(Box, { marginTop: 1, flexDirection: 'column' }, h(Text, textProps({ useColor, bold: true }), 'Apps'), ...(appLines.length ? appLines.map((item) => line(item, useColor)) : [line('No apps reported.', useColor, 'yellow')])),
+				h(
+					Box,
+					{ marginTop: 1, flexDirection: 'column' },
+					h(Text, textProps({ useColor, bold: true }), 'Next commands'),
+					...(nextLines.length ? nextLines.map((item) => line(item, useColor, 'cyan')) : [line('none', useColor)])
+				)
+			)
+		)
+	);
+}
+
+function renderCommandBanner(io: TuiIO, title: string, args: string[], tone: InkTone): string {
+	return renderInk(h(CommandBanner, { title, command: humanCommand(args), tone, useColor: canUseColor(io) }));
 }
 
 async function ask(rl: Interface, label: string, fallback?: string): Promise<string | undefined> {
@@ -273,15 +399,11 @@ async function askApp(rl: Interface, entries: RegistryEntry[], fallback: string 
 async function collectChoices(io: TuiIO, entries: RegistryEntry[], initial: FirstUseChoices): Promise<FirstUseChoices> {
 	const rl = readline.createInterface({
 		input: io.stdin ?? process.stdin,
-		output: process.stdout,
+		output: io.promptOutput ?? process.stdout,
 		terminal: true
 	});
 	try {
-		io.stdout(panel(io, 'Mere First Use', [
-			'Have an invite? Redeem it here and run safe checks.',
-			'No invite yet? Enter an email and the UI opens the protected waitlist.',
-			'Workspace IDs are for operators or re-running checks on an existing workspace.'
-		]));
+		io.stdout(renderInk(h(IntroView, { entries, useColor: canUseColor(io) })));
 		const firstUseValue = await ask(rl, 'Invite code, waitlist email, or operator workspace ID', initial.waitlistEmail ?? initial.inviteCode ?? initial.workspace);
 		const firstUse = classifyFirstUseValue(firstUseValue);
 		const inviteCode = firstUse.inviteCode;
@@ -308,7 +430,7 @@ async function collectChoices(io: TuiIO, entries: RegistryEntry[], initial: Firs
 			if (businessMode === 'existing') {
 				existingWebsiteUrl = await ask(rl, 'Existing website URL (optional)', initial.existingWebsiteUrl);
 			}
-		} else {
+		} else if (!workspace) {
 			workspace = await ask(rl, 'Operator workspace ID', initial.workspace);
 		}
 		const app = await askApp(rl, entries, initial.app);
@@ -370,7 +492,7 @@ export async function runFirstUseTui(input: {
 	}
 	const businessArgs = buildBusinessOnboardArgs(choices);
 	if (businessArgs) {
-		input.io.stdout(`\n${dim(input.io, 'Running invite:')} ${humanCommand(businessArgs)}\n\n`);
+		input.io.stdout(`\n${renderCommandBanner(input.io, 'Running invite', businessArgs, 'magenta')}\n`);
 		const inviteResult = await input.runCommand(businessArgs);
 		if (inviteResult.stderr.trim()) input.io.stderr(inviteResult.stderr);
 		if (inviteResult.code !== 0) {
@@ -382,11 +504,19 @@ export async function runFirstUseTui(input: {
 		input.io.stdout(renderInviteSummary(input.io, invitePayload));
 		choices.workspace = choices.workspace ?? workspaceFromInvitePayload(invitePayload);
 		if (!choices.workspace) {
-			input.io.stdout(`${yellow(input.io, 'No workspace id was returned yet; the readiness report will show workspace-scoped blockers if provisioning is still pending.')}\n\n`);
+			input.io.stdout(
+				renderInk(
+					h(
+						Shell,
+						{ title: 'Workspace pending', eyebrow: 'continuing readiness checks', tone: 'yellow', useColor: canUseColor(input.io) },
+						line('No workspace id was returned yet; the readiness report will show workspace-scoped blockers if provisioning is still pending.', canUseColor(input.io), 'yellow')
+					)
+				)
+			);
 		}
 	}
 	const args = buildOnboardArgs(choices);
-	input.io.stdout(`\n${dim(input.io, 'Running:')} ${humanCommand(args)}\n\n`);
+	input.io.stdout(`\n${renderCommandBanner(input.io, 'Running readiness', args, 'cyan')}\n`);
 	const result = await input.runCommand(args);
 	if (result.stderr.trim()) input.io.stderr(result.stderr);
 	if (result.code !== 0) {

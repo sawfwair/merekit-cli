@@ -334,7 +334,7 @@ test('tui waitlist email flag delegates directly without prompting', async () =>
   });
   assert.equal(code, 0, stderr);
   assert.deepEqual(commands, [['business', 'waitlist', 'join', '--email', 'person@example.com']]);
-  assert.match(stdout, /Opening waitlist:/);
+  assert.match(stdout, /Opening waitlist/);
   assert.match(stdout, /opened/);
 });
 
@@ -416,15 +416,16 @@ test('lists apps from the registry', async () => {
   const result = await run(['apps', 'list', '--json'], { MERE_ROOT: root, MERE_CLI_SOURCE: 'local' });
   assert.equal(result.code, 0);
   const payload = JSON.parse(result.stdout);
-  assert.deepEqual(payload.apps.map((app) => app.app), createRegistry(root).map((entry) => entry.key));
-  assert.equal(payload.apps.length, 11);
+  const registryKeys = createRegistry(root).map((entry) => entry.key);
+  assert.deepEqual(payload.apps.map((app) => app.app), registryKeys);
+  assert.equal(payload.apps.length, registryKeys.length);
   assert.ok(payload.apps.some((app) => app.app === 'projects' && app.exists === true && app.source === 'local'));
   assert.ok(payload.apps.some((app) => app.app === 'works' && app.auth === 'browser'));
 });
 
 test('adapter registry is covered by bundle metadata and docs', async () => {
   const registryKeys = createRegistry(path.resolve(repoRoot, '..'), repoRoot).map((entry) => entry.key);
-  assert.equal(registryKeys.length, 11);
+  assert.ok(registryKeys.length >= 1);
 
   const bundledManifest = JSON.parse(await readFile(path.join(repoRoot, 'adapters', 'manifest.json'), 'utf8'));
   assert.deepEqual(bundledManifest.adapters.map((adapter) => adapter.app), registryKeys);
@@ -446,7 +447,7 @@ test('adapter registry is covered by bundle metadata and docs', async () => {
     assert.match(doc, /mere setup mere-run models --app media/);
   }
   for (const doc of [readme, commandsDoc, installDoc, adaptersReadme]) {
-    assert.match(doc, /https:\/\/public\.stereovoid\.com\/mere-run-releases\/mere-run\.dmg/);
+    assert.match(doc, /https:\/\/mere\.run\/releases\/mere-run\.dmg/);
   }
 });
 

@@ -39,6 +39,11 @@ export async function listMcpTools(entries, allowWrites, env) {
     }
     return tools;
 }
+export function registerMcpToolSpecs(server, io, tools) {
+    for (const spec of tools) {
+        registerToolCompat(server, spec, (input) => invokeTool(io, spec, input));
+    }
+}
 function inputToArgs(input, command) {
     const args = [...command.path, ...(input.args ?? [])];
     if (input.workspace)
@@ -115,8 +120,6 @@ export async function runMcpServer(options) {
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
     const server = new McpServer({ name: 'mere', version: '0.1.0' });
     const tools = await listMcpTools(registry, options.allowWrites, options.io.env);
-    for (const spec of tools) {
-        registerToolCompat(server, spec, (input) => invokeTool(options.io, spec, input));
-    }
+    registerMcpToolSpecs(server, options.io, tools);
     await server.connect(new StdioServerTransport());
 }

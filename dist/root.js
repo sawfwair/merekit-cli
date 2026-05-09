@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { z } from 'zod';
 import { appendAudit, redactOutput } from './audit.js';
 import { parseArgs, extractPassthroughFlags, flagArgs, readBooleanFlag, readStringFlag } from './args.js';
 import { renderCompletion } from './completion.js';
@@ -8,6 +9,7 @@ import { clearState, loadState, saveState } from './context.js';
 import { loadManifest, loadManifests, manifestForJson, findManifestCommand, supportedFlagNames } from './manifest.js';
 import { appMereRunModelRequests, inspectMereRun, inspectMereRunModels, pullMereRunModels, setupMereRun } from './mere-run.js';
 import { runMcpServer } from './mcp.js';
+import { parseJson, parseJsonOrNull } from './json.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
 import { PRODUCT_APP_KEYS, createRegistry, executionCwd, findEntry, findPnpm, resolveCli } from './registry.js';
@@ -72,7 +74,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects today zone video network email gives works media
+  business finance projects agent today zone video network email gives works media deliver link
 `;
 }
 function helpTopicText(topic) {
@@ -665,6 +667,22 @@ async function runSetupMereRun(io, args, flags) {
     }
     return result.ok ? 0 : 1;
 }
+const financeConfigSchema = z.object({
+    currentProfile: z.string().optional(),
+    profiles: z.record(z.string(), z.object({
+        baseUrl: z.string().optional(),
+        token: z.string().optional()
+    })).optional()
+});
+function parseFinanceConfig(value) {
+    const parsed = financeConfigSchema.safeParse(value);
+    return parsed.success ? parsed.data : {};
+}
+function defaultFinanceProfile(env) {
+    return {
+        baseUrl: env.FINANCE_BASE_URL?.trim() || ''
+    };
+}
 function financeConfigPath(env) {
     const configured = env.FINANCE_CONFIG_PATH?.trim();
     if (configured)
@@ -676,16 +694,17 @@ function defaultFinanceConfig(env) {
     return {
         currentProfile: 'default',
         profiles: {
-            default: {
-                baseUrl: env.FINANCE_BASE_URL?.trim() || ''
-            }
+            default: defaultFinanceProfile(env)
         }
     };
+}
+function financeProfileOrDefault(config, name, env) {
+    return config.profiles[name] ?? config.profiles.default ?? defaultFinanceProfile(env);
 }
 async function loadFinanceConfig(env) {
     try {
         const raw = await readFile(financeConfigPath(env), 'utf8');
-        const parsed = JSON.parse(raw);
+        const parsed = parseFinanceConfig(parseJson(raw));
         const fallback = defaultFinanceConfig(env);
         const profiles = {};
         if (parsed.profiles && typeof parsed.profiles === 'object') {
@@ -702,7 +721,7 @@ async function loadFinanceConfig(env) {
             }
         }
         if (!profiles.default)
-            profiles.default = fallback.profiles.default;
+            profiles.default = defaultFinanceProfile(env);
         const currentProfile = typeof parsed.currentProfile === 'string' && profiles[parsed.currentProfile]
             ? parsed.currentProfile
             : fallback.currentProfile;
@@ -729,7 +748,7 @@ function financeProfileRows(config) {
 }
 function parseJsonMaybe(text) {
     try {
-        return JSON.parse(text);
+        return parseJson(text);
     }
     catch {
         return text;
@@ -738,7 +757,7 @@ function parseJsonMaybe(text) {
 async function financeAuthStatus(io, entry, flags) {
     const config = await loadFinanceConfig(io.env);
     const profileName = readStringFlag(flags, 'profile') ?? config.currentProfile;
-    const profile = config.profiles[profileName] ?? config.profiles.default ?? defaultFinanceConfig(io.env).profiles.default;
+    const profile = financeProfileOrDefault(config, profileName, io.env);
     const result = await delegateToApp(io, entry, ['auth', 'whoami'], { json: true, ...(profileName ? { profile: profileName } : {}) }, { capture: true }).catch((error) => ({
         code: 1,
         signal: null,
@@ -775,7 +794,7 @@ async function runFinanceProfiles(io, action, args, flags) {
         return 0;
     }
     if (action === 'current') {
-        const profile = config.profiles[config.currentProfile] ?? config.profiles.default ?? defaultFinanceConfig(io.env).profiles.default;
+        const profile = financeProfileOrDefault(config, config.currentProfile, io.env);
         const payload = {
             configPath: financeConfigPath(io.env),
             name: config.currentProfile,
@@ -798,18 +817,19 @@ async function runFinanceProfiles(io, action, args, flags) {
         if (!nextBaseUrl?.trim()) {
             throw new Error(`Finance profile '${name}' needs a tenant base URL. Pass --base-url https://<tenant>.mere.finance.`);
         }
-        config.profiles[name] = {
+        const nextProfile = {
             baseUrl: nextBaseUrl,
             ...(existing?.token ? { token: existing.token } : {})
         };
+        config.profiles[name] = nextProfile;
         config.currentProfile = name;
         await saveFinanceConfig(io.env, config);
         const payload = {
             ok: true,
             configPath: financeConfigPath(io.env),
             currentProfile: name,
-            baseUrl: config.profiles[name].baseUrl,
-            hasToken: typeof config.profiles[name].token === 'string'
+            baseUrl: nextProfile.baseUrl,
+            hasToken: typeof nextProfile.token === 'string'
         };
         if (readBooleanFlag(flags, 'json'))
             writeJson(io, payload);
@@ -1045,12 +1065,7 @@ function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function parseJsonObjectOrArray(text) {
-    try {
-        return JSON.parse(text);
-    }
-    catch {
-        return null;
-    }
+    return parseJsonOrNull(text);
 }
 async function delegateJson(io, entry, command, flags) {
     const result = await delegateToApp(io, entry, command, { json: true, ...flags }, { capture: true });
@@ -1332,7 +1347,7 @@ function renderOnboardingText(report) {
     const header = score >= 90 ? 'Ready' : blocked ? 'Blocked' : 'Needs attention';
     const lines = [`${header} (${score}/100)`, `workspace: ${String(report.workspace ?? 'not selected')}`, '', 'App\tStatus\tScore\tNext command'];
     for (const app of apps) {
-        const next = Array.isArray(app.nextCommands) ? app.nextCommands[0] ?? '-' : '-';
+        const next = Array.isArray(app.nextCommands) ? String(app.nextCommands[0] ?? '-') : '-';
         lines.push(`${String(app.app)}\t${String(app.status)}\t${String(app.readinessScore)}\t${next}`);
     }
     lines.push('', 'Next steps:');
@@ -1595,7 +1610,8 @@ async function runOps(io, action, flags) {
 async function maybeReadVersion() {
     try {
         const raw = await readFile(new URL('../package.json', import.meta.url), 'utf8');
-        return JSON.parse(raw).version ?? CLI_VERSION;
+        const parsed = parseJson(raw);
+        return isRecord(parsed) && typeof parsed.version === 'string' ? parsed.version : CLI_VERSION;
     }
     catch {
         return CLI_VERSION;
@@ -1612,9 +1628,12 @@ async function completionCommandMap(registry, env) {
             .filter((part) => typeof part === 'string' && part.length > 0)
             .filter((part, index, list) => list.indexOf(part) === index)
             .sort();
+        const commands = result.entry.key === 'agent'
+            ? [...new Set([...firstSegments, 'bootstrap', 'help', 'list', 'get', 'create', 'update', 'deploy', 'pause', 'archive', 'delete'])].sort()
+            : firstSegments;
         for (const alias of result.entry.aliases)
-            output[alias] = firstSegments;
-        output[result.entry.key] = firstSegments;
+            output[alias] = commands;
+        output[result.entry.key] = commands;
     }
     return output;
 }
@@ -1646,8 +1665,9 @@ export async function runCli(argv, io) {
             return await runAuth(io, rest[1], parsed.flags);
         if (rest[0] === 'context')
             return await runContext(io, rest[1], parsed.flags);
-        if (rest[0] === 'agent')
+        if (rest[0] === 'agent' && (!rest[1] || rest[1] === 'help' || rest[1] === 'bootstrap')) {
             return await runAgent(io, rest[1], parsed.flags);
+        }
         if (rest[0] === 'tui')
             return await runTui(io, parsed.flags);
         if (rest[0] === 'onboard' && readBooleanFlag(parsed.flags, 'interactive'))

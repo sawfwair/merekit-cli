@@ -2,6 +2,7 @@ export type AppKey =
 	| 'business'
 	| 'finance'
 	| 'projects'
+	| 'agent'
 	| 'today'
 	| 'zone'
 	| 'video'
@@ -9,7 +10,9 @@ export type AppKey =
 	| 'email'
 	| 'gives'
 	| 'works'
-	| 'media';
+	| 'media'
+	| 'deliver'
+	| 'link';
 
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
 export type CommandRisk = 'read' | 'write' | 'destructive' | 'external';
@@ -26,7 +29,7 @@ export type ManifestCommand = {
 	requiresConfirm: boolean;
 	positionals: string[];
 	flags: string[];
-	auditDefault?: boolean;
+	auditDefault?: boolean | undefined;
 };
 
 export type AppCommandManifest = {
@@ -37,7 +40,7 @@ export type AppCommandManifest = {
 	auth: { kind: AuthKind };
 	baseUrlEnv: string[];
 	sessionPath: string | null;
-	globalFlags?: string[];
+	globalFlags?: string[] | undefined;
 	commands: ManifestCommand[];
 };
 
@@ -74,5 +77,12 @@ export type ProcessResult = {
 	stdout: string;
 	stderr: string;
 };
+
+export interface CliIO {
+	stdout: (text: string) => void;
+	stderr: (text: string) => void;
+	env: NodeJS.ProcessEnv;
+	stdin?: NodeJS.ReadStream | undefined;
+}
 
 export type JsonObject = Record<string, unknown>;

@@ -9,6 +9,106 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/lib/shared/validation.ts
+function expectRecord(value, label) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be an object.`);
+  }
+  return value;
+}
+function expectString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Expected ${label}.${key} to be a non-empty string.`);
+  }
+  return value.trim();
+}
+function optionalString(record, key) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function optionalNumber(record, key) {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+var init_validation = __esm({
+  "src/lib/shared/validation.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/shared/media.ts
+function scalarString(value, label) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  throw new Error(`${label} must be a scalar value.`);
+}
+function optionalScalarString(value, label) {
+  return value == null ? null : scalarString(value, label);
+}
+function isSourceType(value) {
+  return SOURCE_TYPES.includes(value);
+}
+function normalizeSourceType(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!isSourceType(normalized)) {
+    throw new Error(`Unsupported source type: ${value}`);
+  }
+  return normalized;
+}
+function normalizeEmbeddingVector(value, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array of numbers.`);
+  }
+  if (value.length > MAX_EMBEDDING_DIMENSIONS) {
+    throw new Error(`${label} cannot exceed ${MAX_EMBEDDING_DIMENSIONS.toString()} dimensions.`);
+  }
+  return value.map((entry, index) => {
+    if (typeof entry !== "number" || !Number.isFinite(entry)) {
+      throw new Error(`${label}[${index.toString()}] must be a finite number.`);
+    }
+    return entry;
+  });
+}
+function toMediaItemSummary(row) {
+  return {
+    id: scalarString(row.id, "media_items.id"),
+    sourceId: optionalScalarString(row.source_id, "media_items.source_id"),
+    title: scalarString(row.title, "media_items.title"),
+    sourceType: normalizeSourceType(scalarString(row.source_type, "media_items.source_type")),
+    mimeType: optionalScalarString(row.mime_type, "media_items.mime_type"),
+    durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
+    fileSizeBytes: row.file_size_bytes == null ? null : Number(row.file_size_bytes),
+    storageKey: optionalScalarString(row.storage_key, "media_items.storage_key"),
+    originalPath: optionalScalarString(row.original_path, "media_items.original_path"),
+    transcriptStatus: scalarString(row.transcript_status ?? "missing", "media_items.transcript_status"),
+    segmentCount: Number(row.segment_count ?? 0),
+    createdAt: scalarString(row.created_at, "media_items.created_at"),
+    updatedAt: scalarString(row.updated_at, "media_items.updated_at")
+  };
+}
+function toTranscriptSegment(row) {
+  return {
+    id: scalarString(row.id, "segments.id"),
+    itemId: scalarString(row.item_id, "segments.item_id"),
+    startSeconds: Number(row.start_seconds),
+    endSeconds: Number(row.end_seconds),
+    text: scalarString(row.text, "segments.text"),
+    speakerId: optionalScalarString(row.speaker_id, "segments.speaker_id")
+  };
+}
+var MAX_EMBEDDING_DIMENSIONS, SOURCE_TYPES;
+var init_media = __esm({
+  "src/lib/shared/media.ts"() {
+    "use strict";
+    init_validation();
+    MAX_EMBEDDING_DIMENSIONS = 4096;
+    SOURCE_TYPES = ["file", "folder", "youtube", "audiobook", "manual-upload"];
+  }
+});
+
 // src/lib/shared/segments.ts
 function parseTimestamp(hours, minutes, seconds) {
   return (hours ? Number(hours) * 3600 : 0) + Number(minutes) * 60 + Number(seconds);
@@ -52,60 +152,6 @@ var init_segments = __esm({
   "src/lib/shared/segments.ts"() {
     "use strict";
     TIMESTAMP_RE = /^\[(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/u;
-  }
-});
-
-// src/lib/shared/validation.ts
-var init_validation = __esm({
-  "src/lib/shared/validation.ts"() {
-    "use strict";
-  }
-});
-
-// src/lib/shared/media.ts
-function isSourceType(value) {
-  return SOURCE_TYPES.includes(value);
-}
-function normalizeSourceType(value) {
-  const normalized = value.trim().toLowerCase();
-  if (!isSourceType(normalized)) {
-    throw new Error(`Unsupported source type: ${value}`);
-  }
-  return normalized;
-}
-function toMediaItemSummary(row) {
-  return {
-    id: String(row.id),
-    sourceId: row.source_id == null ? null : String(row.source_id),
-    title: String(row.title),
-    sourceType: normalizeSourceType(String(row.source_type)),
-    mimeType: row.mime_type == null ? null : String(row.mime_type),
-    durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
-    fileSizeBytes: row.file_size_bytes == null ? null : Number(row.file_size_bytes),
-    storageKey: row.storage_key == null ? null : String(row.storage_key),
-    originalPath: row.original_path == null ? null : String(row.original_path),
-    transcriptStatus: String(row.transcript_status ?? "missing"),
-    segmentCount: Number(row.segment_count ?? 0),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
-  };
-}
-function toTranscriptSegment(row) {
-  return {
-    id: String(row.id),
-    itemId: String(row.item_id),
-    startSeconds: Number(row.start_seconds),
-    endSeconds: Number(row.end_seconds),
-    text: String(row.text),
-    speakerId: row.speaker_id == null ? null : String(row.speaker_id)
-  };
-}
-var SOURCE_TYPES;
-var init_media = __esm({
-  "src/lib/shared/media.ts"() {
-    "use strict";
-    init_validation();
-    SOURCE_TYPES = ["file", "folder", "youtube", "audiobook", "manual-upload"];
   }
 });
 
@@ -165,7 +211,7 @@ function mapSearchRow(row, score) {
     text: String(row.text),
     startSeconds: Number(row.start_seconds),
     endSeconds: Number(row.end_seconds),
-    speakerId: row.speaker_id == null ? null : String(row.speaker_id),
+    speakerId: optionalScalarString(row.speaker_id, "segments.speaker_id"),
     score
   };
 }
@@ -363,7 +409,7 @@ var init_local_store = __esm({
           const deleteVector = this.db.prepare("DELETE FROM segment_vectors WHERE rowid = ?");
           const insertVector = this.db.prepare("INSERT INTO segment_vectors(rowid, embedding) VALUES (?, ?)");
           for (const [index, embedding] of input.embeddings.entries()) {
-            const segmentId = String(segments[index]?.id);
+            const segmentId = scalarString(segments[index]?.id, "segments.id");
             let map = selectMap.get(segmentId);
             if (!map) {
               insertMap.run(segmentId);
@@ -597,11 +643,11 @@ import os4 from "node:os";
 import path5 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_77f59e2f89d80dafdba28e846e401d30/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/client.ts
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_77f59e2f89d80dafdba28e846e401d30/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -610,7 +656,7 @@ var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_77f59e2f89d80dafdba28e846e401d30/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -712,7 +758,7 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_77f59e2f89d80dafdba28e846e401d30/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -920,8 +966,140 @@ function parseJsonText(text, label) {
     return JSON.parse(text);
   } catch (error) {
     const message = error instanceof Error ? error.message : "invalid JSON";
-    throw new Error(`Invalid ${label}: ${message}`);
+    throw new Error(`Invalid ${label}: ${message}`, { cause: error });
   }
+}
+
+// src/lib/shared/api.ts
+init_media();
+init_validation();
+function expectBoolean(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "boolean") {
+    throw new Error(`${label}.${key} must be a boolean.`);
+  }
+  return value;
+}
+function expectNumber(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label}.${key} must be a finite number.`);
+  }
+  return value;
+}
+function expectArray(record, key, label) {
+  const value = record[key];
+  if (!Array.isArray(value)) {
+    throw new Error(`${label}.${key} must be an array.`);
+  }
+  return value;
+}
+function normalizeMediaItemSummaryResponse(value, label = "media item") {
+  const record = expectRecord(value, label);
+  return {
+    id: expectString(record, "id", label),
+    sourceId: optionalString(record, "sourceId"),
+    title: expectString(record, "title", label),
+    sourceType: normalizeSourceType(expectString(record, "sourceType", label)),
+    mimeType: optionalString(record, "mimeType"),
+    durationSeconds: optionalNumber(record, "durationSeconds"),
+    fileSizeBytes: optionalNumber(record, "fileSizeBytes"),
+    storageKey: optionalString(record, "storageKey"),
+    originalPath: optionalString(record, "originalPath"),
+    transcriptStatus: expectString(record, "transcriptStatus", label),
+    segmentCount: expectNumber(record, "segmentCount", label),
+    createdAt: expectString(record, "createdAt", label),
+    updatedAt: expectString(record, "updatedAt", label)
+  };
+}
+function normalizeTranscriptSegmentResponse(value, label = "transcript segment") {
+  const record = expectRecord(value, label);
+  return {
+    id: expectString(record, "id", label),
+    itemId: expectString(record, "itemId", label),
+    startSeconds: expectNumber(record, "startSeconds", label),
+    endSeconds: expectNumber(record, "endSeconds", label),
+    text: expectString(record, "text", label),
+    speakerId: optionalString(record, "speakerId")
+  };
+}
+function normalizeSearchResultResponse(value, label = "search result") {
+  const record = expectRecord(value, label);
+  return {
+    itemId: expectString(record, "itemId", label),
+    segmentId: expectString(record, "segmentId", label),
+    title: expectString(record, "title", label),
+    text: expectString(record, "text", label),
+    startSeconds: expectNumber(record, "startSeconds", label),
+    endSeconds: expectNumber(record, "endSeconds", label),
+    score: expectNumber(record, "score", label),
+    speakerId: optionalString(record, "speakerId")
+  };
+}
+function normalizeImportMediaResponse(value) {
+  const record = expectRecord(value, "import response");
+  return {
+    ok: expectBoolean(record, "ok", "import response"),
+    itemId: optionalString(record, "itemId") ?? void 0,
+    jobId: optionalString(record, "jobId") ?? void 0,
+    error: optionalString(record, "error") ?? void 0
+  };
+}
+function normalizeListItemsResponse(value) {
+  const record = expectRecord(value, "items response");
+  return {
+    ok: expectBoolean(record, "ok", "items response"),
+    items: expectArray(record, "items", "items response").map(
+      (item, index) => normalizeMediaItemSummaryResponse(item, `items response.items[${index.toString()}]`)
+    )
+  };
+}
+function normalizeGetItemResponse(value) {
+  const record = expectRecord(value, "item response");
+  return {
+    ok: expectBoolean(record, "ok", "item response"),
+    item: normalizeMediaItemSummaryResponse(record.item, "item response.item")
+  };
+}
+function normalizeGetTranscriptResponse(value) {
+  const record = expectRecord(value, "transcript response");
+  return {
+    ok: expectBoolean(record, "ok", "transcript response"),
+    itemId: expectString(record, "itemId", "transcript response"),
+    text: expectString(record, "text", "transcript response"),
+    segments: expectArray(record, "segments", "transcript response").map(
+      (segment, index) => normalizeTranscriptSegmentResponse(segment, `transcript response.segments[${index.toString()}]`)
+    )
+  };
+}
+function normalizeSaveTranscriptResponse(value) {
+  const record = expectRecord(value, "save transcript response");
+  return {
+    ok: expectBoolean(record, "ok", "save transcript response"),
+    itemId: expectString(record, "itemId", "save transcript response"),
+    transcriptId: expectString(record, "transcriptId", "save transcript response"),
+    segmentCount: expectNumber(record, "segmentCount", "save transcript response")
+  };
+}
+function normalizeSaveEmbeddingsResponse(value) {
+  const record = expectRecord(value, "save embeddings response");
+  return {
+    ok: expectBoolean(record, "ok", "save embeddings response"),
+    itemId: expectString(record, "itemId", "save embeddings response"),
+    jobId: expectString(record, "jobId", "save embeddings response"),
+    vectorCount: expectNumber(record, "vectorCount", "save embeddings response"),
+    vectorizeReady: expectBoolean(record, "vectorizeReady", "save embeddings response")
+  };
+}
+function normalizeSearchResponse(value) {
+  const record = expectRecord(value, "search response");
+  return {
+    ok: expectBoolean(record, "ok", "search response"),
+    mode: optionalString(record, "mode") ?? void 0,
+    results: expectArray(record, "results", "search response").map(
+      (result, index) => normalizeSearchResultResponse(result, `search response.results[${index.toString()}]`)
+    )
+  };
 }
 
 // cli/client.ts
@@ -951,7 +1129,7 @@ var MediaCliClient = class {
     this.token = options.token;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
-  async request(path6, init = {}) {
+  async request(path6, parse, init = {}) {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
     if (init.body && !headers.has("content-type")) {
@@ -966,44 +1144,44 @@ var MediaCliClient = class {
       const message = typeof payload === "object" && payload !== null && "error" in payload ? String(payload.error) : `Request failed with status ${response.status.toString()}`;
       throw new MediaCliError(message, response.status);
     }
-    return payload;
+    return parse(payload);
   }
   importMedia(input) {
-    return this.request("/api/media/imports", {
+    return this.request("/api/media/imports", normalizeImportMediaResponse, {
       method: "POST",
       body: JSON.stringify(input)
     });
   }
   listItems(query) {
     const params = query ? `?query=${encodeURIComponent(query)}` : "";
-    return this.request(`/api/media/items${params}`);
+    return this.request(`/api/media/items${params}`, normalizeListItemsResponse);
   }
   getItem(itemId) {
-    return this.request(`/api/media/items/${encodeURIComponent(itemId)}`);
+    return this.request(`/api/media/items/${encodeURIComponent(itemId)}`, normalizeGetItemResponse);
   }
   getTranscript(itemId) {
-    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/transcript`);
+    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/transcript`, normalizeGetTranscriptResponse);
   }
   saveTranscript(itemId, input) {
-    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/transcript`, {
+    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/transcript`, normalizeSaveTranscriptResponse, {
       method: "POST",
       body: JSON.stringify(input)
     });
   }
   saveEmbeddings(itemId, input) {
-    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/embeddings`, {
+    return this.request(`/api/media/items/${encodeURIComponent(itemId)}/embeddings`, normalizeSaveEmbeddingsResponse, {
       method: "POST",
       body: JSON.stringify(input)
     });
   }
   search(query, embedding) {
     if (embedding) {
-      return this.request("/api/media/search", {
+      return this.request("/api/media/search", normalizeSearchResponse, {
         method: "POST",
         body: JSON.stringify({ query, embedding })
       });
     }
-    return this.request(`/api/media/search?q=${encodeURIComponent(query)}`);
+    return this.request(`/api/media/search?q=${encodeURIComponent(query)}`, normalizeSearchResponse);
   }
 };
 
@@ -1073,185 +1251,7 @@ async function listAudioFiles(dirPath) {
   return nested.flat().sort();
 }
 
-// cli/mere-run.ts
-import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import https from "node:https";
-import os2 from "node:os";
-import path3 from "node:path";
-import { spawn as spawn2, spawnSync } from "node:child_process";
-var DEFAULT_DMG_URL = "https://public.stereovoid.com/mere-run-releases/mere-run.dmg";
-var DEFAULT_INSTALL_BIN = path3.join(os2.homedir(), ".local", "bin", "mere.run");
-var DEFAULT_EMBED_MODEL = "text-embed-qwen3-0.6b";
-var GLOBAL_CANDIDATES = ["/usr/local/bin/mere.run", "/opt/homebrew/bin/mere.run"];
-async function isExecutable(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function which(binary, env) {
-  const pathValue = env.PATH ?? process.env.PATH ?? "";
-  for (const segment of pathValue.split(path3.delimiter)) {
-    if (!segment) continue;
-    const candidate = path3.join(segment, binary);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-function configuredBin(env) {
-  return env.MERE_MEDIA_MERE_RUN_BIN ?? env.MERE_RUN_BIN ?? null;
-}
-function configuredInstallBin(env) {
-  return env.MERE_MEDIA_MERE_RUN_INSTALL_BIN ?? env.MERE_RUN_INSTALL_BIN ?? DEFAULT_INSTALL_BIN;
-}
-function configuredDmgUrl(env) {
-  return env.MERE_MEDIA_MERE_RUN_DOWNLOAD_URL ?? env.MERE_RUN_DOWNLOAD_URL ?? DEFAULT_DMG_URL;
-}
-function configuredDmgSha256(env) {
-  return env.MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 ?? env.MERE_RUN_DOWNLOAD_SHA256 ?? null;
-}
-function requireDmgSha256(env) {
-  const expectedSha256 = configuredDmgSha256(env);
-  if (!expectedSha256) {
-    throw new Error("Auto-installing mere.run requires MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256.");
-  }
-  return expectedSha256;
-}
-async function download(url, dest) {
-  await new Promise((resolve, reject) => {
-    const file = createWriteStream(dest);
-    https.get(url, (response) => {
-      if (response.statusCode && response.statusCode >= 400) {
-        reject(new Error(`Download failed with status ${response.statusCode.toString()}`));
-        return;
-      }
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close();
-        resolve();
-      });
-    }).on("error", reject);
-  });
-}
-async function sha256File(filePath) {
-  const hash = createHash("sha256");
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("error", reject);
-    stream.on("end", resolve);
-  });
-  return hash.digest("hex");
-}
-async function installFromDmg(env) {
-  const installBin = configuredInstallBin(env);
-  const expectedSha256 = requireDmgSha256(env);
-  mkdirSync(path3.dirname(installBin), { recursive: true });
-  const tmp = await mkdtemp(path3.join(os2.tmpdir(), "mere-media-run-"));
-  const dmg = path3.join(tmp, "mere-run.dmg");
-  const mount = path3.join(tmp, "mount");
-  mkdirSync(mount);
-  try {
-    await download(configuredDmgUrl(env), dmg);
-    const actualSha256 = await sha256File(dmg);
-    if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
-      throw new Error("Downloaded mere.run DMG failed SHA-256 verification.");
-    }
-    const attach = spawnSync("hdiutil", ["attach", dmg, "-mountpoint", mount, "-nobrowse", "-readonly", "-quiet"], {
-      encoding: "utf8"
-    });
-    if (attach.status !== 0) {
-      throw new Error(attach.stderr || attach.stdout || "Unable to mount mere.run DMG.");
-    }
-    const installer = path3.join(mount, "install.sh");
-    const install = spawnSync(installer, {
-      encoding: "utf8",
-      env: { ...process.env, ...env, MERERUN_INSTALL_BIN_DEST: installBin }
-    });
-    spawnSync("hdiutil", ["detach", mount, "-quiet"], { encoding: "utf8" });
-    if (install.status !== 0) {
-      throw new Error(install.stderr || install.stdout || "mere.run installer failed.");
-    }
-    await chmod2(installBin, 493).catch(() => void 0);
-    return installBin;
-  } finally {
-    await rm2(tmp, { recursive: true, force: true });
-  }
-}
-async function resolveMereRunBin(env = process.env) {
-  const explicit = configuredBin(env);
-  if (explicit) {
-    if (!await isExecutable(explicit)) {
-      throw new Error(`mere.run binary is not executable: ${explicit}`);
-    }
-    return explicit;
-  }
-  const onPath = which("mere.run", env);
-  if (onPath) return onPath;
-  for (const candidate of GLOBAL_CANDIDATES) {
-    if (await isExecutable(candidate)) return candidate;
-  }
-  const cached = configuredInstallBin(env);
-  if (await isExecutable(cached)) return cached;
-  return installFromDmg(env);
-}
-async function runMere(args, options = {}) {
-  const bin = await resolveMereRunBin(options.env ?? process.env);
-  return new Promise((resolve, reject) => {
-    const child = spawn2(bin, args, {
-      env: { ...process.env, ...options.env ?? {} },
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`mere.run timed out after ${String(options.timeoutMs ?? 24e4)}ms`));
-    }, options.timeoutMs ?? 24e4);
-    child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr.trim() || stdout.trim() || `mere.run exited with ${String(code)}`));
-      }
-    });
-  });
-}
-async function transcribeAudio(audioPath, env = process.env) {
-  return runMere(["speech", "transcribe", audioPath, "--backend", "auto", "--task", "transcribe", "--quiet"], {
-    env,
-    timeoutMs: 3e5
-  });
-}
-async function embedTexts(texts, env = process.env) {
-  if (texts.length === 0) return [];
-  const output = await runMere(["text", "embed", "--model", DEFAULT_EMBED_MODEL, "--", ...texts], {
-    env,
-    timeoutMs: 3e5
-  });
-  const payload = JSON.parse(output);
-  return (payload.data ?? []).map((row) => row.embedding ?? []);
-}
-
-// cli/media.ts
-init_segments();
+// cli/manifest.ts
 var CLI_VERSION = "0.1.0";
 var HELP_TEXT = `mere-media CLI
 
@@ -1495,6 +1495,265 @@ var MANIFEST_COMMANDS = [
     flags: ["store", "local-db", "workspace"]
   }
 ];
+function commandManifest(env) {
+  return {
+    schemaVersion: 1,
+    app: "mere-media",
+    namespace: "media",
+    aliases: ["media", "mere-media", "meremedia"],
+    auth: { kind: "browser" },
+    baseUrlEnv: ["MERE_MEDIA_BASE_URL"],
+    sessionPath: sessionFilePath(env),
+    globalFlags: ["base-url", "store", "local-db", "workspace", "token", "json"],
+    commands: MANIFEST_COMMANDS
+  };
+}
+function renderCompletion(shell) {
+  const topWords = ["auth", "commands", "completion", "import", "items", "process", "search", "store", "transcript"].sort().join(" ");
+  const subcommands = {
+    auth: ["login", "logout", "whoami"],
+    completion: ["bash", "fish", "zsh"],
+    import: ["audiobook", "file", "folder", "youtube"],
+    items: ["get", "list"],
+    store: ["info"],
+    transcript: ["get"]
+  };
+  const bashCases = Object.entries(subcommands).map(([command, words]) => `    ${command}) words="${words.join(" ")}" ;;`).join("\n");
+  switch ((shell ?? "bash").trim().toLowerCase()) {
+    case "bash":
+      return [
+        "# mere-media bash completion",
+        "_mere_media_completion() {",
+        '  local cur="${COMP_WORDS[COMP_CWORD]}"',
+        "  local words",
+        '  if [[ "$COMP_CWORD" -eq 1 ]]; then',
+        `    words="${topWords}"`,
+        '  elif [[ "$COMP_CWORD" -eq 2 ]]; then',
+        '    case "${COMP_WORDS[1]}" in',
+        bashCases,
+        '      *) words="" ;;',
+        "    esac",
+        "  else",
+        '    words=""',
+        "  fi",
+        '  COMPREPLY=( $(compgen -W "$words" -- "$cur") )',
+        "}",
+        "complete -F _mere_media_completion mere-media",
+        ""
+      ].join("\n");
+    case "zsh":
+      return `#compdef mere-media
+_arguments '1:command:(${topWords})' '2:subcommand:->sub'
+case "$words[2]" in
+${Object.entries(
+        subcommands
+      ).map(([command, words]) => `  ${command}) _values '${command} commands' ${words.join(" ")} ;;`).join("\n")}
+esac
+`;
+    case "fish":
+      return [
+        `complete -c mere-media -f -n '__fish_use_subcommand' -a "${topWords}"`,
+        ...Object.entries(subcommands).map(
+          ([command, words]) => `complete -c mere-media -f -n '__fish_seen_subcommand_from ${command}' -a "${words.join(" ")}"`
+        ),
+        ""
+      ].join("\n");
+    default:
+      throw new Error("Completion shell must be one of bash, zsh, or fish.");
+  }
+}
+
+// cli/mere-run.ts
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import https from "node:https";
+import os2 from "node:os";
+import path3 from "node:path";
+import { spawn as spawn2, spawnSync } from "node:child_process";
+init_media();
+init_validation();
+var DEFAULT_DMG_URL = "https://mere.run/releases/mere-run.dmg";
+var DEFAULT_INSTALL_BIN = path3.join(os2.homedir(), ".local", "bin", "mere.run");
+var DEFAULT_EMBED_MODEL = "text-embed-qwen3-0.6b";
+var GLOBAL_CANDIDATES = ["/usr/local/bin/mere.run", "/opt/homebrew/bin/mere.run"];
+async function isExecutable(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function which(binary, env) {
+  const pathValue = env.PATH ?? process.env.PATH ?? "";
+  for (const segment of pathValue.split(path3.delimiter)) {
+    if (!segment) continue;
+    const candidate = path3.join(segment, binary);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+function configuredBin(env) {
+  return env.MERE_MEDIA_MERE_RUN_BIN ?? env.MERE_RUN_BIN ?? null;
+}
+function configuredInstallBin(env) {
+  return env.MERE_MEDIA_MERE_RUN_INSTALL_BIN ?? env.MERE_RUN_INSTALL_BIN ?? DEFAULT_INSTALL_BIN;
+}
+function configuredDmgUrl(env) {
+  return env.MERE_MEDIA_MERE_RUN_DOWNLOAD_URL ?? env.MERE_RUN_DOWNLOAD_URL ?? DEFAULT_DMG_URL;
+}
+function configuredDmgSha256(env) {
+  return env.MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 ?? env.MERE_RUN_DOWNLOAD_SHA256 ?? null;
+}
+function requireDmgSha256(env) {
+  const expectedSha256 = configuredDmgSha256(env);
+  if (!expectedSha256) {
+    throw new Error("Auto-installing mere.run requires MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256.");
+  }
+  return expectedSha256;
+}
+async function download(url, dest) {
+  await new Promise((resolve, reject) => {
+    const file = createWriteStream(dest);
+    https.get(url, (response) => {
+      if (response.statusCode && response.statusCode >= 400) {
+        reject(new Error(`Download failed with status ${response.statusCode.toString()}`));
+        return;
+      }
+      response.pipe(file);
+      file.on("finish", () => {
+        file.close();
+        resolve();
+      });
+    }).on("error", reject);
+  });
+}
+async function sha256File(filePath) {
+  const hash = createHash("sha256");
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+  return hash.digest("hex");
+}
+async function installFromDmg(env) {
+  const installBin = configuredInstallBin(env);
+  const expectedSha256 = requireDmgSha256(env);
+  mkdirSync(path3.dirname(installBin), { recursive: true });
+  const tmp = await mkdtemp(path3.join(os2.tmpdir(), "mere-media-run-"));
+  const dmg = path3.join(tmp, "mere-run.dmg");
+  const mount = path3.join(tmp, "mount");
+  mkdirSync(mount);
+  try {
+    await download(configuredDmgUrl(env), dmg);
+    const actualSha256 = await sha256File(dmg);
+    if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+      throw new Error("Downloaded mere.run DMG failed SHA-256 verification.");
+    }
+    const attach = spawnSync("hdiutil", ["attach", dmg, "-mountpoint", mount, "-nobrowse", "-readonly", "-quiet"], {
+      encoding: "utf8"
+    });
+    if (attach.status !== 0) {
+      throw new Error(attach.stderr || attach.stdout || "Unable to mount mere.run DMG.");
+    }
+    const installer = path3.join(mount, "install.sh");
+    const install = spawnSync(installer, {
+      encoding: "utf8",
+      env: { ...process.env, ...env, MERERUN_INSTALL_BIN_DEST: installBin }
+    });
+    spawnSync("hdiutil", ["detach", mount, "-quiet"], { encoding: "utf8" });
+    if (install.status !== 0) {
+      throw new Error(install.stderr || install.stdout || "mere.run installer failed.");
+    }
+    await chmod2(installBin, 493).catch(() => void 0);
+    return installBin;
+  } finally {
+    await rm2(tmp, { recursive: true, force: true });
+  }
+}
+async function resolveMereRunBin(env = process.env) {
+  const explicit = configuredBin(env);
+  if (explicit) {
+    if (!await isExecutable(explicit)) {
+      throw new Error(`mere.run binary is not executable: ${explicit}`);
+    }
+    return explicit;
+  }
+  const onPath = which("mere.run", env);
+  if (onPath) return onPath;
+  for (const candidate of GLOBAL_CANDIDATES) {
+    if (await isExecutable(candidate)) return candidate;
+  }
+  const cached = configuredInstallBin(env);
+  if (await isExecutable(cached)) return cached;
+  return installFromDmg(env);
+}
+async function runMere(args, options = {}) {
+  const bin = await resolveMereRunBin(options.env ?? process.env);
+  return new Promise((resolve, reject) => {
+    const child = spawn2(bin, args, {
+      env: { ...process.env, ...options.env ?? {} },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`mere.run timed out after ${String(options.timeoutMs ?? 24e4)}ms`));
+    }, options.timeoutMs ?? 24e4);
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || stdout.trim() || `mere.run exited with ${String(code)}`));
+      }
+    });
+  });
+}
+async function transcribeAudio(audioPath, env = process.env) {
+  return runMere(["speech", "transcribe", audioPath, "--backend", "auto", "--task", "transcribe", "--quiet"], {
+    env,
+    timeoutMs: 3e5
+  });
+}
+function normalizeMereRunEmbeddingResponse(value) {
+  const payload = expectRecord(value, "mere.run embedding response");
+  const data = payload.data;
+  if (!Array.isArray(data)) {
+    throw new Error("mere.run embedding response.data must be an array.");
+  }
+  return data.map((row, index) => {
+    const record = expectRecord(row, `mere.run embedding response.data[${index.toString()}]`);
+    return normalizeEmbeddingVector(record.embedding, `mere.run embedding response.data[${index.toString()}].embedding`);
+  });
+}
+async function embedTexts(texts, env = process.env) {
+  if (texts.length === 0) return [];
+  const output = await runMere(["text", "embed", "--model", DEFAULT_EMBED_MODEL, "--", ...texts], {
+    env,
+    timeoutMs: 3e5
+  });
+  return normalizeMereRunEmbeddingResponse(parseJsonText(output, "mere.run embedding response"));
+}
+
+// cli/media.ts
+init_segments();
 function parseArgs(argv, flagSpec) {
   const options = {};
   const positionals = [];
@@ -1577,19 +1836,6 @@ function writeResult(io, json2, value, fallback) {
 `);
   }
 }
-function commandManifest(env) {
-  return {
-    schemaVersion: 1,
-    app: "mere-media",
-    namespace: "media",
-    aliases: ["media", "mere-media", "meremedia"],
-    auth: { kind: "browser" },
-    baseUrlEnv: ["MERE_MEDIA_BASE_URL"],
-    sessionPath: sessionFilePath(env),
-    globalFlags: ["base-url", "store", "local-db", "workspace", "token", "json"],
-    commands: MANIFEST_COMMANDS
-  };
-}
 function renderCommands(io, json2) {
   const manifest = commandManifest(io.env);
   if (json2) {
@@ -1599,60 +1845,6 @@ function renderCommands(io, json2) {
   for (const command of manifest.commands) {
     io.stdout(`${command.path.join(" ")}	${command.risk}	${command.summary}
 `);
-  }
-}
-function renderCompletion(shell) {
-  const topWords = ["auth", "commands", "completion", "import", "items", "process", "search", "store", "transcript"].sort().join(" ");
-  const subcommands = {
-    auth: ["login", "logout", "whoami"],
-    completion: ["bash", "fish", "zsh"],
-    import: ["audiobook", "file", "folder", "youtube"],
-    items: ["get", "list"],
-    store: ["info"],
-    transcript: ["get"]
-  };
-  const bashCases = Object.entries(subcommands).map(([command, words]) => `    ${command}) words="${words.join(" ")}" ;;`).join("\n");
-  switch ((shell ?? "bash").trim().toLowerCase()) {
-    case "bash":
-      return [
-        "# mere-media bash completion",
-        "_mere_media_completion() {",
-        '  local cur="${COMP_WORDS[COMP_CWORD]}"',
-        "  local words",
-        '  if [[ "$COMP_CWORD" -eq 1 ]]; then',
-        `    words="${topWords}"`,
-        '  elif [[ "$COMP_CWORD" -eq 2 ]]; then',
-        '    case "${COMP_WORDS[1]}" in',
-        bashCases,
-        '      *) words="" ;;',
-        "    esac",
-        "  else",
-        '    words=""',
-        "  fi",
-        '  COMPREPLY=( $(compgen -W "$words" -- "$cur") )',
-        "}",
-        "complete -F _mere_media_completion mere-media",
-        ""
-      ].join("\n");
-    case "zsh":
-      return `#compdef mere-media
-_arguments '1:command:(${topWords})' '2:subcommand:->sub'
-case "$words[2]" in
-${Object.entries(
-        subcommands
-      ).map(([command, words]) => `  ${command}) _values '${command} commands' ${words.join(" ")} ;;`).join("\n")}
-esac
-`;
-    case "fish":
-      return [
-        `complete -c mere-media -f -n '__fish_use_subcommand' -a "${topWords}"`,
-        ...Object.entries(subcommands).map(
-          ([command, words]) => `complete -c mere-media -f -n '__fish_seen_subcommand_from ${command}' -a "${words.join(" ")}"`
-        ),
-        ""
-      ].join("\n");
-    default:
-      throw new Error("Completion shell must be one of bash, zsh, or fish.");
   }
 }
 async function runAuth(command, args, io) {
@@ -1982,19 +2174,19 @@ async function runCli(argv, io) {
         io.stdout(renderCompletion(subcommand));
         return 0;
       case "store":
-        return runStore(subcommand, args, io);
+        return await runStore(subcommand, args, io);
       case "auth":
-        return runAuth(subcommand, args, io);
+        return await runAuth(subcommand, args, io);
       case "items":
-        return runItems(subcommand, args, io);
+        return await runItems(subcommand, args, io);
       case "transcript":
-        return runTranscript(subcommand, args, io);
+        return await runTranscript(subcommand, args, io);
       case "import":
-        return runImport(subcommand, args, io);
+        return await runImport(subcommand, args, io);
       case "process":
-        return runProcess(args, io);
+        return await runProcess(args, io);
       case "search":
-        return runSearch(args, io);
+        return await runSearch(args, io);
       default:
         throw new Error(`Unknown command: ${command}`);
     }

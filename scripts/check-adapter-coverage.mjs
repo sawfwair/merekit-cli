@@ -79,7 +79,7 @@ for (const [label, text] of [
 	['docs/onboarding/install.md', installDoc],
 	['adapters/README.md', adaptersReadme]
 ]) {
-	if (!text.includes('mere.run') || !text.includes('~/mere/run-public') || !text.includes('mere setup mere-run') || !text.includes('mere setup mere-run models --app media') || !text.includes('https://public.stereovoid.com/mere-run-releases/mere-run.dmg')) {
+	if (!text.includes('mere.run') || !text.includes('~/mere/run-public') || !text.includes('mere setup mere-run') || !text.includes('mere setup mere-run models --app media') || !text.includes('https://mere.run/releases/mere-run.dmg')) {
 		failures.push(`media: ${label} must document the mere.run runtime dependency, app model pulls, ~/mere/run-public source path, mere setup mere-run installer, and public DMG URL`);
 	}
 }

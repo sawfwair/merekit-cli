@@ -21,10 +21,5 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm check:adapters
-      - run: pnpm test
-      - run: pnpm smoke
-      - run: pnpm smoke:mcp
-      - run: pnpm check:package
+      - run: pnpm verify
       - run: pnpm docs:build

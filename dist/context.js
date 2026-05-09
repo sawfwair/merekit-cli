@@ -1,9 +1,22 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { z } from 'zod';
+import { parseJson } from './json.js';
 export const emptyConfig = () => ({ version: 1, repoPaths: {} });
 export const emptyState = () => ({ version: 1, updatedAt: new Date(0).toISOString() });
-async function readJson(filePath, fallback) {
+const mereConfigSchema = z.object({
+    version: z.literal(1),
+    repoPaths: z.record(z.string(), z.string()).optional()
+});
+const mereStateSchema = z.object({
+    version: z.literal(1),
+    defaultWorkspace: z.string().nullable().optional(),
+    defaultProfile: z.string().nullable().optional(),
+    appWorkspaces: z.record(z.string(), z.string()).optional(),
+    updatedAt: z.string()
+});
+async function readJsonFile(filePath, fallback) {
     try {
-        return JSON.parse(await readFile(filePath, 'utf8'));
+        return parseJson(await readFile(filePath, 'utf8'));
     }
     catch (error) {
         if (error.code === 'ENOENT')
@@ -12,12 +25,12 @@ async function readJson(filePath, fallback) {
     }
 }
 export async function loadConfig(paths) {
-    const config = await readJson(paths.configFile, emptyConfig());
-    return config.version === 1 ? config : emptyConfig();
+    const parsed = mereConfigSchema.safeParse(await readJsonFile(paths.configFile, emptyConfig()));
+    return parsed.success ? parsed.data : emptyConfig();
 }
 export async function loadState(paths) {
-    const state = await readJson(paths.stateFile, emptyState());
-    return state.version === 1 ? state : emptyState();
+    const parsed = mereStateSchema.safeParse(await readJsonFile(paths.stateFile, emptyState()));
+    return parsed.success ? parsed.data : emptyState();
 }
 export async function saveConfig(paths, config) {
     await mkdir(paths.configDir, { recursive: true });

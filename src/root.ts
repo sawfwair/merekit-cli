@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { z } from 'zod';
 import { appendAudit, redactOutput } from './audit.js';
 import { parseArgs, extractPassthroughFlags, flagArgs, readBooleanFlag, readStringFlag } from './args.js';
 import { renderCompletion } from './completion.js';
@@ -8,20 +9,14 @@ import { clearState, loadState, saveState } from './context.js';
 import { loadManifest, loadManifests, manifestForJson, findManifestCommand, supportedFlagNames } from './manifest.js';
 import { appMereRunModelRequests, inspectMereRun, inspectMereRunModels, pullMereRunModels, setupMereRun } from './mere-run.js';
 import { runMcpServer } from './mcp.js';
+import { parseJson, parseJsonOrNull } from './json.js';
 import { resolveMerePaths } from './paths.js';
 import { runCapture } from './process.js';
 import { PRODUCT_APP_KEYS, createRegistry, executionCwd, findEntry, findPnpm, resolveCli } from './registry.js';
 import { runSkills } from './skills.js';
 import { runFirstUseTui } from './tui.js';
-import type { AppCommandManifest, ManifestCommand, ProcessResult, RegistryEntry } from './types.js';
+import type { CliIO, ManifestCommand, ProcessResult, RegistryEntry } from './types.js';
 import { CLI_VERSION } from './version.js';
-
-export interface CliIO {
-	stdout: (text: string) => void;
-	stderr: (text: string) => void;
-	env: NodeJS.ProcessEnv;
-	stdin?: NodeJS.ReadStream;
-}
 
 function writeJson(io: CliIO, value: unknown): void {
 	io.stdout(`${JSON.stringify(value, null, 2)}\n`);
@@ -83,7 +78,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects today zone video network email gives works media
+  business finance projects agent today zone video network email gives works media deliver link
 `;
 }
 
@@ -743,6 +738,30 @@ type FinanceConfig = {
 	profiles: Record<string, FinanceProfile>;
 };
 
+const financeConfigSchema = z.object({
+	currentProfile: z.string().optional(),
+	profiles: z.record(
+		z.string(),
+		z.object({
+			baseUrl: z.string().optional(),
+			token: z.string().optional()
+		})
+	).optional()
+});
+
+type ParsedFinanceConfig = z.infer<typeof financeConfigSchema>;
+
+function parseFinanceConfig(value: unknown): ParsedFinanceConfig {
+	const parsed = financeConfigSchema.safeParse(value);
+	return parsed.success ? parsed.data : {};
+}
+
+function defaultFinanceProfile(env: NodeJS.ProcessEnv): FinanceProfile {
+	return {
+		baseUrl: env.FINANCE_BASE_URL?.trim() || ''
+	};
+}
+
 function financeConfigPath(env: NodeJS.ProcessEnv): string {
 	const configured = env.FINANCE_CONFIG_PATH?.trim();
 	if (configured) return path.resolve(configured);
@@ -754,17 +773,19 @@ function defaultFinanceConfig(env: NodeJS.ProcessEnv): FinanceConfig {
 	return {
 		currentProfile: 'default',
 		profiles: {
-			default: {
-				baseUrl: env.FINANCE_BASE_URL?.trim() || ''
-			}
+			default: defaultFinanceProfile(env)
 		}
 	};
+}
+
+function financeProfileOrDefault(config: FinanceConfig, name: string, env: NodeJS.ProcessEnv): FinanceProfile {
+	return config.profiles[name] ?? config.profiles.default ?? defaultFinanceProfile(env);
 }
 
 async function loadFinanceConfig(env: NodeJS.ProcessEnv): Promise<FinanceConfig> {
 	try {
 		const raw = await readFile(financeConfigPath(env), 'utf8');
-		const parsed = JSON.parse(raw) as Partial<FinanceConfig>;
+		const parsed = parseFinanceConfig(parseJson(raw));
 		const fallback = defaultFinanceConfig(env);
 		const profiles: Record<string, FinanceProfile> = {};
 		if (parsed.profiles && typeof parsed.profiles === 'object') {
@@ -778,7 +799,7 @@ async function loadFinanceConfig(env: NodeJS.ProcessEnv): Promise<FinanceConfig>
 				};
 			}
 		}
-		if (!profiles.default) profiles.default = fallback.profiles.default;
+		if (!profiles.default) profiles.default = defaultFinanceProfile(env);
 		const currentProfile =
 			typeof parsed.currentProfile === 'string' && profiles[parsed.currentProfile]
 				? parsed.currentProfile
@@ -808,7 +829,7 @@ function financeProfileRows(config: FinanceConfig): Array<{ name: string; curren
 
 function parseJsonMaybe(text: string): unknown {
 	try {
-		return JSON.parse(text) as unknown;
+		return parseJson(text);
 	} catch {
 		return text;
 	}
@@ -829,7 +850,7 @@ async function financeAuthStatus(
 }> {
 	const config = await loadFinanceConfig(io.env);
 	const profileName = readStringFlag(flags, 'profile') ?? config.currentProfile;
-	const profile = config.profiles[profileName] ?? config.profiles.default ?? defaultFinanceConfig(io.env).profiles.default;
+	const profile = financeProfileOrDefault(config, profileName, io.env);
 	const result = await delegateToApp(
 		io,
 		entry,
@@ -876,7 +897,7 @@ async function runFinanceProfiles(
 		return 0;
 	}
 	if (action === 'current') {
-		const profile = config.profiles[config.currentProfile] ?? config.profiles.default ?? defaultFinanceConfig(io.env).profiles.default;
+		const profile = financeProfileOrDefault(config, config.currentProfile, io.env);
 		const payload = {
 			configPath: financeConfigPath(io.env),
 			name: config.currentProfile,
@@ -896,18 +917,19 @@ async function runFinanceProfiles(
 		if (!nextBaseUrl?.trim()) {
 			throw new Error(`Finance profile '${name}' needs a tenant base URL. Pass --base-url https://<tenant>.mere.finance.`);
 		}
-		config.profiles[name] = {
+		const nextProfile = {
 			baseUrl: nextBaseUrl,
 			...(existing?.token ? { token: existing.token } : {})
 		};
+		config.profiles[name] = nextProfile;
 		config.currentProfile = name;
 		await saveFinanceConfig(io.env, config);
 		const payload = {
 			ok: true,
 			configPath: financeConfigPath(io.env),
 			currentProfile: name,
-			baseUrl: config.profiles[name].baseUrl,
-			hasToken: typeof config.profiles[name].token === 'string'
+			baseUrl: nextProfile.baseUrl,
+			hasToken: typeof nextProfile.token === 'string'
 		};
 		if (readBooleanFlag(flags, 'json')) writeJson(io, payload);
 		else io.stdout(`finance profile: ${name}\n`);
@@ -1145,7 +1167,7 @@ type ReadOnlyAuditCommand = {
 	code: number | null;
 	stdout: string;
 	stderr: string;
-	error?: string;
+	error?: string | undefined;
 };
 
 type ReadOnlyAuditCoverage = {
@@ -1167,9 +1189,9 @@ type ReadOnlyAuditApp = {
 	namespace: string;
 	ok: boolean;
 	manifestOk: boolean;
-	error?: string;
-	coverage?: ReadOnlyAuditCoverage;
-	selectorHints?: SelectorHints;
+	error?: string | undefined;
+	coverage?: ReadOnlyAuditCoverage | undefined;
+	selectorHints?: SelectorHints | undefined;
 	commands: ReadOnlyAuditCommand[];
 };
 
@@ -1178,11 +1200,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseJsonObjectOrArray(text: string): unknown | null {
-	try {
-		return JSON.parse(text) as unknown;
-	} catch {
-		return null;
-	}
+	return parseJsonOrNull(text);
 }
 
 async function delegateJson(
@@ -1516,7 +1534,7 @@ function renderOnboardingText(report: Record<string, unknown>): string {
 	const header = score >= 90 ? 'Ready' : blocked ? 'Blocked' : 'Needs attention';
 	const lines = [`${header} (${score}/100)`, `workspace: ${String(report.workspace ?? 'not selected')}`, '', 'App\tStatus\tScore\tNext command'];
 	for (const app of apps) {
-		const next = Array.isArray(app.nextCommands) ? app.nextCommands[0] ?? '-' : '-';
+			const next = Array.isArray(app.nextCommands) ? String(app.nextCommands[0] ?? '-') : '-';
 		lines.push(`${String(app.app)}\t${String(app.status)}\t${String(app.readinessScore)}\t${next}`);
 	}
 	lines.push('', 'Next steps:');
@@ -1780,7 +1798,8 @@ async function runOps(io: CliIO, action: string | undefined, flags: Record<strin
 async function maybeReadVersion(): Promise<string> {
 	try {
 		const raw = await readFile(new URL('../package.json', import.meta.url), 'utf8');
-		return (JSON.parse(raw) as { version?: string }).version ?? CLI_VERSION;
+		const parsed = parseJson(raw);
+		return isRecord(parsed) && typeof parsed.version === 'string' ? parsed.version : CLI_VERSION;
 	} catch {
 		return CLI_VERSION;
 	}
@@ -1796,8 +1815,11 @@ async function completionCommandMap(registry: RegistryEntry[], env: NodeJS.Proce
 			.filter((part): part is string => typeof part === 'string' && part.length > 0)
 			.filter((part, index, list) => list.indexOf(part) === index)
 			.sort();
-		for (const alias of result.entry.aliases) output[alias] = firstSegments;
-		output[result.entry.key] = firstSegments;
+		const commands = result.entry.key === 'agent'
+			? [...new Set([...firstSegments, 'bootstrap', 'help', 'list', 'get', 'create', 'update', 'deploy', 'pause', 'archive', 'delete'])].sort()
+			: firstSegments;
+		for (const alias of result.entry.aliases) output[alias] = commands;
+		output[result.entry.key] = commands;
 	}
 	return output;
 }
@@ -1828,7 +1850,9 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 		if (parsed.positionals[0] === 'setup') return await runSetup(io, parsed.positionals[1], parsed.positionals.slice(2), parsed.flags);
 		if (rest[0] === 'auth') return await runAuth(io, rest[1], parsed.flags);
 		if (rest[0] === 'context') return await runContext(io, rest[1], parsed.flags);
-		if (rest[0] === 'agent') return await runAgent(io, rest[1], parsed.flags);
+		if (rest[0] === 'agent' && (!rest[1] || rest[1] === 'help' || rest[1] === 'bootstrap')) {
+			return await runAgent(io, rest[1], parsed.flags);
+		}
 		if (rest[0] === 'tui') return await runTui(io, parsed.flags);
 		if (rest[0] === 'onboard' && readBooleanFlag(parsed.flags, 'interactive')) return await runTui(io, parsed.flags);
 		if (rest[0] === 'onboard') return await runOnboard(io, rest[1]?.startsWith('--') ? undefined : rest[1], parsed.flags);
