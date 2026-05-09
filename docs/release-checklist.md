@@ -17,6 +17,7 @@ pnpm smoke:mcp
 pnpm check:package
 pnpm test:pack
 pnpm pack:dry
+node ../plugins/scripts/sync-cli.mjs .   # internal: sync Codex/Claude plugin catalogs to this CLI version
 gitleaks detect --source . --log-opts=--all --redact
 ```
 
@@ -40,6 +41,7 @@ gitleaks detect --source . --log-opts=--all --redact
 
 - Confirm `SECURITY.md` still describes the adapter/API-shape model.
 - Confirm `CHANGELOG.md`, `package.json`, and the npm version all agree.
+- Confirm the Codex and Claude plugin catalogs are synced to this CLI version.
 - Confirm the dry-run tarball contains only intended files.
 - Merge the release PR to `main`; the `Publish` GitHub Actions workflow runs automatically when `package.json` contains a version newer than npm. It uses OIDC trusted publishing, so no long-lived npm publish token is required.
 - Use the manual `Publish` workflow only for an intentional rerun or non-`latest` dist-tag.
