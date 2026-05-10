@@ -6,39 +6,36 @@
 [![GitHub Release](https://img.shields.io/github/v/release/sawfwair/merekit-cli?sort=semver)](https://github.com/sawfwair/merekit-cli/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, and MCP access.
+`mere` is the portfolio command plane for Mere. It is the single entrypoint for humans and agents, while product behavior stays owned by app CLI adapters bundled inside this package. The root CLI adds discovery, context, audit logs, diagnostics, smoke checks, workspace snapshots, MCP access, and skill installation.
 
 Full docs are published at [sawfwair.github.io/merekit-cli](https://sawfwair.github.io/merekit-cli/). Public waitlist access is at [merekit.com/waitlist](https://merekit.com/waitlist).
 
 ```sh
-mere tui
 mere business waitlist join --email you@example.com
+mere onboard --interactive
 mere business onboard start INVITE_CODE --json
 mere onboard --workspace ws_123 --target codex --json
 mere apps list --json
 mere ops doctor --json
 mere auth status --all --json
-mere ops workspace-snapshot --json
+mere ops workspace-snapshot
 mere apps manifest --app projects --json
+mere skills list
 mere help agent
 mere business waitlist join --email you@example.com --json
 ```
 
-`mere business waitlist join` opens the Turnstile and magic-link protected page at [merekit.com/waitlist](https://merekit.com/waitlist) with the email prefilled. The page sends a confirmation link, and the link click performs the waitlist join. `mere tui` also accepts a waitlist email directly when someone does not have an invite yet.
+`mere business waitlist join` opens the Turnstile and magic-link protected page at [merekit.com/waitlist](https://merekit.com/waitlist) with the email prefilled. The page sends a confirmation link, and the link click performs the waitlist join.
 
 ## First Use
 
-For a human first run, start the terminal UI:
-
-```sh
-mere tui
-```
-
-The UI asks for an invite code, waitlist email, or operator workspace ID. If someone does not have an invite yet, entering an email opens the protected waitlist. Workspace IDs are only for operators, support, agents, or re-running checks on an already-provisioned workspace. If you paste an invite code, it runs `mere business onboard start CODE --json` to sign in and bootstrap the workspace, then runs the same safe readiness checks as `mere onboard --json`. You can also launch it with:
+For a human first run, use the interactive CLI prompts:
 
 ```sh
 mere onboard --interactive
 ```
+
+The prompts ask for an invite code, waitlist email, or operator workspace ID. If someone does not have an invite yet, entering an email opens the protected waitlist. Workspace IDs are only for operators, support, agents, or re-running checks on an already-provisioned workspace. If you paste an invite code, it runs `mere business onboard start CODE --json` to sign in and bootstrap the workspace, then runs the same safe readiness checks as `mere onboard --json`.
 
 For headless human onboarding from an invite code:
 
@@ -70,7 +67,11 @@ mere ops workspace-snapshot --workspace ws_123 --json
 mere apps manifest --app projects --json
 ```
 
-For normal users, start with `mere tui` because it starts from the invite code they actually have, or from the waitlist email they need before an invite exists. For operators and agents that already have a workspace, `mere onboard --workspace ...` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands. The snapshot is the safest first operational read. It runs only manifest-declared read commands and groups results by app.
+For normal users, start with `mere onboard --interactive` because it starts from the invite code they actually have, or from the waitlist email they need before an invite exists. For operators and agents that already have a workspace, `mere onboard --workspace ...` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`, with readiness scores, selector hints, and exact next commands.
+
+After first use, stay in the CLI: run `mere ops workspace-snapshot` for the safest cross-stack read, `mere apps manifest --json` for the nested per-surface command contract, and `mere skills list` to inspect installable skills. Add `--json` to the snapshot when an agent or script needs the full machine payload.
+
+The snapshot is the safest first operational read. In human mode it shows live progress while long read checks run, then prints a compact summary. With `--json`, stdout stays clean and the full grouped payload is emitted only when the snapshot is complete.
 
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
@@ -98,14 +99,14 @@ Install the published package from npm:
 ```sh
 npm install -g @merekit/cli
 mere --help
-mere tui
+mere onboard --interactive
 ```
 
 Run it once without a global install:
 
 ```sh
 npx --yes @merekit/cli@latest --help
-npx --yes @merekit/cli@latest tui
+npx --yes @merekit/cli@latest onboard --interactive
 ```
 
 With pnpm:
@@ -173,12 +174,12 @@ Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source for debugging. A
 Root-owned commands:
 
 - `mere apps list|manifest|doctor`
-- `mere tui`
 - `mere onboard`
 - `mere agent bootstrap`
 - `mere auth login|whoami|logout|status`
 - `mere context get|set-workspace|clear`
 - `mere finance profiles list|current|use|login`
+- `mere skills list|show|install|publish`
 - `mere setup build|check|smoke`
 - `mere setup mere-run`
 - `mere setup mere-run models --app media`

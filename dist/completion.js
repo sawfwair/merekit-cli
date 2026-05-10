@@ -12,7 +12,6 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         'ops',
         'setup',
         'skills',
-        'tui',
         ...registry.flatMap((entry) => entry.aliases)
     ]
         .filter((word, index, list) => list.indexOf(word) === index)
@@ -27,11 +26,10 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         finance: ['profiles'],
         help: ['agent', 'mcp', 'onboard', 'safety', 'skills'],
         mcp: ['serve'],
-        onboard: ['--app', '--base-domain', '--business-mode', '--existing-website-url', '--finance-base-url', '--finance-profile', '--interactive', '--invite-code', '--json', '--name', '--no-interactive', '--no-wait', '--output', '--slug', '--target', '--workspace'],
+        onboard: ['--app', '--base-domain', '--business-mode', '--existing-website-url', '--finance-base-url', '--finance-profile', '--interactive', '--invite-code', '--json', '--name', '--no-interactive', '--no-wait', '--output', '--slug', '--target', '--waitlist-email', '--workspace'],
         ops: ['audit', 'doctor', 'smoke', 'workspace-snapshot'],
         setup: ['build', 'check', 'mere-run', 'smoke'],
         skills: ['install', 'list', 'publish', 'show'],
-        tui: ['--app', '--base-domain', '--business-mode', '--dry-run', '--existing-website-url', '--finance-base-url', '--finance-profile', '--invite-code', '--name', '--no-wait', '--output', '--slug', '--target', '--waitlist-email', '--workspace'],
         ...dynamicCommands
     };
     const thirdCommands = {

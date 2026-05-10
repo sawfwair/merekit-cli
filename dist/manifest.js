@@ -96,17 +96,52 @@ export function supportedFlagNames(manifest, command) {
         names.add('confirm');
     return names;
 }
+function surfaceName(command) {
+    return command.path[0] ?? 'root';
+}
+function commandCounts(commands) {
+    return {
+        total: commands.length,
+        read: commands.filter((command) => command.risk === 'read').length,
+        write: commands.filter((command) => command.risk === 'write').length,
+        destructive: commands.filter((command) => command.risk === 'destructive').length,
+        external: commands.filter((command) => command.risk === 'external').length
+    };
+}
+function surfacesForManifest(manifest) {
+    const bySurface = new Map();
+    for (const command of manifest.commands) {
+        const name = surfaceName(command);
+        bySurface.set(name, [...(bySurface.get(name) ?? []), command]);
+    }
+    return Array.from(bySurface.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, commands]) => ({
+        name,
+        counts: commandCounts(commands),
+        commands: commands.slice().sort((left, right) => left.path.join(' ').localeCompare(right.path.join(' ')))
+    }));
+}
+function manifestWithSurfaces(manifest) {
+    return {
+        ...manifest,
+        counts: commandCounts(manifest.commands),
+        surfaces: surfacesForManifest(manifest)
+    };
+}
 export function manifestForJson(results) {
     return {
         schemaVersion: 1,
         generatedAt: new Date().toISOString(),
-        apps: results.map((result) => result.ok
-            ? result.manifest
+        apps: results.map((result) => result.ok && result.manifest
+            ? manifestWithSurfaces(result.manifest)
             : {
                 app: result.entry.key,
                 namespace: result.entry.namespace,
                 error: result.error,
-                cli: result.resolved.displayPath
+                cli: result.resolved.displayPath,
+                counts: commandCounts([]),
+                surfaces: []
             })
     };
 }

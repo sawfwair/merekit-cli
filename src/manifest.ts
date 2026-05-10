@@ -118,18 +118,57 @@ export function supportedFlagNames(
 	return names;
 }
 
+function surfaceName(command: ManifestCommand): string {
+	return command.path[0] ?? 'root';
+}
+
+function commandCounts(commands: ManifestCommand[]): Record<string, number> {
+	return {
+		total: commands.length,
+		read: commands.filter((command) => command.risk === 'read').length,
+		write: commands.filter((command) => command.risk === 'write').length,
+		destructive: commands.filter((command) => command.risk === 'destructive').length,
+		external: commands.filter((command) => command.risk === 'external').length
+	};
+}
+
+function surfacesForManifest(manifest: AppCommandManifest): Array<Record<string, unknown>> {
+	const bySurface = new Map<string, ManifestCommand[]>();
+	for (const command of manifest.commands) {
+		const name = surfaceName(command);
+		bySurface.set(name, [...(bySurface.get(name) ?? []), command]);
+	}
+	return Array.from(bySurface.entries())
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([name, commands]) => ({
+			name,
+			counts: commandCounts(commands),
+			commands: commands.slice().sort((left, right) => left.path.join(' ').localeCompare(right.path.join(' ')))
+		}));
+}
+
+function manifestWithSurfaces(manifest: AppCommandManifest): Record<string, unknown> {
+	return {
+		...manifest,
+		counts: commandCounts(manifest.commands),
+		surfaces: surfacesForManifest(manifest)
+	};
+}
+
 export function manifestForJson(results: ManifestLoadResult[]): unknown {
 	return {
 		schemaVersion: 1,
 		generatedAt: new Date().toISOString(),
 		apps: results.map((result) =>
-			result.ok
-				? result.manifest
+			result.ok && result.manifest
+				? manifestWithSurfaces(result.manifest)
 				: {
 						app: result.entry.key,
 						namespace: result.entry.namespace,
 						error: result.error,
-						cli: result.resolved.displayPath
+						cli: result.resolved.displayPath,
+						counts: commandCounts([]),
+						surfaces: []
 					}
 		)
 	};

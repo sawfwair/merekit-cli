@@ -30,7 +30,6 @@ Usage:
   mere <app> [app command...]
 
 Human first run:
-  mere tui
   mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
@@ -59,12 +58,11 @@ Global:
 
 Commands:
   help [agent|onboard|safety|skills|mcp]
-  tui [--waitlist-email EMAIL|--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   completion [bash|zsh|fish]
   apps list|manifest|doctor
   auth login|whoami|logout|status [--app APP|--all]
   context get|set-workspace|clear
-  onboard [--interactive] [--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
+  onboard [--interactive] [--waitlist-email EMAIL|--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR]
   skills list|show|install|publish
   finance profiles list|current|use|login
@@ -87,7 +85,6 @@ Goal:
   Learn the command plane from live manifests, inspect safely first, then delegate product-owned work.
 
 Human first-use:
-  mere tui
   mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
@@ -122,7 +119,6 @@ Goal:
   Generate one readiness report for a fresh human invite flow or an agent entering an existing workspace.
 
 Usage:
-  mere tui
   mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
@@ -252,8 +248,8 @@ function commandRowsFromManifest(manifestPayload) {
         return 'No command manifest was available.\n';
     }
     const rows = [
-        '| App | Command | Risk | Auth | JSON | Data | Guardrails | Summary |',
-        '| --- | --- | --- | --- | --- | --- | --- | --- |'
+        '| App | Surface | Command | Risk | Auth | JSON | Data | Guardrails | Summary |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
     ];
     for (const app of manifestPayload.apps) {
         if (!isRecord(app))
@@ -267,12 +263,14 @@ function commandRowsFromManifest(manifestPayload) {
             if (!isRecord(command))
                 continue;
             const pathParts = Array.isArray(command.path) ? command.path.filter((part) => typeof part === 'string') : [];
+            const surface = pathParts[0] ?? 'root';
             const guardrails = [
                 command.requiresYes === true ? '--yes' : '',
                 command.requiresConfirm === true ? '--confirm' : ''
             ].filter(Boolean);
             rows.push([
                 markdownCell(appName),
+                markdownCell(surface),
                 markdownCell(pathParts.join(' ')),
                 markdownCell(command.risk),
                 markdownCell(command.auth),
@@ -1061,6 +1059,164 @@ async function opsSmoke(io, flags) {
         nextFlags.all = true;
     return runSetup(io, 'smoke', [], nextFlags);
 }
+function supportsAnsi(io) {
+    return io.env.NO_COLOR === undefined && io.env.TERM !== 'dumb';
+}
+function colorize(io, color, text) {
+    if (!supportsAnsi(io))
+        return text;
+    const codes = {
+        dim: 2,
+        green: 32,
+        red: 31,
+        yellow: 33,
+        cyan: 36
+    };
+    return `\x1b[${codes[color]}m${text}\x1b[0m`;
+}
+function ellipsize(value, width) {
+    if (width <= 0)
+        return '';
+    if (value.length <= width)
+        return value;
+    if (width <= 3)
+        return value.slice(0, width);
+    return `${value.slice(0, width - 3)}...`;
+}
+function firstLine(value) {
+    const line = value?.split(/\r?\n/).find((part) => part.trim().length > 0)?.trim();
+    return line && line.length > 0 ? line : null;
+}
+function parentheticalFirstLine(value) {
+    const line = firstLine(value);
+    return line ? ` (${line})` : '';
+}
+function shouldRenderSnapshotProgress(io, flags) {
+    if (readBooleanFlag(flags, 'json'))
+        return false;
+    if (io.env.CI === 'true' || io.env.MERE_PROGRESS === '0')
+        return false;
+    return io.env.MERE_PROGRESS === '1' || process.stderr.isTTY;
+}
+function createSnapshotProgress(io, flags) {
+    if (!shouldRenderSnapshotProgress(io, flags))
+        return undefined;
+    const frames = ['-', '\\', '|', '/'];
+    let frame = 0;
+    let timer;
+    let activeLabel = '';
+    let activeSince = Date.now();
+    const clearTimer = () => {
+        if (timer)
+            clearInterval(timer);
+        timer = undefined;
+    };
+    const columns = () => Math.max(40, Math.min(process.stderr.columns ?? 100, 140));
+    const render = () => {
+        const elapsed = Math.max(1, Math.round((Date.now() - activeSince) / 1000));
+        const prefix = `${colorize(io, 'cyan', frames[frame % frames.length] ?? '-')} `;
+        frame += 1;
+        const suffixText = ` ${elapsed}s`;
+        const suffix = colorize(io, 'dim', suffixText);
+        const width = columns() - 2 - suffixText.length;
+        process.stderr.write(`\r\x1b[2K${prefix}${ellipsize(activeLabel, width)}${suffix}`);
+    };
+    const task = (label) => {
+        activeLabel = label;
+        activeSince = Date.now();
+        clearTimer();
+        render();
+        timer = setInterval(render, 120);
+    };
+    const line = (symbol, color, label) => {
+        clearTimer();
+        process.stderr.write(`\r\x1b[2K${colorize(io, color, symbol)} ${label}\n`);
+    };
+    return {
+        start(totalApps, workspace) {
+            line('>', 'cyan', `workspace snapshot: ${workspace ?? 'no workspace'} across ${totalApps} app${totalApps === 1 ? '' : 's'}`);
+        },
+        appStart(app, index, total) {
+            task(`[${index}/${total}] ${app}: loading command manifest`);
+        },
+        selectorStart(app) {
+            task(`${app}: resolving workspace selectors`);
+        },
+        commandStart(app, command) {
+            task(`${app}: ${command.join(' ')}`);
+        },
+        commandEnd(row) {
+            const name = `${row.app}: ${row.command.join(' ')}`;
+            if (row.ok)
+                line('ok', 'green', name);
+            else
+                line('!!', 'red', `${name}${row.code === null ? '' : ` exited ${row.code}`}`);
+        },
+        appEnd(app) {
+            if (!app.manifestOk) {
+                line('!!', 'red', `${app.app}: manifest unavailable${parentheticalFirstLine(app.error)}`);
+                return;
+            }
+            const failed = app.commands.filter((command) => !command.ok).length;
+            if (failed === 0)
+                line('ok', 'green', `${app.app}: ${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} passed`);
+            else
+                line('!!', 'yellow', `${app.app}: ${failed}/${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} failed`);
+        },
+        stop() {
+            clearTimer();
+            if (activeLabel)
+                process.stderr.write('\r\x1b[2K');
+            activeLabel = '';
+        }
+    };
+}
+function formatWorkspaceSnapshot(payload) {
+    const totalApps = payload.apps.length;
+    const healthyApps = payload.apps.filter((app) => app.ok).length;
+    const totalCommands = payload.apps.reduce((sum, app) => sum + app.commands.length, 0);
+    const failedCommands = payload.apps.reduce((sum, app) => sum + app.commands.filter((command) => !command.ok).length, 0);
+    const skippedCommands = payload.apps.reduce((sum, app) => sum + (app.coverage?.skippedReadCommands.length ?? 0), 0);
+    const missingSelectors = payload.apps.flatMap((app) => app.selectorHints?.missing ?? []);
+    const lines = [
+        'Workspace snapshot',
+        `workspace: ${payload.workspace}`,
+        `generated: ${payload.generatedAt}`,
+        `apps: ${healthyApps}/${totalApps} ok`,
+        `read checks: ${totalCommands - failedCommands}/${totalCommands} passed${skippedCommands > 0 ? `, ${skippedCommands} skipped` : ''}`
+    ];
+    const failingApps = payload.apps.filter((app) => !app.ok || !app.manifestOk);
+    if (failingApps.length === 0 && missingSelectors.length === 0) {
+        lines.push('', 'All read checks passed.');
+    }
+    else {
+        lines.push('', 'Needs attention:');
+        for (const app of failingApps.slice(0, 8)) {
+            if (!app.manifestOk) {
+                lines.push(`- ${app.app}: manifest unavailable${parentheticalFirstLine(app.error)}`);
+                continue;
+            }
+            const failed = app.commands.filter((command) => !command.ok);
+            lines.push(`- ${app.app}: ${failed.length}/${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} failed`);
+            for (const command of failed.slice(0, 3)) {
+                const detail = firstLine(command.stderr) ?? firstLine(command.error) ?? (command.code === null ? 'no exit code' : `exit ${command.code}`);
+                lines.push(`  ${command.command.join(' ')}: ${detail}`);
+            }
+        }
+        if (failingApps.length > 8)
+            lines.push(`- ${failingApps.length - 8} more app${failingApps.length - 8 === 1 ? '' : 's'} need attention`);
+    }
+    if (missingSelectors.length > 0) {
+        lines.push('', 'Missing selectors:');
+        for (const missing of missingSelectors.slice(0, 6)) {
+            lines.push(`- ${missing.app}: ${missing.selector} (${missing.discoveryCommand.join(' ')})`);
+        }
+        if (missingSelectors.length > 6)
+            lines.push(`- ${missingSelectors.length - 6} more selector hint${missingSelectors.length - 6 === 1 ? '' : 's'}`);
+    }
+    lines.push('', 'Full payload: rerun with --json.');
+    return `${lines.join('\n')}\n`;
+}
 function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -1169,13 +1325,15 @@ async function selectorHintsForEntry(io, entry, workspace) {
     }
     return hints;
 }
-async function collectReadOnlyAuditDefaults(io, flags, workspace) {
+async function collectReadOnlyAuditDefaults(io, flags, workspace, options = {}) {
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
     const entries = readStringFlag(flags, 'app') ? selectedEntries(registry, flags) : registry;
     const apps = [];
     const audits = [];
-    for (const entry of entries) {
+    options.progress?.start(entries.length, workspace);
+    for (const [index, entry] of entries.entries()) {
+        options.progress?.appStart(entry.key, index + 1, entries.length);
         const manifest = await loadManifest(entry, io.env);
         const app = {
             app: entry.key,
@@ -1187,8 +1345,10 @@ async function collectReadOnlyAuditDefaults(io, flags, workspace) {
         if (!manifest.ok || !manifest.manifest) {
             app.error = manifest.error;
             apps.push(app);
+            options.progress?.appEnd(app);
             continue;
         }
+        options.progress?.selectorStart(entry.key);
         app.selectorHints = await selectorHintsForEntry(io, entry, workspace);
         const readCommands = manifest.manifest.commands.filter((command) => command.risk === 'read');
         const commands = readCommands.filter((command) => command.auditDefault);
@@ -1205,6 +1365,7 @@ async function collectReadOnlyAuditDefaults(io, flags, workspace) {
         };
         for (const command of commands) {
             const flagsForCommand = await auditFlagsForCommand(io, entry, command.path, workspace);
+            options.progress?.commandStart(entry.key, command.path);
             try {
                 const result = await delegateToApp(io, entry, command.path, flagsForCommand, { capture: true });
                 const row = {
@@ -1218,6 +1379,7 @@ async function collectReadOnlyAuditDefaults(io, flags, workspace) {
                 app.commands.push(row);
                 audits.push(row);
                 app.coverage.executedCommands += 1;
+                options.progress?.commandEnd(row);
             }
             catch (error) {
                 const row = {
@@ -1232,10 +1394,12 @@ async function collectReadOnlyAuditDefaults(io, flags, workspace) {
                 app.commands.push(row);
                 audits.push(row);
                 app.coverage.executedCommands += 1;
+                options.progress?.commandEnd(row);
             }
         }
         app.ok = app.commands.every((command) => command.ok);
         apps.push(app);
+        options.progress?.appEnd(app);
     }
     return { generatedAt: new Date().toISOString(), workspace: workspace ?? null, apps, audits };
 }
@@ -1250,12 +1414,23 @@ async function opsWorkspaceSnapshot(io, flags) {
     const workspace = readStringFlag(flags, 'workspace') ?? state.defaultWorkspace;
     if (!workspace)
         throw new Error('Usage: mere ops workspace-snapshot --workspace ID [--app APP] [--json]');
-    const payload = await collectReadOnlyAuditDefaults(io, flags, workspace);
-    writeJson(io, {
+    const progress = createSnapshotProgress(io, flags);
+    let payload;
+    try {
+        payload = await collectReadOnlyAuditDefaults(io, flags, workspace, { progress });
+    }
+    finally {
+        progress?.stop();
+    }
+    const snapshot = {
         generatedAt: payload.generatedAt,
         workspace,
         apps: payload.apps
-    });
+    };
+    if (readBooleanFlag(flags, 'json'))
+        writeJson(io, snapshot);
+    else
+        writeText(io, formatWorkspaceSnapshot(snapshot).trimEnd());
     return payload.apps.every((app) => app.ok) ? 0 : 1;
 }
 function recordsFrom(value, key) {
@@ -1544,14 +1719,14 @@ function buildOnboardingReport(entries, artifacts, flags) {
 }
 async function runOnboard(io, action, flags) {
     if (action && action !== 'help')
-        throw new Error('Usage: mere onboard [--interactive] [--invite-code CODE|--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--json]');
+        throw new Error('Usage: mere onboard [--interactive] [--waitlist-email EMAIL|--invite-code CODE|--workspace ID] [--app APP] [--target codex|claude] [--output DIR] [--json]');
     if (action === 'help') {
         writeText(io, helpTopicText('onboard'));
         return 0;
     }
     const inviteCode = readStringFlag(flags, 'invite-code');
     if (inviteCode) {
-        throw new Error('Invite codes require the TUI (`mere tui` or `mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard start INVITE_CODE --json`.');
+        throw new Error('Invite codes require interactive onboarding (`mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard start INVITE_CODE --json`.');
     }
     const target = readStringFlag(flags, 'target') ?? 'codex';
     if (target !== 'codex' && target !== 'claude')
@@ -1575,25 +1750,26 @@ async function runTui(io, flags) {
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
     const entries = registry.filter((entry) => PRODUCT_APP_KEYS.includes(entry.key));
+    const runCommand = async (args) => {
+        let stdout = '';
+        let stderr = '';
+        const code = await runCli(args, {
+            env: io.env,
+            stdin: io.stdin,
+            stdout: (text) => {
+                stdout += text;
+            },
+            stderr: (text) => {
+                stderr += text;
+            }
+        });
+        return { code, stdout, stderr };
+    };
     return runFirstUseTui({
         io,
         entries,
         flags,
-        runCommand: async (args) => {
-            let stdout = '';
-            let stderr = '';
-            const code = await runCli(args, {
-                env: io.env,
-                stdin: io.stdin,
-                stdout: (text) => {
-                    stdout += text;
-                },
-                stderr: (text) => {
-                    stderr += text;
-                }
-            });
-            return { code, stdout, stderr };
-        }
+        runCommand
     });
 }
 async function runOps(io, action, flags) {
@@ -1668,8 +1844,6 @@ export async function runCli(argv, io) {
         if (rest[0] === 'agent' && (!rest[1] || rest[1] === 'help' || rest[1] === 'bootstrap')) {
             return await runAgent(io, rest[1], parsed.flags);
         }
-        if (rest[0] === 'tui')
-            return await runTui(io, parsed.flags);
         if (rest[0] === 'onboard' && readBooleanFlag(parsed.flags, 'interactive'))
             return await runTui(io, parsed.flags);
         if (rest[0] === 'onboard')

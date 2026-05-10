@@ -59,7 +59,7 @@ function IntroView(input) {
         useColor: input.useColor,
         footer: appNames ? `App scopes include all, ${appNames}${input.entries.length > 6 ? ', ...' : ''}` : undefined
     }, ...rows([
-        line('Start with whatever you have. The UI turns it into the safest next command.', input.useColor),
+        line('Start with whatever you have. The prompts turn it into the safest next command.', input.useColor),
         h(Box, { flexDirection: 'column', marginTop: 1 }, h(Lane, {
             label: 'Invite code',
             value: 'Redeem the business invite, then run workspace readiness.',
@@ -346,7 +346,7 @@ export async function runFirstUseTui(input) {
         return runWaitlistCommand(input.io, input.runCommand, directWaitlistArgs);
     }
     if (!isInteractive(input.io)) {
-        throw new Error('The Mere first-use TUI requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs.');
+        throw new Error('Mere interactive onboarding requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs.');
     }
     const choices = await collectChoices(input.io, input.entries, initial);
     const waitlistArgs = buildWaitlistArgs(choices);

@@ -259,7 +259,7 @@ test('renders help and completion', async () => {
   const help = await run(['--help']);
   assert.equal(help.code, 0);
   assert.match(help.stdout, /Human first run:/);
-  assert.match(help.stdout, /mere tui/);
+  assert.match(help.stdout, /mere onboard --interactive/);
   assert.match(help.stdout, /mere business waitlist join --email EMAIL/);
   assert.match(help.stdout, /Operator\/agent first run:/);
   assert.match(help.stdout, /mere help agent/);
@@ -273,7 +273,7 @@ test('renders help and completion', async () => {
   assert.match(completion.stdout, /complete -F _mere_completion mere/);
   assert.match(completion.stdout, /agent/);
   assert.match(completion.stdout, /onboard/);
-  assert.match(completion.stdout, /tui/);
+  assert.doesNotMatch(completion.stdout, /\btui\b/);
   assert.match(completion.stdout, /--interactive/);
   assert.match(completion.stdout, /--invite-code/);
   assert.match(completion.stdout, /--waitlist-email/);
@@ -283,9 +283,10 @@ test('renders help and completion', async () => {
   assert.match(completion.stdout, /mere-run/);
 });
 
-test('tui dry-run shows the onboarding command it will execute', async () => {
+test('onboard --interactive dry-run shows the onboarding command it will execute', async () => {
   const result = await run([
-    'tui',
+    'onboard',
+    '--interactive',
     '--dry-run',
     '--app',
     'projects',
@@ -300,9 +301,10 @@ test('tui dry-run shows the onboarding command it will execute', async () => {
   assert.equal(result.stdout.trim(), 'mere onboard --app projects --workspace ws_1 --target claude --output /tmp/mere-onboarding --json');
 });
 
-test('tui dry-run opens the waitlist when an email is provided', async () => {
+test('onboard --interactive dry-run opens the waitlist when an email is provided', async () => {
   const result = await run([
-    'tui',
+    'onboard',
+    '--interactive',
     '--dry-run',
     '--waitlist-email',
     'person@example.com',
@@ -311,7 +313,7 @@ test('tui dry-run opens the waitlist when an email is provided', async () => {
   assert.equal(result.stdout.trim(), 'mere business waitlist join --email person@example.com');
 });
 
-test('tui waitlist email flag delegates directly without prompting', async () => {
+test('interactive onboarding waitlist email flag delegates directly without prompting', async () => {
   let stdout = '';
   let stderr = '';
   const commands = [];
@@ -338,9 +340,10 @@ test('tui waitlist email flag delegates directly without prompting', async () =>
   assert.match(stdout, /opened/);
 });
 
-test('tui dry-run starts from an invite code when provided', async () => {
+test('onboard --interactive dry-run starts from an invite code when provided', async () => {
   const result = await run([
-    'tui',
+    'onboard',
+    '--interactive',
     '--dry-run',
     '--invite-code',
     'zcli_code_123',
@@ -363,10 +366,24 @@ test('tui dry-run starts from an invite code when provided', async () => {
   );
 });
 
-test('tui explains non-interactive terminal requirements', async () => {
+test('onboard --interactive preserves first-use dry-run flags', async () => {
+  const interactiveResult = await run(['onboard', '--interactive', '--dry-run', '--workspace', 'ws_1', '--app', 'projects', '--target', 'claude']);
+
+  assert.equal(interactiveResult.code, 0, interactiveResult.stderr);
+  assert.equal(interactiveResult.stdout.trim(), 'mere onboard --app projects --workspace ws_1 --target claude --json');
+});
+
+test('unknown tui command is not a root surface', async () => {
   const result = await run(['tui']);
   assert.equal(result.code, 1);
-  assert.match(result.stderr, /requires an interactive terminal/);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /Unknown command or app: tui/);
+});
+
+test('onboard --interactive preserves first-use non-interactive guidance', async () => {
+  const result = await run(['onboard', '--interactive']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /interactive onboarding requires an interactive terminal/);
   assert.match(result.stderr, /mere business waitlist join --email EMAIL/);
   assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
   assert.match(result.stderr, /mere onboard --workspace WORKSPACE_ID --json/);
@@ -375,7 +392,7 @@ test('tui explains non-interactive terminal requirements', async () => {
 test('onboard invite-code without interactive points to the bootstrap path', async () => {
   const result = await run(['onboard', '--invite-code', 'zcli_code_123', '--json']);
   assert.equal(result.code, 1);
-  assert.match(result.stderr, /Invite codes require the TUI/);
+  assert.match(result.stderr, /Invite codes require interactive onboarding/);
   assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
 });
 
@@ -421,6 +438,26 @@ test('lists apps from the registry', async () => {
   assert.equal(payload.apps.length, registryKeys.length);
   assert.ok(payload.apps.some((app) => app.app === 'projects' && app.exists === true && app.source === 'local'));
   assert.ok(payload.apps.some((app) => app.app === 'works' && app.auth === 'browser'));
+});
+
+test('app manifest groups commands by surface', async () => {
+  const root = await fakeMereRoot();
+  const result = await run(['apps', 'manifest', '--app', 'projects', '--json'], { MERE_ROOT: root, MERE_CLI_SOURCE: 'local' });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const projects = payload.apps.find((app) => app.namespace === 'projects');
+  assert.ok(projects);
+  assert.equal(projects.counts.total, 5);
+  assert.deepEqual(
+    projects.surfaces.map((surface) => [surface.name, surface.counts.total]),
+    [
+      ['auth', 1],
+      ['completion', 1],
+      ['project', 3],
+    ],
+  );
+  const projectSurface = projects.surfaces.find((surface) => surface.name === 'project');
+  assert.deepEqual(projectSurface.commands.map((command) => command.path.join(' ')), ['project create', 'project delete', 'project list']);
 });
 
 test('adapter registry is covered by bundle metadata and docs', async () => {
@@ -613,6 +650,21 @@ test('workspace snapshot runs read-only audit defaults for a workspace', async (
     assert.ok(commandPayload.args.includes('--workspace'));
     assert.ok(commandPayload.args.includes('ws_1'));
   }
+});
+
+test('workspace snapshot renders a human summary without json', async () => {
+  const root = await fakeMereRoot();
+  const result = await run(['ops', 'workspace-snapshot', '--app', 'projects', '--workspace', 'ws_1'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /Workspace snapshot/);
+  assert.match(result.stdout, /workspace: ws_1/);
+  assert.match(result.stdout, /apps: 1\/1 ok/);
+  assert.match(result.stdout, /read checks: 2\/2 passed, 1 skipped/);
+  assert.match(result.stdout, /Full payload: rerun with --json\./);
+  assert.throws(() => JSON.parse(result.stdout));
 });
 
 test('workspace snapshot includes selector hints for inferred selectors', async () => {
