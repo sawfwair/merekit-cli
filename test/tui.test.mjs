@@ -64,7 +64,40 @@ async function runInteractiveTui({ answers, entries = [{ key: 'finance' }, { key
   return { code, stdout, stderr, commands };
 }
 
-test('tui waitlist failures surface command output and preserve exit code', async () => {
+test('interactive onboarding dry-run preserves command handoff order', async () => {
+  let stdout = '';
+  const code = await runFirstUseTui({
+    io: {
+      env: { NO_COLOR: '1' },
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: () => {},
+    },
+    entries: [],
+    flags: {
+      'dry-run': true,
+      'invite-code': 'INVITE-1',
+      name: 'Acme Labs',
+      'no-wait': true,
+      app: 'projects',
+      workspace: 'ws_123',
+      target: 'claude',
+      output: '/tmp/mere-pack',
+    },
+    runCommand: async () => {
+      throw new Error('dry-run should not execute commands');
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.deepEqual(stdout.trim().split('\n'), [
+    'mere business onboard start INVITE-1 --name "Acme Labs" --no-wait --json',
+    'mere onboard --app projects --workspace ws_123 --target claude --output /tmp/mere-pack --json',
+  ]);
+});
+
+test('interactive onboarding waitlist failures surface command output and preserve exit code', async () => {
   let stdout = '';
   let stderr = '';
   const code = await runFirstUseTui({
@@ -93,7 +126,7 @@ test('tui waitlist failures surface command output and preserve exit code', asyn
   assert.match(stderr, /Waitlist handoff failed with exit code 42/);
 });
 
-test('tui invite flow redeems an invite and runs a workspace readiness report', async () => {
+test('interactive onboarding invite flow redeems an invite and runs a workspace readiness report', async () => {
   const result = await runInteractiveTui({
     answers: [
       'INVITE-1',
@@ -175,7 +208,7 @@ test('tui invite flow redeems an invite and runs a workspace readiness report', 
   assert.match(result.stdout, /finance\s+ready\s+94\/100/);
 });
 
-test('tui interactive email handoff uses the waitlist path', async () => {
+test('interactive onboarding email handoff uses the waitlist path', async () => {
   const result = await runInteractiveTui({
     answers: ['person@example.com'],
     runCommand: async () => ({
@@ -190,7 +223,7 @@ test('tui interactive email handoff uses the waitlist path', async () => {
   assert.match(result.stdout, /opened/);
 });
 
-test('tui operator workspace flow passes through non-json onboarding output', async () => {
+test('interactive onboarding operator workspace flow passes through non-json onboarding output', async () => {
   const result = await runInteractiveTui({
     answers: ['ws_777', '3', '', ''],
     runCommand: async () => ({
@@ -205,7 +238,7 @@ test('tui operator workspace flow passes through non-json onboarding output', as
   assert.match(result.stdout, /plain onboarding report/);
 });
 
-test('tui stops when invite onboarding fails', async () => {
+test('interactive onboarding stops when invite onboarding fails', async () => {
   const result = await runInteractiveTui({
     answers: ['INVITE-FAIL', '', '', '', '', '3', '', ''],
     runCommand: async () => ({
@@ -222,7 +255,7 @@ test('tui stops when invite onboarding fails', async () => {
   assert.match(result.stdout, /invite partial/);
 });
 
-test('tui stops when onboarding fails after workspace selection', async () => {
+test('interactive onboarding stops when onboarding fails after workspace selection', async () => {
   const result = await runInteractiveTui({
     answers: ['ws_999', '3', '', ''],
     runCommand: async () => ({

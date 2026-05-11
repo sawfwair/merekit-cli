@@ -77,12 +77,15 @@ Loads app manifests and runs only commands marked `auditDefault` with read risk.
 ## Workspace Snapshot
 
 ```sh
+mere ops workspace-snapshot --workspace ws_123
 mere ops workspace-snapshot --workspace ws_123 --json
 mere context set-workspace --workspace ws_123
-mere ops workspace-snapshot --json
+mere ops workspace-snapshot
 ```
 
 Builds a grouped cross-stack snapshot from the same read-only manifest commands as audit. It requires an explicit workspace or a default set with `mere context set-workspace --workspace ws_123`.
+
+Without `--json`, snapshot is a human-facing long-running command: progress renders on stderr while each app and read check is running, then stdout gets a short summary. With `--json`, progress is disabled and stdout contains only the full machine-readable payload.
 
 The snapshot adds selector help for route-backed read-only audits:
 

@@ -1,15 +1,15 @@
 # Onboarding Overview
 
-`mere tui` is the human-facing entrypoint for waitlist access, invite-code onboarding, and operator workspace handoff. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace. `mere onboard` is the headless readiness entrypoint after a workspace exists. Together they create one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
+`mere onboard --interactive` is the human entrypoint for waitlist access, invite-code onboarding, and operator workspace handoff. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace. `mere onboard` is the headless readiness entrypoint after a workspace exists. Together they create one readiness report, one readable summary, and one reusable context pack before any product mutation happens.
 
-It is intentionally conservative. It discovers app adapters, checks manifests, summarizes auth state, stores the workspace when provided, runs safe read-only snapshot commands, and writes exact next commands for anything that still needs setup.
+It is intentionally conservative. It discovers app adapters, checks manifests, summarizes auth state, stores the workspace when provided, runs safe read-only snapshot commands, and writes exact next commands for anything that still needs setup. Write, destructive, external, and structured-data commands stay in the normal CLI or MCP flow where manifest-declared gates such as `--yes`, `--confirm`, structured data, and write-enabled MCP are explicit.
 
 ## The Onboarding Path
 
 <div class="mere-path">
   <div class="mere-step">
-    <strong>1. Join waitlist, redeem invite, or select workspace</strong>
-    <span>Use <code>mere business waitlist join --email EMAIL</code> before an invite exists, <code>mere business onboard start CODE</code> for customer invite bootstrap, or provide an operator workspace ID.</span>
+    <strong>1. Start interactive onboarding</strong>
+    <span>Use <code>mere onboard --interactive</code> to join the waitlist before an invite exists, redeem an invite code, or provide an operator workspace ID.</span>
   </div>
   <div class="mere-step">
     <strong>2. Collect state</strong>
@@ -26,14 +26,13 @@ It is intentionally conservative. It discovers app adapters, checks manifests, s
 For humans:
 
 ```sh
-mere tui
+mere onboard --interactive
 ```
 
 For protected waitlist access before an invite exists:
 
 ```sh
 mere business waitlist join --email you@example.com
-mere tui --waitlist-email you@example.com
 ```
 
 For headless invite redemption and workspace bootstrap:
@@ -67,9 +66,18 @@ For a project-local output directory after a workspace exists:
 mere onboard --workspace WORKSPACE_ID --output .mere/onboarding --json
 ```
 
+## CLI Discovery
+
+Use normal CLI commands after first use when you want a compact read-first view over the root command plane:
+
+- Readiness: run or review `mere onboard`, `ONBOARDING.md`, and `onboarding-report.json`.
+- Snapshot and diagnostics: inspect app resolution, doctor output, auth status, context, and safe workspace reads.
+- Command discovery: use `mere apps manifest --json`; commands are nested by surface under `apps[].surfaces`.
+- Skills: list, show, and install registry skills with `mere skills`.
+
 ## What Invite Bootstrap Does
 
-Before an invite exists, `mere tui` can open the protected waitlist browser handoff:
+Before an invite exists, open the protected waitlist browser handoff:
 
 ```sh
 mere business waitlist join --email you@example.com
@@ -77,7 +85,7 @@ mere business waitlist join --email you@example.com
 
 The waitlist page uses Turnstile plus an email magic link before the signup is captured.
 
-When the user starts from an invite code, `mere tui` runs:
+When the user starts from an invite code, interactive onboarding runs:
 
 ```sh
 mere business onboard start INVITE_CODE --json
@@ -132,15 +140,15 @@ Start with `ONBOARDING.md` if you are reading. Start with `onboarding-report.jso
 
 | Flag | Purpose |
 | --- | --- |
-| `--waitlist-email EMAIL` | TUI-only shortcut that opens the protected waitlist browser handoff through `mere business waitlist join --email EMAIL`. |
-| `--invite-code CODE` | TUI-only shortcut that starts from a Mere invite code and runs `mere business onboard start CODE --json`. |
+| `--waitlist-email EMAIL` | Interactive onboarding shortcut that opens the protected waitlist browser handoff through `mere business waitlist join --email EMAIL`. |
+| `--invite-code CODE` | Interactive onboarding shortcut that starts from a Mere invite code and runs `mere business onboard start CODE --json`. |
 | `--workspace ID` | Operator/agent path that selects and stores an already-provisioned workspace for root-owned workflows such as `workspace-snapshot`. |
 | `--app APP` | Limits checks and manifests to one app namespace. |
 | `--target codex\|claude` | Selects the target for generated agent-facing guidance and skill install commands. |
 | `--output DIR` | Writes the context pack to a custom directory instead of the default agent path. |
 | `--finance-profile NAME` | Names the Finance token profile recommended in remediation. |
 | `--finance-base-url URL` | Uses a concrete Finance base URL in remediation commands. |
-| `--interactive` | Opens the first-use TUI instead of printing the report directly. |
+| `--interactive` | Opens first-use CLI prompts instead of printing the report directly. |
 | `--json` | Prints the structured onboarding report to stdout. |
 
 ## After Onboarding

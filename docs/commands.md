@@ -9,8 +9,7 @@ mere apps manifest --app APP --json
 ## Root Commands
 
 - `mere --help`, `mere help [agent|onboard|safety|skills|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
-- `mere tui [--waitlist-email EMAIL | --invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]`
-- `mere onboard [--interactive] [--invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
+- `mere onboard [--interactive] [--waitlist-email EMAIL | --invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
 - `mere agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR] [--allow-writes] [--json]`
 - `mere apps list|manifest|doctor [--app APP] [--json]`
 - `mere context get|set-workspace|clear`
@@ -20,22 +19,33 @@ mere apps manifest --app APP --json
 - `mere setup mere-run model pull MODEL [--force] [--json]`
 - `mere auth login|whoami|logout|status (--app APP|--all) [--json]`
 - `mere finance profiles list|current|use|login [--json]`
+- `mere skills list|show|install|publish`
 - `mere ops doctor|smoke|audit|workspace-snapshot [--app APP] [--workspace ID] [--json]`
 - `mere mcp serve [--allow-writes]`
 
+## CLI-First Discovery
+
+The root CLI keeps discovery and execution in normal commands:
+
+- First-use prompts: `mere onboard --interactive`.
+- Readiness: `mere onboard --json`, generated `ONBOARDING.md`, and exact remediation commands.
+- Snapshot and diagnostics: `mere apps list`, `mere ops doctor`, `mere auth status`, and `mere ops workspace-snapshot` with a human summary by default and clean JSON with `--json`.
+- Command discovery: `mere apps manifest --json`, with commands nested under `apps[].surfaces`.
+- Skills: `mere skills list`, `mere skills show NAME`, and `mere skills install NAME --target codex`.
+- Execution: delegated app commands remain normal CLI commands, with `--yes`, `--confirm`, data, and write-mode gates visible in shell history.
+
 ## First-Use Commands
 
-Human TUI:
+Human interactive CLI:
 
 ```sh
-mere tui
+mere onboard --interactive
 ```
 
 Waitlist before an invite exists:
 
 ```sh
 mere business waitlist join --email you@example.com
-mere tui --waitlist-email you@example.com
 ```
 
 Headless invite bootstrap:
@@ -55,11 +65,13 @@ mere ops doctor --json
 mere auth status --all --json
 mere finance profiles list --json
 mere context set-workspace --workspace ws_123
-mere ops workspace-snapshot --json
+mere ops workspace-snapshot
 mere apps manifest --app projects --json
 ```
 
-`mere tui` is the recommended human entrypoint. Normal users start with an invite code or, before they have one, a waitlist email. A waitlist email opens the protected `mere business waitlist join --email ...` browser handoff. An invite code runs `mere business onboard start INVITE_CODE --json`. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace.
+`mere onboard --interactive` is the recommended human entrypoint. Normal users start with an invite code or, before they have one, a waitlist email. A waitlist email opens the protected `mere business waitlist join --email ...` browser handoff. An invite code runs `mere business onboard start INVITE_CODE --json`. Workspace IDs are for operators, support, agents, automation, or re-running checks on an already-provisioned workspace.
+
+After that first pass, stay in normal CLI commands: run a safe snapshot, inspect readiness, list skills, or open the nested manifest contract before anything more powerful. For humans, `workspace-snapshot` shows progress on stderr and a readable summary on stdout; for agents and scripts, add `--json`.
 
 `onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
 
