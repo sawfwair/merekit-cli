@@ -14,51 +14,51 @@ importers:
   .:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
+        specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
       ink:
-        specifier: ^7.0.2
+        specifier: 7.0.2
         version: 7.0.2(@types/react@19.2.14)(react@19.2.6)
       react:
-        specifier: ^19.2.6
+        specifier: 19.2.6
         version: 19.2.6
       sqlite-vec:
-        specifier: ^0.1.9
+        specifier: 0.1.9
         version: 0.1.9
       yaml:
-        specifier: ^2.8.4
+        specifier: 2.8.4
         version: 2.8.4
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@eslint/js':
-        specifier: ^10.0.1
+        specifier: 10.0.1
         version: 10.0.1(eslint@10.3.0)
       '@types/node':
-        specifier: ^24.5.2
-        version: 24.12.2
+        specifier: 24.5.2
+        version: 24.5.2
       '@types/react':
-        specifier: ^19.2.14
+        specifier: 19.2.14
         version: 19.2.14
       c8:
-        specifier: ^11.0.0
+        specifier: 11.0.0
         version: 11.0.0
       esbuild:
         specifier: 0.27.7
         version: 0.27.7
       eslint:
-        specifier: ^10.3.0
+        specifier: 10.3.0
         version: 10.3.0
       typescript:
-        specifier: ^5.9.3
+        specifier: 5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.59.2
+        specifier: 8.59.2
         version: 8.59.2(eslint@10.3.0)(typescript@5.9.3)
       vitepress:
         specifier: 1.6.4
-        version: 1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(@types/react@19.2.14)(postcss@8.5.13)(react@19.2.6)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4)
+        version: 1.6.4(@algolia/client-search@5.52.0)(@types/node@24.5.2)(@types/react@19.2.14)(postcss@8.5.13)(react@19.2.6)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4)
 
 packages:
 
@@ -616,8 +616,8 @@ packages:
   '@types/mdurl@2.0.0':
     resolution: {integrity: sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg==}
 
-  '@types/node@24.12.2':
-    resolution: {integrity: sha512-A1sre26ke7HDIuY/M23nd9gfB+nrmhtYyMINbjI1zHJxYteKR6qSMX56FsmjMcDb3SMcjJg5BiRRgOCC/yBD0g==}
+  '@types/node@24.5.2':
+    resolution: {integrity: sha512-FYxk1I7wPv3K2XBaoyH2cTnocQEu8AOZ60hPbsyukMPLv5/5qr7V1i8PLHdl6Zf87I+xZXFvPCXYjiTFq+YSDQ==}
 
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
@@ -689,6 +689,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@vitejs/plugin-vue@6.0.6':
     resolution: {integrity: sha512-u9HHgfrq3AjXlysn0eINFnWQOJQLO9WN6VprZ8FXl7A2bYisv3Hui9Ij+7QZ41F/WYWarHjwBbXtD7dKg3uxbg==}
@@ -1777,8 +1778,8 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  undici-types@7.16.0:
-    resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+  undici-types@7.12.0:
+    resolution: {integrity: sha512-goOacqME2GYyOZZfb5Lgtu+1IDmAlAEu5xnD3+xTzS10hT0vzpf0SPjkXwAw9Jm+4n/mQGDP3LO8CPbYROeBfQ==}
 
   unist-util-is@6.0.1:
     resolution: {integrity: sha512-LsiILbtBETkDz8I9p1dQ0uyRUWuaQzd/cuEeS1hoRSyW5E5XGmTzlwY1OrNzzakGowI9Dr/I8HVaw4hTtnxy8g==}
@@ -2420,9 +2421,9 @@ snapshots:
 
   '@types/mdurl@2.0.0': {}
 
-  '@types/node@24.12.2':
+  '@types/node@24.5.2':
     dependencies:
-      undici-types: 7.16.0
+      undici-types: 7.12.0
 
   '@types/react@19.2.14':
     dependencies:
@@ -2525,10 +2526,10 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vitejs/plugin-vue@6.0.6(vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))':
+  '@vitejs/plugin-vue@6.0.6(vite@6.4.2(@types/node@24.5.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))':
     dependencies:
       '@rolldown/pluginutils': 1.0.0-rc.13
-      vite: 6.4.2(@types/node@24.12.2)(yaml@2.8.4)
+      vite: 6.4.2(@types/node@24.5.2)(yaml@2.8.4)
       vue: 3.5.33(typescript@5.9.3)
 
   '@vue/compiler-core@3.5.33':
@@ -3684,7 +3685,7 @@ snapshots:
 
   typescript@5.9.3: {}
 
-  undici-types@7.16.0: {}
+  undici-types@7.12.0: {}
 
   unist-util-is@6.0.1:
     dependencies:
@@ -3733,7 +3734,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4):
+  vite@6.4.2(@types/node@24.5.2)(yaml@2.8.4):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -3742,11 +3743,11 @@ snapshots:
       rollup: 4.60.2
       tinyglobby: 0.2.16
     optionalDependencies:
-      '@types/node': 24.12.2
+      '@types/node': 24.5.2
       fsevents: 2.3.3
       yaml: 2.8.4
 
-  vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@24.12.2)(@types/react@19.2.14)(postcss@8.5.13)(react@19.2.6)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4):
+  vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@24.5.2)(@types/react@19.2.14)(postcss@8.5.13)(react@19.2.6)(search-insights@2.17.3)(typescript@5.9.3)(yaml@2.8.4):
     dependencies:
       '@docsearch/css': 3.8.2
       '@docsearch/js': 3.8.2(@algolia/client-search@5.52.0)(@types/react@19.2.14)(react@19.2.6)(search-insights@2.17.3)
@@ -3755,7 +3756,7 @@ snapshots:
       '@shikijs/transformers': 2.5.0
       '@shikijs/types': 2.5.0
       '@types/markdown-it': 14.1.2
-      '@vitejs/plugin-vue': 6.0.6(vite@6.4.2(@types/node@24.12.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))
+      '@vitejs/plugin-vue': 6.0.6(vite@6.4.2(@types/node@24.5.2)(yaml@2.8.4))(vue@3.5.33(typescript@5.9.3))
       '@vue/devtools-api': 7.7.9
       '@vue/shared': 3.5.33
       '@vueuse/core': 12.8.2(typescript@5.9.3)
@@ -3764,7 +3765,7 @@ snapshots:
       mark.js: 8.11.1
       minisearch: 7.2.0
       shiki: 2.5.0
-      vite: 6.4.2(@types/node@24.12.2)(yaml@2.8.4)
+      vite: 6.4.2(@types/node@24.5.2)(yaml@2.8.4)
       vue: 3.5.33(typescript@5.9.3)
     optionalDependencies:
       postcss: 8.5.13
