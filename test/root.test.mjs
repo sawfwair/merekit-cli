@@ -881,6 +881,22 @@ test('finance auth status summarizes token profile state', async () => {
   assert.equal(status.whoami.ok, true);
 });
 
+test('auth status treats no-auth apps as ready without delegation', async () => {
+  const root = await fakeMereRoot();
+  const result = await run(['auth', 'status', '--app', 'link', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const status = payload.results[0];
+  assert.equal(status.app, 'link');
+  assert.equal(status.ok, true);
+  assert.equal(status.auth, 'none');
+  assert.equal(status.skipped, true);
+  assert.equal(status.reason, 'This app does not require authentication.');
+});
+
 test('writes redacted audit entries', async () => {
   const root = await fakeMereRoot();
   const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-home-'));

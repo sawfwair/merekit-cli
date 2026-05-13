@@ -886,6 +886,20 @@ async function runAuth(io, action, flags) {
     const entries = selectedEntries(registry, flags, { defaultAll: action === 'whoami' || action === 'status' });
     const results = [];
     for (const entry of entries) {
+        if (entry.authKind === 'none') {
+            const result = {
+                app: entry.key,
+                ok: true,
+                auth: 'none',
+                skipped: true,
+                reason: 'This app does not require authentication.'
+            };
+            results.push(result);
+            if (!readBooleanFlag(flags, 'json')) {
+                io.stdout(`${entry.key}: auth not required\n`);
+            }
+            continue;
+        }
         if (entry.key === 'finance' && action === 'status') {
             const result = await financeAuthStatus(io, entry, flags);
             results.push(result);
