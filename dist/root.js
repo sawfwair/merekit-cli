@@ -60,7 +60,7 @@ Commands:
   help [agent|onboard|safety|skills|mcp]
   completion [bash|zsh|fish]
   apps list|manifest|doctor
-  auth login|whoami|logout|status [--app APP|--all]
+  auth login|whoami|logout|status [--app APP|--all] [--invite-code CODE for business login]
   context get|set-workspace|clear
   onboard [--interactive] [--waitlist-email EMAIL|--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR]
@@ -880,7 +880,7 @@ async function runFinanceProfiles(io, action, args, flags) {
 }
 async function runAuth(io, action, flags) {
     if (!['login', 'whoami', 'logout', 'status'].includes(action ?? ''))
-        throw new Error('Usage: mere auth login|whoami|logout|status [--app APP|--all]');
+        throw new Error('Usage: mere auth login|whoami|logout|status [--app APP|--all] [--invite-code CODE for business login]');
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
     const entries = selectedEntries(registry, flags, { defaultAll: action === 'whoami' || action === 'status' });
@@ -908,7 +908,11 @@ async function runAuth(io, action, flags) {
             }
             continue;
         }
-        const result = await delegateToApp(io, entry, ['auth', action === 'status' ? 'whoami' : action], pickFlags(flags, ['base-url', 'workspace', 'profile', 'json']), { capture: true });
+        const authFlags = pickFlags(flags, ['base-url', 'workspace', 'profile', 'json']);
+        if (entry.key === 'business' && flags['invite-code']) {
+            authFlags['invite-code'] = flags['invite-code'];
+        }
+        const result = await delegateToApp(io, entry, ['auth', action === 'status' ? 'whoami' : action], authFlags, { capture: true });
         results.push({ app: entry.key, ok: result.code === 0, code: result.code, stdout: redactOutput(result.stdout.trim()), stderr: redactOutput(result.stderr.trim()) });
         if (!readBooleanFlag(flags, 'json')) {
             io.stdout(`${entry.key}: ${result.code === 0 ? 'ok' : `failed (${result.code})`}\n`);
@@ -1030,6 +1034,7 @@ async function opsDoctor(io, flags) {
         const resolved = await resolveCli(entry, io.env);
         const cwd = executionCwd(entry, resolved);
         const version = resolved.exists ? await runCapture(resolved.command, [...resolved.args, '--version'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
+        const normalizedVersion = versionText(version);
         const completion = resolved.exists ? await runCapture(resolved.command, [...resolved.args, 'completion', 'bash'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
         const manifest = await loadManifest(entry, io.env);
         const whoami = resolved.exists ? await runCapture(resolved.command, [...resolved.args, 'auth', 'whoami', '--json'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
@@ -1038,8 +1043,9 @@ async function opsDoctor(io, flags) {
             cli: resolved.displayPath,
             source: resolved.source,
             cliExists: resolved.exists,
-            versionOk: version?.code === 0,
-            version: version?.stdout.trim() ?? null,
+            versionOk: normalizedVersion.ok,
+            version: normalizedVersion.ok ? normalizedVersion.value : null,
+            versionError: normalizedVersion.ok ? null : normalizedVersion.value ?? version?.stderr.trim() ?? null,
             completionOk: completion?.code === 0,
             manifestOk: manifest.ok,
             authOk: whoami?.code === 0,
@@ -1090,6 +1096,19 @@ function firstLine(value) {
 function parentheticalFirstLine(value) {
     const line = firstLine(value);
     return line ? ` (${line})` : '';
+}
+function versionText(result) {
+    if (!result || result.code !== 0)
+        return { ok: false, value: null };
+    const trimmed = result.stdout.trim();
+    const line = firstLine(trimmed);
+    if (!line)
+        return { ok: false, value: null };
+    const lines = trimmed.split(/\r?\n/u).filter((part) => part.trim().length > 0);
+    if (lines.length > 3 || /\b(Usage|Commands|Global flags|Options):/iu.test(trimmed)) {
+        return { ok: false, value: line };
+    }
+    return { ok: true, value: line };
 }
 function shouldRenderSnapshotProgress(io, flags) {
     if (readBooleanFlag(flags, 'json'))

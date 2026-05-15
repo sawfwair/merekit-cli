@@ -80,11 +80,58 @@ function which(binary, env) {
     }
     return null;
 }
+function appBundleCandidates(env) {
+    const home = homeDir(env);
+    return [
+        path.join(home, 'Applications', 'MereRun.app', 'Contents', 'Resources', 'mere.run', 'mere.run'),
+        path.join(home, 'Applications', 'MereRun.app', 'Contents', 'MacOS', 'mere.run'),
+        '/Applications/MereRun.app/Contents/Resources/mere.run/mere.run',
+        '/Applications/MereRun.app/Contents/MacOS/mere.run'
+    ];
+}
 async function versionFor(bin, env) {
     const result = await runCapture(bin, ['--version'], { env, timeoutMs: 20_000 }).catch(() => null);
     if (!result || result.code !== 0)
         return null;
     return result.stdout.trim() || null;
+}
+async function usableCli(bin, env) {
+    const result = await runCapture(bin, ['model', 'list'], { env, timeoutMs: 10_000 }).catch((error) => ({
+        code: 124,
+        stdout: '',
+        stderr: error instanceof Error ? error.message : String(error)
+    }));
+    if (result.code === 0 && /\b(ID|Status|missing|installed)\b/u.test(result.stdout)) {
+        return { ok: true };
+    }
+    const detail = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join('\n');
+    return {
+        ok: false,
+        detail: detail || `model list exited with code ${result.code}`
+    };
+}
+async function inspectCandidate(source, bin, env, installBin, sourceDir, steps) {
+    if (!(await isExecutable(bin)))
+        return null;
+    const usable = await usableCli(bin, env);
+    if (!usable.ok) {
+        steps.push({
+            action: `${source} unusable`,
+            ok: false,
+            detail: `${bin}: ${usable.detail ?? 'not a usable mere.run CLI'}`
+        });
+        return null;
+    }
+    return {
+        ok: true,
+        installed: false,
+        source,
+        bin,
+        installBin,
+        sourceDir,
+        version: await versionFor(bin, env),
+        steps
+    };
 }
 function mergeModelRequests(requests) {
     const merged = new Map();
@@ -130,31 +177,51 @@ export async function inspectMereRun(options) {
     const sourceDir = defaultMereRunSourceDir(options.mereRoot, env, options.sourceDir);
     const steps = [];
     if (explicit) {
-        const ok = await isExecutable(explicit);
-        return {
-            ok,
+        if (!(await isExecutable(explicit))) {
+            return {
+                ok: false,
+                installed: false,
+                source: 'missing',
+                bin: null,
+                installBin,
+                sourceDir,
+                version: null,
+                steps,
+                error: `mere.run binary is not executable: ${explicit}`
+            };
+        }
+        const inspected = await inspectCandidate('explicit', explicit, env, installBin, sourceDir, steps);
+        return inspected ?? {
+            ok: false,
             installed: false,
-            source: ok ? 'explicit' : 'missing',
-            bin: ok ? explicit : null,
+            source: 'missing',
+            bin: null,
             installBin,
             sourceDir,
-            version: ok ? await versionFor(explicit, env) : null,
+            version: null,
             steps,
-            ...(ok ? {} : { error: `mere.run binary is not executable: ${explicit}` })
+            error: `mere.run binary is not a usable CLI: ${explicit}`
         };
     }
     const onPath = which('mere.run', env);
-    if (onPath && (await isExecutable(onPath))) {
-        return { ok: true, installed: false, source: 'path', bin: onPath, installBin, sourceDir, version: await versionFor(onPath, env), steps };
+    if (onPath) {
+        const inspected = await inspectCandidate('path', onPath, env, installBin, sourceDir, steps);
+        if (inspected)
+            return inspected;
+    }
+    for (const candidate of appBundleCandidates(env)) {
+        const inspected = await inspectCandidate('app', candidate, env, installBin, sourceDir, steps);
+        if (inspected)
+            return inspected;
     }
     for (const candidate of GLOBAL_CANDIDATES) {
-        if (await isExecutable(candidate)) {
-            return { ok: true, installed: false, source: 'global', bin: candidate, installBin, sourceDir, version: await versionFor(candidate, env), steps };
-        }
+        const inspected = await inspectCandidate('global', candidate, env, installBin, sourceDir, steps);
+        if (inspected)
+            return inspected;
     }
-    if (await isExecutable(installBin)) {
-        return { ok: true, installed: false, source: 'cached', bin: installBin, installBin, sourceDir, version: await versionFor(installBin, env), steps };
-    }
+    const inspected = await inspectCandidate('cached', installBin, env, installBin, sourceDir, steps);
+    if (inspected)
+        return inspected;
     return { ok: false, installed: false, source: 'missing', bin: null, installBin, sourceDir, version: null, steps };
 }
 async function sourcePackageExists(sourceDir) {
@@ -269,15 +336,15 @@ export async function setupMereRun(options) {
     const installBin = existing.installBin;
     const sourceDir = existing.sourceDir;
     const steps = [...existing.steps];
-    if (existing.ok && !options.force)
+    if (existing.ok && !options.force && existing.source !== 'app')
         return existing;
-    if (existing.ok && existing.source === 'explicit' && existing.bin) {
+    if (existing.ok && (existing.source === 'explicit' || existing.source === 'app') && existing.bin) {
         const installMode = await linkOrCopyBin(existing.bin, installBin);
-        steps.push({ action: installMode === 'same' ? 'explicit already install target' : `explicit ${installMode}`, ok: true, detail: `${existing.bin} -> ${installBin}` });
+        steps.push({ action: installMode === 'same' ? `${existing.source} already install target` : `${existing.source} ${installMode}`, ok: true, detail: `${existing.bin} -> ${installBin}` });
         return {
             ok: true,
             installed: true,
-            source: 'explicit',
+            source: existing.source,
             bin: installBin,
             installBin,
             sourceDir,
@@ -324,7 +391,7 @@ export async function setupMereRun(options) {
         sourceDir,
         version: null,
         steps,
-        error: `mere.run is not installed. Build it from ${sourceDir} or set MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 to enable verified DMG installation from ${configuredDownloadUrl(env, options.downloadUrl)}.`
+        error: `mere.run is not installed. Install MereRun.app from https://mere.run, pass --source-dir ~/mere/run-public for a local build, pass --bin /path/to/mere.run to link an existing binary, or set MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 to enable verified DMG installation from ${configuredDownloadUrl(env, options.downloadUrl)}.`
     };
 }
 export async function inspectMereRunModels(options, requests, runtimeOverride) {
@@ -392,6 +459,15 @@ export async function pullMereRunModels(options, requests) {
         });
     }
     const after = await inspectMereRunModels(options, requests, runtime);
+    const afterById = new Map(after.models.map((model) => [model.id, model.status]));
+    for (const pull of pulls) {
+        if (pull.skipped || !pull.ok)
+            continue;
+        if (afterById.get(pull.id) !== 'installed') {
+            pull.ok = false;
+            pull.stderr = [pull.stderr, 'Pull command exited successfully, but the model is still not reported as installed by `mere.run model list`.'].filter(Boolean).join('\n');
+        }
+    }
     return {
         ...after,
         ok: pulls.every((pull) => pull.ok) && after.ok,

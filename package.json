@@ -1,6 +1,6 @@
 {
   "name": "@merekit/cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Public Mere command plane with waitlist and invite onboarding, bundled app adapters, agent context packs, audits, and MCP access.",
   "private": false,
   "license": "Apache-2.0",

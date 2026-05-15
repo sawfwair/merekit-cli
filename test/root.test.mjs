@@ -55,6 +55,51 @@ console.log(JSON.stringify({ args, marker: process.env.FAKE_CLI_MARKER ?? null }
   );
 }
 
+async function writeFakeHelpVersionCli(fake) {
+  await mkdir(path.dirname(fake), { recursive: true });
+  await writeFile(
+    fake,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'commands') {
+  console.log(JSON.stringify({
+    schemaVersion: 1,
+    app: 'fake-help-version',
+    namespace: 'projects',
+    aliases: ['projects'],
+    auth: { kind: 'browser' },
+    baseUrlEnv: [],
+    sessionPath: null,
+    globalFlags: ['workspace', 'json'],
+    commands: [
+      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
+      { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
+    ]
+  }));
+  process.exit(0);
+}
+if (args[0] === '--version') {
+  console.log('Usage: fake-help-version <command>');
+  console.log('');
+  console.log('Commands:');
+  console.log('  auth whoami');
+  process.exit(0);
+}
+if (args[0] === 'completion') {
+  console.log('complete');
+  process.exit(0);
+}
+if (args[0] === 'auth' && args[1] === 'whoami') {
+  console.log(JSON.stringify({ ok: true }));
+  process.exit(0);
+}
+process.exit(0);
+`,
+    'utf8',
+  );
+  await chmod(fake, 0o755);
+}
+
 async function writeFakeSelectorCli(fake, app) {
   await mkdir(path.dirname(fake), { recursive: true });
   const commands = {
@@ -665,6 +710,21 @@ test('workspace snapshot renders a human summary without json', async () => {
   assert.match(result.stdout, /read checks: 2\/2 passed, 1 skipped/);
   assert.match(result.stdout, /Full payload: rerun with --json\./);
   assert.throws(() => JSON.parse(result.stdout));
+});
+
+test('ops doctor does not report help text as an app version', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-help-version.js');
+  await writeFakeHelpVersionCli(fake);
+  const result = await run(['ops', 'doctor', '--app', 'projects', '--json'], {
+    MERE_ROOT: root,
+    MERE_PROJECTS_CLI: fake,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const app = JSON.parse(result.stdout).apps[0];
+  assert.equal(app.versionOk, false);
+  assert.equal(app.version, null);
+  assert.match(app.versionError, /Usage: fake-help-version/);
 });
 
 test('workspace snapshot includes selector hints for inferred selectors', async () => {

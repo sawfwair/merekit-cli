@@ -11,7 +11,26 @@ Install `@merekit/cli` when you want the public `mere` command, bundled app adap
 
 ## Install From npm
 
+For a zero-friction first run, use the package through `npx`:
+
 ```sh
+npx --yes @merekit/cli@latest --help
+npx --yes @merekit/cli@latest onboard --interactive
+```
+
+Install globally when you want a persistent `mere` command:
+
+```sh
+npm install -g @merekit/cli
+mere --help
+```
+
+On stock macOS npm, global installs may fail with `EACCES` under `/usr/local/lib/node_modules`. Use `npx`, use pnpm, or configure npm to install globals into a user-owned prefix:
+
+```sh
+npm config set prefix ~/.local
+mkdir -p ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 npm install -g @merekit/cli
 mere --help
 ```

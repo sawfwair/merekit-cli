@@ -10,12 +10,20 @@ Use read-only discovery first. Mutate only after a manifest confirms the command
 
 ## Installation Model
 
-`@merekit/cli` can be installed as a public npm package:
+Agents can run the latest public package without a global install:
+
+```sh
+npx --yes @merekit/cli@latest --help
+```
+
+`@merekit/cli` can also be installed globally when a persistent `mere` command is useful:
 
 ```sh
 npm install -g @merekit/cli
 mere --help
 ```
+
+On stock macOS npm, `npm install -g` can fail with `EACCES` under `/usr/local/lib/node_modules`; use `npx`, pnpm, or a user-owned npm prefix such as `~/.local` with `~/.local/bin` on `PATH`.
 
 The npm package contains the root command plane, docs, the repo-local `mere-cli` skill, and compiled app CLI adapters. Product and onboarding skill bodies live in the centralized registry at `https://merekit.com/skills` and are installed on demand with digest verification. A global `mere` install resolves app CLIs from env overrides, bundled adapters, local Mere repo paths, or app binaries on `PATH`.
 

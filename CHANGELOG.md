@@ -8,6 +8,12 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 - Nothing yet.
 
+## 0.2.3 - 2026-05-15
+
+- Hardened `mere setup mere-run` so it validates that a discovered binary is the real CLI payload before trusting it.
+- Fixed app-requested `mere.run` model pulls to fail when `mere.run model pull` exits successfully but the model still reports as missing.
+- Clarified `mere.run` setup docs for app-bundled CLI payloads and Media-requested local models.
+
 ## 0.2.0 - 2026-05-09
 
 - Reworked the first-use TUI rendering around React Ink while preserving the existing invite, waitlist, and operator workspace flows.
