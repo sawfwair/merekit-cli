@@ -56,7 +56,10 @@ test('mere.run setup links an installed app bundle CLI payload', async () => {
     appBin,
     `#!/usr/bin/env node
 const args = process.argv.slice(2);
-if (args[0] === 'model' && args[1] === 'list') process.exit(0);
+if (args[0] === 'model' && args[1] === 'list') {
+  console.log('ID Category Status Size');
+  process.exit(0);
+}
 console.log('mere.run fake app payload');
 `,
   );
