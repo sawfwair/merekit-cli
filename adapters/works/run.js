@@ -319,6 +319,7 @@ async function logoutRemote(input = {}) {
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["help", "json", "no-interactive", "version", "yes"]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
+  ["v", "version"],
   ["y", "yes"]
 ]);
 var CliError = class extends Error {
@@ -480,6 +481,11 @@ Discovery:
 Environment:
   WORKS_BASE_URL       Override the Works origin.
 `);
+}
+async function cliVersion() {
+  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const parsed = JSON.parse(raw);
+  return parsed.version ?? "0.0.0";
 }
 function commandManifest() {
   const command = (path2, summary, options = {}) => ({
@@ -1306,12 +1312,13 @@ async function runCli(argv, io) {
   try {
     const parsed = parseArgs(argv);
     const [group, command, ...rest] = parsed.positionals;
-    if (!group || boolFlag(parsed, "help")) {
-      printHelp(io);
+    if (boolFlag(parsed, "version") || group === "version" && command === void 0) {
+      io.stdout(`${await cliVersion()}
+`);
       return 0;
     }
-    if (boolFlag(parsed, "version")) {
-      io.stdout("mere-works 1.0.0\n");
+    if (!group || boolFlag(parsed, "help")) {
+      printHelp(io);
       return 0;
     }
     if (group === "commands") {

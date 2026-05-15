@@ -2156,8 +2156,8 @@ async function runCli(argv, io) {
       diarize: "boolean",
       embed: "boolean"
     });
-    if (args.options.version) {
-      io.stdout(`mere-media ${CLI_VERSION}
+    if (args.options.version || args.positionals[0] === "-v" || args.positionals[0] === "version") {
+      io.stdout(`${CLI_VERSION}
 `);
       return 0;
     }

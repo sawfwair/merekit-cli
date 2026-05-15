@@ -58,6 +58,17 @@ Use `MERE_CLI_SOURCE=auto|bundled|local|path` to force a source while debugging 
 
 The media adapter is resolved the same way, but local media processing has extra runtime dependencies: `mere media process ... --transcribe --embed` calls the public `mere.run` executable and needs local ASR/embedding models. Run `mere setup mere-run --json` to orchestrate the runtime install, then `mere setup mere-run models --app media --json` to pull app-requested models. In a local Mere checkout, it builds from `~/mere/run-public`; installed users can download `https://mere.run/releases/mere-run.dmg` by providing a verified checksum with `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256`.
 
+The Link adapter is bundled from the public `@merekit/link` package. Use `mere link ...` from this root CLI, or install `@merekit/link` directly when you only need the standalone `mere-link` graph and policy tool:
+
+```sh
+npm install -g @merekit/link
+mere-link config init --output mere.link.yaml
+mere-link policy evaluate workspace workspace --capability project.context.export --operator approved-agent --json
+mere-link config validate --config mere.link.yaml --json
+```
+
+Executor-backed Link commands require a separate Executor-compatible HTTP runtime; Executor is not bundled into `@merekit/cli`.
+
 ## Check The Command Plane
 
 ```sh

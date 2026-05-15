@@ -19,7 +19,7 @@ Bundled adapters in this build:
 
 ${adapterKeys.map((key) => `- \`${key}\``).join('\n')}
 
-The \`link\` adapter is bundled from the public \`@merekit/link\` TypeScript package source. It provides standalone YAML-based cross-surface linking and can bootstrap configuration from a Mere workspace snapshot.
+The \`link\` adapter is bundled from the public \`@merekit/link\` TypeScript package source. It provides standalone YAML-based cross-surface linking, can bootstrap configuration from a Mere workspace snapshot, and exposes optional Executor-backed commands when an Executor-compatible HTTP runtime is configured separately.
 
 The \`media\` adapter is generated from the Mere media app, but local transcription and embedding commands delegate to the public \`mere.run\` runtime and local models. Run \`mere setup mere-run\` to orchestrate the runtime install from an existing binary, the local \`~/mere/run-public\` source checkout, or the verified DMG at \`https://mere.run/releases/mere-run.dmg\`. Run \`mere setup mere-run models --app media\` to pull Media-requested models. Set \`MERE_MEDIA_MERE_RUN_BIN\` or \`MERE_RUN_BIN\` only when you need an explicit runtime override.
 
@@ -29,7 +29,7 @@ Access is enforced by the Mere services through browser sessions, bearer tokens,
 
 Adapter manifests must mark command risk honestly as \`read\`, \`write\`, \`destructive\`, or \`external\`. Destructive commands must require explicit confirmation.
 
-Maintainers regenerate these files from the Mere app repositories with \`pnpm build:adapters\`. That command expects the private app repositories to be available as sibling directories and is not required for normal public development of the root CLI.
+Maintainers regenerate these files from the Mere app repositories with \`pnpm build:adapters\`. That command expects the private app repositories to be available as sibling directories and is not required for normal public development of the root CLI. When the sibling \`merekit-link\` checkout exists, \`pnpm check:adapters\` compares the bundled Link manifest against the local standalone Link manifest to catch adapter drift.
 `;
 }
 

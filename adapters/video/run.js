@@ -2975,7 +2975,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
 async function runCli(argv, io) {
   try {
     const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
-    if (normalizedArgv.includes("--version") || normalizedArgv.includes("-v")) {
+    if (normalizedArgv.includes("--version") || normalizedArgv.includes("-v") || normalizedArgv[0] === "version") {
       writeText(io, await cliVersion());
       return 0;
     }

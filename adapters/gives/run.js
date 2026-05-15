@@ -1358,13 +1358,9 @@ async function runCli(argv, io) {
   try {
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     const wantsJson = asBoolean(globalOptions.json);
-    if (asBoolean(globalOptions.version)) {
+    if (asBoolean(globalOptions.version) || rest[0] === "-v" || rest[0] === "version") {
       const version = await cliVersion();
-      if (wantsJson) {
-        writeJson(io, { name: "mere-gives", version });
-      } else {
-        writeText(io, version);
-      }
+      writeText(io, version);
       return 0;
     }
     if (rest[0] === "completion") {

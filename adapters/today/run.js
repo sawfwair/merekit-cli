@@ -3632,7 +3632,7 @@ async function dispatch(context, parsed) {
 async function runCli(argv, io) {
   try {
     const parsed = parseArgv(argv);
-    if (readBooleanFlag(parsed, "version", false)) {
+    if (readBooleanFlag(parsed, "version", false) || parsed.positionals.length === 1 && (parsed.positionals[0] === "-v" || parsed.positionals[0] === "version")) {
       io.stdout(`${await cliVersion()}
 `);
       return 0;

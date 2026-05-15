@@ -230,17 +230,32 @@ Registered namespaces:
 
 `mere deliver` calls the hosted Deliver API at `https://share.mere.ink` and stores its bearer token in `~/.local/state/mere-deliver/session.json`. Run `mere deliver auth login --token TOKEN`, or set `MERE_DELIVER_API_TOKEN` for one-off automation. Use `MERE_DELIVER_BASE_URL` only when intentionally targeting a non-production Deliver API.
 
-`mere link` is intentionally usable without hosted Mere services. It is bundled into `@merekit/cli` for convenience and also ships as the standalone TypeScript package `@merekit/link` with the `mere-link` binary. It validates `mere.link.yaml`, resolves entity/project role surfaces, lists explicit links, and can generate starter YAML from `mere ops workspace-snapshot` when a workspace is available:
+`mere link` is intentionally usable without hosted Mere services. It is bundled into `@merekit/cli` for convenience and also ships as the standalone TypeScript package `@merekit/link` with the `mere-link` binary. It validates `mere.link.yaml`, resolves entity/project role surfaces, lists explicit links, can generate starter YAML from `mere ops workspace-snapshot` when a workspace is available, and can bridge to an Executor-compatible HTTP runtime for external tool discovery and policy-gated invocation:
 
 ```sh
 mere link config init --output mere.link.yaml
 mere link generate workspace --workspace ws_123 --output mere.link.yaml --yes
+mere link policy evaluate workspace workspace --capability project.context.export --operator approved-agent --json
 mere link config validate --config mere.link.yaml
 mere link surfaces list --config mere.link.yaml
 mere link sync projects --config mere.link.yaml --json
+mere link executor tools search "github issue" --json
+mere link executor policy compile --config mere.link.yaml --json
 ```
 
 `mere link sync projects` plans Mere Projects records and URL links from configured surfaces. It stays dry-run unless `--apply` is passed and the target Projects app surface explicitly allows `policy.writes: [sync]`. When a Link project includes a `mere` `record` surface, sync uses that existing record for link upserts without touching the project narrative.
+
+If you only need Link without the root Mere command plane, install the standalone package and use the `mere-link` binary:
+
+```sh
+npm install -g @merekit/link
+mere-link config init --output mere.link.yaml
+mere-link policy evaluate workspace workspace --capability project.context.export --operator approved-agent --json
+mere-link sync projects --config mere.link.yaml --json
+mere-link executor policy compile --config mere.link.yaml --json
+```
+
+The Link adapter is generated from the sibling `@merekit/link` package source. Maintainers should run `pnpm build:adapters` after Link command-shape changes; `pnpm check:adapters` catches drift when the sibling `merekit-link` checkout is present.
 
 ## Auth And Context
 

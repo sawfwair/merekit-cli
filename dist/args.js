@@ -1,6 +1,7 @@
 const BOOLEAN_FLAGS = new Set([
     'all',
     'allow-writes',
+    'apply',
     'dry-run',
     'force',
     'help',
@@ -12,6 +13,7 @@ const BOOLEAN_FLAGS = new Set([
     'no-interactive',
     'no-source',
     'no-wait',
+    'override',
     'remote',
     'version',
     'yes'

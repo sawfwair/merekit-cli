@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../dist/root.js';
 import { redactArgv, redactOutput } from '../dist/audit.js';
+import { extractPassthroughFlags, parseArgs } from '../dist/args.js';
 import { runFirstUseTui } from '../dist/tui.js';
 import { createRegistry } from '../dist/registry.js';
 
@@ -618,6 +619,18 @@ test('delegates supported pass-through flags only', async () => {
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(payload.args, ['project', 'list', '--json', '--workspace', 'ws_1']);
+});
+
+test('parses Link write guard flags as booleans before delegation', () => {
+  const argv = ['link', 'executor', 'invoke', 'write', 'slack.messages.send', '--apply', '--override', '--json'];
+  const parsed = parseArgs(argv);
+  assert.equal(parsed.flags.apply, true);
+  assert.equal(parsed.flags.override, true);
+  assert.equal(parsed.flags.json, true);
+
+  const passthrough = extractPassthroughFlags(argv);
+  assert.deepEqual(passthrough.flags, { json: true });
+  assert.deepEqual(passthrough.rest, ['link', 'executor', 'invoke', 'write', 'slack.messages.send', '--apply', '--override']);
 });
 
 test('workspace snapshot runs read-only audit defaults for a workspace', async () => {

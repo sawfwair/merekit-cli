@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-const VERSION = 'mere-deliver 0.1.0';
+const VERSION = '0.1.0';
 const DEFAULT_BASE_URL = 'https://share.mere.ink';
 const API_PREFIX = '/api/cli/v1';
 const SESSION_PATH = '~/.local/state/mere-deliver/session.json';
@@ -175,6 +175,10 @@ function parseArgs(argv) {
 	const flags = {};
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
+		if (arg === '-v') {
+			flags.version = true;
+			continue;
+		}
 		if (!arg?.startsWith('--')) {
 			if (arg) positionals.push(arg);
 			continue;

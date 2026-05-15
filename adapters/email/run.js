@@ -5581,6 +5581,7 @@ Global flags:
   --workspace ID       Override MERE_EMAIL_WORKSPACE_ID
   --json               Write machine-readable JSON
   --version            Show the CLI version
+  -v                   Show the CLI version
   --no-interactive     Do not attempt interactive prompts
   --yes                Required for destructive automation
   --confirm ID         Exact target required with --yes for destructive commands
@@ -5842,6 +5843,11 @@ function splitGlobalFlags(argv) {
   let index = 0;
   while (index < argv.length) {
     const token = argv[index];
+    if (token === "-v") {
+      globalTokens.push("--version");
+      index += 1;
+      continue;
+    }
     if (!token.startsWith("--")) {
       break;
     }
@@ -6821,6 +6827,10 @@ async function runCli(argv, io) {
   try {
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     if (asBoolean(globalOptions.version)) {
+      writeText(io, await cliVersion());
+      return 0;
+    }
+    if (rest[0] === "version") {
       writeText(io, await cliVersion());
       return 0;
     }

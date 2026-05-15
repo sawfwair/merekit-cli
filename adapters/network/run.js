@@ -1221,6 +1221,10 @@ async function handleDiagnostics(io, globalOptions, action, args) {
 }
 async function runCli(argv, io) {
   try {
+    if (argv.length === 1 && (argv[0] === "-v" || argv[0] === "version")) {
+      writeText(io, await cliVersion());
+      return 0;
+    }
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     const [group, action, ...args] = rest;
     if (asBoolean(globalOptions.version)) {

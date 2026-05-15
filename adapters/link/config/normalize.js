@@ -2,14 +2,101 @@ import { PLUGINS } from '../domain/plugins.js';
 import { asArray, asRecord, normalizeKey, readOptionalString, readRequiredString, stringArray } from '../domain/guards.js';
 export function normalizeConfig(input, label = 'config') {
     const config = asRecord(input ?? {}, label);
+    const operators = normalizeOperators(config.operators);
+    const policy = config.policy === undefined ? undefined : normalizeOperatorPolicy(config.policy, 'policy');
     const integrations = normalizeIntegrations(config.integrations ?? {});
     const entities = normalizeEntities(config.entities ?? {}, integrations);
     const links = normalizeLinks(config.links ?? [], entities);
     return {
         schemaVersion: 1,
+        ...(Object.keys(operators).length > 0 ? { operators } : {}),
+        ...(policy ? { policy } : {}),
         integrations,
         entities,
         links
+    };
+}
+function textArray(value, label) {
+    return [...new Set(asArray(value, label).map((item) => String(item).trim()).filter(Boolean))];
+}
+function keyArray(value, label) {
+    return [...new Set(textArray(value, label).map(normalizeKey).filter(Boolean))];
+}
+function capabilityArray(value, label) {
+    return [...new Set(textArray(value, label).map((item) => item.toLowerCase()).filter(Boolean))];
+}
+function readOptionalBoolean(record, key, label) {
+    const value = record[key];
+    if (value === undefined)
+        return undefined;
+    if (typeof value === 'boolean')
+        return value;
+    throw new Error(`${label}.${key} must be a boolean.`);
+}
+function parsePolicyEffect(value, label, fallback) {
+    if (value === undefined)
+        return fallback;
+    const effect = normalizeKey(value);
+    if (effect === 'allow' || effect === 'deny')
+        return effect;
+    throw new Error(`${label} must be "allow" or "deny".`);
+}
+function optionalKeyArray(record, key, label) {
+    return record[key] === undefined ? undefined : keyArray(record[key], `${label}.${key}`);
+}
+function normalizeOperators(input) {
+    if (input === undefined)
+        return {};
+    const source = asRecord(input, 'operators');
+    return Object.fromEntries(Object.entries(source).map(([operatorKey, raw]) => {
+        const operator = asRecord(raw, `operators.${operatorKey}`);
+        const key = normalizeKey(operatorKey);
+        if (!key)
+            throw new Error(`Operator key "${operatorKey}" is invalid.`);
+        return [
+            key,
+            {
+                ...(readOptionalString(operator, 'name') ? { name: readOptionalString(operator, 'name') } : {}),
+                ...(readOptionalString(operator, 'type') ? { type: normalizeKey(readOptionalString(operator, 'type')) } : {}),
+                ...(readOptionalString(operator, 'provider') ? { provider: normalizeKey(readOptionalString(operator, 'provider')) } : {}),
+                ...(readOptionalString(operator, 'client') ? { client: normalizeKey(readOptionalString(operator, 'client')) } : {}),
+                ...(readOptionalString(operator, 'accountClass') ? { accountClass: normalizeKey(readOptionalString(operator, 'accountClass')) } : {}),
+                ...(readOptionalString(operator, 'accountId') ? { accountId: readOptionalString(operator, 'accountId') } : {}),
+                ...(readOptionalString(operator, 'trustTier') ? { trustTier: normalizeKey(readOptionalString(operator, 'trustTier')) } : {}),
+                ...(readOptionalString(operator, 'environment') ? { environment: normalizeKey(readOptionalString(operator, 'environment')) } : {}),
+                notes: textArray(operator.notes, `operators.${operatorKey}.notes`)
+            }
+        ];
+    }));
+}
+function normalizeOperatorPolicy(input, label) {
+    const policy = asRecord(input, label);
+    const rules = asArray(policy.rules, `${label}.rules`).map((raw, index) => normalizeOperatorPolicyRule(raw, `${label}.rules[${index}]`));
+    return {
+        ...(readOptionalBoolean(policy, 'inherit', label) === undefined ? {} : { inherit: readOptionalBoolean(policy, 'inherit', label) }),
+        defaultEffect: parsePolicyEffect(policy.defaultEffect, `${label}.defaultEffect`, 'deny'),
+        notes: textArray(policy.notes, `${label}.notes`),
+        rules
+    };
+}
+function normalizeOperatorPolicyRule(input, label) {
+    const rule = asRecord(input, label);
+    const capabilities = capabilityArray(rule.capabilities, `${label}.capabilities`);
+    if (capabilities.length === 0)
+        throw new Error(`${label}.capabilities must include at least one capability.`);
+    return {
+        ...(readOptionalString(rule, 'id') ? { id: normalizeKey(readOptionalString(rule, 'id')) } : {}),
+        effect: parsePolicyEffect(rule.effect, `${label}.effect`, 'deny'),
+        capabilities,
+        ...(optionalKeyArray(rule, 'operators', label) ? { operators: optionalKeyArray(rule, 'operators', label) } : {}),
+        ...(optionalKeyArray(rule, 'operatorTypes', label) ? { operatorTypes: optionalKeyArray(rule, 'operatorTypes', label) } : {}),
+        ...(optionalKeyArray(rule, 'providers', label) ? { providers: optionalKeyArray(rule, 'providers', label) } : {}),
+        ...(optionalKeyArray(rule, 'clients', label) ? { clients: optionalKeyArray(rule, 'clients', label) } : {}),
+        ...(optionalKeyArray(rule, 'accountClasses', label) ? { accountClasses: optionalKeyArray(rule, 'accountClasses', label) } : {}),
+        ...(textArray(rule.accountIds, `${label}.accountIds`).length > 0 ? { accountIds: textArray(rule.accountIds, `${label}.accountIds`) } : {}),
+        ...(optionalKeyArray(rule, 'trustTiers', label) ? { trustTiers: optionalKeyArray(rule, 'trustTiers', label) } : {}),
+        ...(optionalKeyArray(rule, 'environments', label) ? { environments: optionalKeyArray(rule, 'environments', label) } : {}),
+        ...(readOptionalString(rule, 'reason') ? { reason: readOptionalString(rule, 'reason') } : {})
     };
 }
 function normalizeIntegrations(input) {
@@ -29,7 +116,9 @@ function normalizeIntegrations(input) {
                 plugin,
                 ...(readOptionalString(integration, 'workspace') ? { workspace: readOptionalString(integration, 'workspace') } : {}),
                 ...(readOptionalString(integration, 'baseUrl') ? { baseUrl: readOptionalString(integration, 'baseUrl') } : {}),
-                ...(readOptionalString(integration, 'tokenEnv') ? { tokenEnv: readOptionalString(integration, 'tokenEnv') } : {})
+                ...(readOptionalString(integration, 'tokenEnv') ? { tokenEnv: readOptionalString(integration, 'tokenEnv') } : {}),
+                ...(readOptionalString(integration, 'runtime') ? { runtime: readOptionalString(integration, 'runtime') } : {}),
+                ...(readOptionalString(integration, 'namespace') ? { namespace: readOptionalString(integration, 'namespace') } : {})
             }
         ];
     }));
@@ -39,11 +128,13 @@ function normalizeEntities(input, integrations) {
     return Object.fromEntries(Object.entries(source).map(([entityKey, raw]) => {
         const entity = asRecord(raw, `entities.${entityKey}`);
         const key = normalizeKey(entityKey);
+        const policy = entity.policy === undefined ? undefined : normalizeOperatorPolicy(entity.policy, `entities.${entityKey}.policy`);
         return [
             key,
             {
                 name: readOptionalString(entity, 'name') ?? key,
                 aliases: stringArray(entity.aliases, `entities.${entityKey}.aliases`),
+                ...(policy ? { policy } : {}),
                 projects: normalizeProjects(entity.projects ?? {}, integrations, key)
             }
         ];
@@ -54,11 +145,13 @@ function normalizeProjects(input, integrations, entityKey) {
     return Object.fromEntries(Object.entries(source).map(([projectKey, raw]) => {
         const project = asRecord(raw, `entities.${entityKey}.projects.${projectKey}`);
         const key = normalizeKey(projectKey);
+        const policy = project.policy === undefined ? undefined : normalizeOperatorPolicy(project.policy, `entities.${entityKey}.projects.${projectKey}.policy`);
         return [
             key,
             {
                 name: readOptionalString(project, 'name') ?? key,
                 aliases: stringArray(project.aliases, `entities.${entityKey}.projects.${projectKey}.aliases`),
+                ...(policy ? { policy } : {}),
                 surfaces: normalizeSurfaces(project.surfaces ?? {}, integrations, `${entityKey}/${projectKey}`)
             }
         ];

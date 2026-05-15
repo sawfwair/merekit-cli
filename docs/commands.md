@@ -126,7 +126,10 @@ mere media items list --workspace ws_123 --json
 mere media process ~/Audio/interview.m4a --transcribe --embed --workspace ws_123 --json
 mere link config init --output mere.link.yaml
 mere link generate workspace --workspace ws_123 --output mere.link.yaml --yes
+mere link policy evaluate workspace workspace --capability project.context.export --operator approved-agent --json
 mere link sync projects --config mere.link.yaml --json
+mere link executor tools search "github issue" --json
+mere link executor policy compile --config mere.link.yaml --json
 ```
 
 The business waitlist command opens a Turnstile and magic-link protected browser page with the email prefilled; the CLI does not submit the email directly.
@@ -163,6 +166,26 @@ mere setup mere-run --force --source-dir ~/mere/run-public --json
 The default DMG URL is `https://mere.run/releases/mere-run.dmg`. Download installs require `MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256` or `--sha256` so the root CLI can verify the artifact before mounting it.
 
 The Media model request currently pulls `speech-asr-parakeet` for transcription and `text-embed-qwen3-0.6b` for transcript search embeddings.
+
+Link commands are also packaged in the bundled adapter. The standalone source package is `@merekit/link` with the `mere-link` binary; the root form is `mere link ...`. Core Link commands work without hosted Mere services, while `mere link executor ...` requires a separately configured Executor-compatible HTTP runtime.
+
+Link operator policy is neutral and capability-based. Use it as a preflight before context export, sync planning, or runtime tool use:
+
+```sh
+mere link policy taxonomy --json
+mere link policy evaluate example-org rollout --capability project.context.export --operator approved-agent --json
+mere link policy guidance
+```
+
+Standalone Link usage is the same command surface without the root `mere` prefix:
+
+```sh
+npm install -g @merekit/link
+mere-link config init --output mere.link.yaml
+mere-link policy evaluate example-org rollout --capability project.context.export --operator approved-agent --json
+mere-link sync projects --config mere.link.yaml --json
+mere-link executor policy compile --config mere.link.yaml --json
+```
 
 ## Manifest Contract
 
@@ -221,7 +244,7 @@ This matrix is generated from the current local app manifests.
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 | `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
 | `deliver` | 17 | 3 | 9 read, 5 write, 2 destructive, 1 external | `base-url`, `token`, `json` |
-| `link` | 12 | 0 | 9 read, 3 write | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin` |
+| `link` | 21 | 0 | 16 read, 4 write, 1 external | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin`, `executor-base-url`, `executor-token-env`, `executor-scope`, `data`, `capability`, `operator`, `operator-provider`, `operator-client`, `operator-type`, `operator-account-class`, `operator-account-id`, `operator-trust-tier`, `operator-environment`, `override` |
 
 ## Output And Exit Codes
 

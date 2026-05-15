@@ -308,6 +308,7 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
 ]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
+  ["v", "version"],
   ["y", "yes"]
 ]);
 var CliError = class extends Error {
@@ -955,7 +956,7 @@ async function handleWorkspace(parsed, io) {
 async function runCli(argv, io) {
   try {
     const parsed = parseArgv(argv);
-    if (readBooleanFlag(parsed, "version")) {
+    if (readBooleanFlag(parsed, "version") || parsed.positionals[0] === "version") {
       io.stdout(`${await cliVersion()}
 `);
       return 0;

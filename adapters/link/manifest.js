@@ -15,7 +15,16 @@ Usage:
   mere-link surfaces list [entity] [project] [--config FILE] [--json]
   mere-link links list [--config FILE] [--json]
   mere-link context inspect <entity> [project] [--role ROLE] [--config FILE] [--json]
+  mere-link policy evaluate <entity> [project] [--capability NAME[,NAME]] [--operator KEY] [--json]
+  mere-link policy taxonomy [--json]
+  mere-link policy guidance [--json]
   mere-link sync projects [entity] [project] [--config FILE] [--workspace ID] [--apply] [--json]
+  mere-link executor sources [--executor-base-url URL] [--json]
+  mere-link executor tools search <query> [--executor-base-url URL] [--json]
+  mere-link executor tools describe <tool-id> [--executor-base-url URL] [--json]
+  mere-link executor policy compile [--config FILE] [--executor-scope ID] [--json]
+  mere-link executor policy apply [--config FILE] [--executor-base-url URL] [--yes] [--json]
+  mere-link executor invoke read|write <tool-id> [--config FILE] [--data JSON] [--apply] [--json]
 
 mere.link.yaml declares entities, projects, integrations, role surfaces, and links.
 It can be used by itself, with a few Mere apps, or with a full Mere workspace.`;
@@ -27,7 +36,7 @@ function command(pathParts, summary, options = {}) {
         auth: 'none',
         risk: options.risk ?? 'read',
         supportsJson: options.supportsJson ?? true,
-        supportsData: false,
+        supportsData: options.supportsData ?? false,
         requiresYes: false,
         requiresConfirm: false,
         positionals: options.positionals ?? [],
@@ -47,10 +56,51 @@ export const MANIFEST_COMMANDS = [
     command(['surfaces', 'list'], 'List configured role surfaces.', { flags: ['config'], positionals: ['entity', 'project'] }),
     command(['links', 'list'], 'List explicit links between configured surfaces.', { flags: ['config'] }),
     command(['context', 'inspect'], 'Show one entity/project context and optional role surface.', { flags: ['config', 'role'], positionals: ['entity', 'project'] }),
+    command(['policy', 'evaluate'], 'Evaluate operator policy for requested entity/project capabilities.', {
+        flags: [
+            'config',
+            'capability',
+            'operator',
+            'operator-provider',
+            'operator-client',
+            'operator-type',
+            'operator-account-class',
+            'operator-account-id',
+            'operator-trust-tier',
+            'operator-environment',
+            'override',
+            'json'
+        ],
+        positionals: ['entity', 'project']
+    }),
+    command(['policy', 'taxonomy'], 'Print the neutral operator policy taxonomy.', { flags: ['json'] }),
+    command(['policy', 'guidance'], 'Print agent guidance for operator policy review.', { flags: ['json'] }),
     command(['sync', 'projects'], 'Plan or apply Mere Projects project/link materialization from this graph.', {
         risk: 'write',
         flags: ['config', 'workspace', 'apply', 'mere-bin', 'role', 'date-start', 'json'],
         positionals: ['entity', 'project']
+    }),
+    command(['executor', 'sources'], 'List sources registered in the configured Executor runtime.', { flags: ['executor-base-url', 'executor-token-env', 'executor-scope', 'json'] }),
+    command(['executor', 'tools', 'search'], 'Search Executor tools by id, name, source, or description.', {
+        flags: ['executor-base-url', 'executor-token-env', 'executor-scope', 'json'],
+        positionals: ['query']
+    }),
+    command(['executor', 'tools', 'describe'], 'Describe one Executor tool and its schemas.', {
+        flags: ['executor-base-url', 'executor-token-env', 'executor-scope', 'json'],
+        positionals: ['tool-id']
+    }),
+    command(['executor', 'policy', 'compile'], 'Compile mere.link.yaml into deterministic Executor policy rules.', {
+        flags: ['config', 'executor-scope', 'json']
+    }),
+    command(['executor', 'policy', 'apply'], 'Apply compiled Link policy rules to the configured Executor runtime.', {
+        risk: 'write',
+        flags: ['config', 'executor-base-url', 'executor-token-env', 'executor-scope', 'yes', 'json']
+    }),
+    command(['executor', 'invoke'], 'Invoke an Executor tool through Link read/write policy gates.', {
+        risk: 'external',
+        supportsData: true,
+        flags: ['config', 'executor-base-url', 'executor-token-env', 'executor-scope', 'data', 'apply', 'json'],
+        positionals: ['mode', 'tool-id']
     })
 ];
 export function manifest() {
@@ -62,7 +112,33 @@ export function manifest() {
         auth: { kind: 'none' },
         baseUrlEnv: [],
         sessionPath: null,
-        globalFlags: ['config', 'workspace', 'snapshot-file', 'output', 'name', 'role', 'date-start', 'json', 'yes', 'apply', 'mere-bin'],
+        globalFlags: [
+            'config',
+            'workspace',
+            'snapshot-file',
+            'output',
+            'name',
+            'role',
+            'date-start',
+            'json',
+            'yes',
+            'apply',
+            'mere-bin',
+            'executor-base-url',
+            'executor-token-env',
+            'executor-scope',
+            'data',
+            'capability',
+            'operator',
+            'operator-provider',
+            'operator-client',
+            'operator-type',
+            'operator-account-class',
+            'operator-account-id',
+            'operator-trust-tier',
+            'operator-environment',
+            'override'
+        ],
         commands: MANIFEST_COMMANDS
     };
 }
@@ -70,13 +146,13 @@ export function renderCompletion(shell) {
     if (shell === 'bash') {
         return `# mere-link bash completion
 _mere_link_completion() {
-  COMPREPLY=($(compgen -W "commands completion config generate entities projects surfaces links context sync" -- "\${COMP_WORDS[COMP_CWORD]}"))
+  COMPREPLY=($(compgen -W "commands completion config generate entities projects surfaces links context policy sync executor" -- "\${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _mere_link_completion mere-link`;
     }
     if (shell === 'zsh')
-        return '#compdef mere-link\n_arguments "1:command:(commands completion config generate entities projects surfaces links context sync)"';
+        return '#compdef mere-link\n_arguments "1:command:(commands completion config generate entities projects surfaces links context policy sync executor)"';
     if (shell === 'fish')
-        return 'complete -c mere-link -f -a "commands completion config generate entities projects surfaces links context sync"';
-    return 'commands completion config generate entities projects surfaces links context sync';
+        return 'complete -c mere-link -f -a "commands completion config generate entities projects surfaces links context policy sync executor"';
+    return 'commands completion config generate entities projects surfaces links context policy sync executor';
 }
