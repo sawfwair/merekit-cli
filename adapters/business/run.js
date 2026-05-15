@@ -108,6 +108,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // ../cli-auth/src/session.ts
 import os from "node:os";
@@ -230,6 +232,18 @@ async function waitForCallback(input2) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError2 = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError2) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input2.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError2}: ${errorDescription}` : authError2));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -516,6 +530,7 @@ var CLI_OPERATION_NAMES = [
   "site.save-draft",
   "site.approve",
   "site.regenerate",
+  "site.request-changes",
   "voice.status",
   "voice.calls.list",
   "voice.calls.get",
@@ -6906,6 +6921,17 @@ next: ${payload.nextUrl}` : ""}`;
     }),
     op: "site.regenerate",
     buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["site", "request-changes"],
+    summary: "Move a preview-ready website request back to draft review.",
+    options: [stringOption("latest-update", "latestUpdate", "Status note to save on the request.")],
+    schema: external_exports.object({
+      latestUpdate: optionalString
+    }),
+    op: "site.request-changes",
+    buildInput: (input2) => input2,
+    risk: "write"
   }),
   rpcCommand({
     path: ["reach", "dashboard"],

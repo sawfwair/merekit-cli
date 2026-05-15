@@ -118,6 +118,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.53.4_@sveltejs+vite-p_4f1e0b08fdcce373366f22b39b7c03c8/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -169,6 +171,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -360,6 +374,7 @@ Workspace groups:
   conversations list|show|close|read
   recordings audio <call-id>
   transcripts turns|export <call-id>
+  elevenlabs backfill
   diagnostics metrics|delivery-log|provider-sync
   locations list|create|update|delete
   locations pool list|add|update|remove <location-id>
@@ -415,6 +430,7 @@ var COMPLETION_WORDS = [
   "customers",
   "deployments",
   "diagnostics",
+  "elevenlabs",
   "interactions",
   "locations",
   "numbers",
@@ -481,6 +497,12 @@ function commandManifest() {
       manifestCommand(["recordings", "audio"], "Download call audio."),
       manifestCommand(["transcripts", "turns"], "List transcript turns."),
       manifestCommand(["transcripts", "export"], "Export transcript."),
+      manifestCommand(["elevenlabs", "backfill"], "Backfill missed ElevenLabs transcripts and summaries.", {
+        risk: "external",
+        supportsData: true,
+        requiresYes: true,
+        requiresConfirm: true
+      }),
       manifestCommand(["diagnostics", "metrics"], "Show diagnostics metrics.", { auditDefault: true }),
       manifestCommand(["diagnostics", "delivery-log"], "Show delivery log."),
       manifestCommand(["diagnostics", "provider-sync"], "Show provider sync diagnostics."),
@@ -731,6 +753,11 @@ async function readJsonInput(options) {
   }
   const raw = await readFile2(resolvePath(file), "utf8");
   return JSON.parse(raw);
+}
+function hasJsonInput(options) {
+  return Boolean(
+    trimOption(asString(options["json-input"])) ?? trimOption(asString(options.data)) ?? trimOption(asString(options["json-file"])) ?? trimOption(asString(options["data-file"]))
+  );
 }
 function requireDestructiveConfirmation(globalOptions, options, label, target) {
   if (!asBoolean(options.yes) && !asBoolean(globalOptions.yes)) {
@@ -1201,6 +1228,34 @@ async function handleTranscripts(io, globalOptions, action, args) {
       throw new Error("Unknown transcripts command. Expected turns or export.");
   }
 }
+async function handleElevenLabs(io, globalOptions, action, args) {
+  const { options, positionals } = parseFlags(args, {
+    ...JSON_INPUT_FLAG_SPEC,
+    ...GUARD_FLAG_SPEC
+  });
+  if (action !== "backfill") {
+    throw new Error("Unknown elevenlabs command. Expected backfill.");
+  }
+  if (positionals.length > 0) {
+    throw new Error("elevenlabs backfill does not accept positional arguments.");
+  }
+  const workspaceId = requireWorkspace(globalOptions, io.env);
+  const body = hasJsonInput(options) ? await readJsonInput(options) : {};
+  const dryRun = body && typeof body === "object" && !Array.isArray(body) ? body.dry_run === true : false;
+  if (!dryRun) {
+    requireDestructiveConfirmation(
+      globalOptions,
+      options,
+      "backfill ElevenLabs transcripts",
+      "elevenlabs-backfill"
+    );
+  }
+  return request(io, globalOptions, {
+    method: "POST",
+    path: `${workspaceBasePath(workspaceId)}/elevenlabs/backfill`,
+    body
+  });
+}
 async function handleDiagnostics(io, globalOptions, action, args) {
   const { positionals } = parseFlags(args, {});
   const workspaceId = requireWorkspace(globalOptions, io.env);
@@ -1221,6 +1276,10 @@ async function handleDiagnostics(io, globalOptions, action, args) {
 }
 async function runCli(argv, io) {
   try {
+    if (argv.length === 1 && (argv[0] === "-v" || argv[0] === "version")) {
+      writeText(io, await cliVersion());
+      return 0;
+    }
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     const [group, action, ...args] = rest;
     if (asBoolean(globalOptions.version)) {
@@ -1281,6 +1340,9 @@ async function runCli(argv, io) {
         break;
       case "transcripts":
         result = await handleTranscripts(io, globalOptions, action, args);
+        break;
+      case "elevenlabs":
+        result = await handleElevenLabs(io, globalOptions, action, args);
         break;
       case "diagnostics":
         result = await handleDiagnostics(io, globalOptions, action, args);
