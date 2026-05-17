@@ -1,7 +1,8 @@
+import { openSync } from 'node:fs';
 import process from 'node:process';
 import readline from 'node:readline/promises';
 import type { Interface } from 'node:readline/promises';
-import type { ReadStream } from 'node:tty';
+import { ReadStream, WriteStream } from 'node:tty';
 import { Box, Text, renderToString } from 'ink';
 import type { BoxProps, TextProps } from 'ink';
 import { createElement } from 'react';
@@ -40,6 +41,12 @@ type FirstUseChoices = {
 	noWait?: boolean | undefined;
 	financeProfile?: string | undefined;
 	financeBaseUrl?: string | undefined;
+};
+
+type PromptStreams = {
+	input: ReadStream;
+	output: NodeJS.WritableStream;
+	close: () => void;
 };
 
 const WIDTH = 78;
@@ -182,9 +189,35 @@ function humanCommand(args: string[]): string {
 	return ['mere', ...args].map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(' ');
 }
 
-function isInteractive(io: TuiIO): boolean {
+function openDevTty(): PromptStreams | null {
+	try {
+		const input = new ReadStream(openSync('/dev/tty', 'r'));
+		const output = new WriteStream(openSync('/dev/tty', 'w'));
+		return {
+			input,
+			output,
+			close: () => {
+				input.destroy();
+				output.end();
+			}
+		};
+	} catch {
+		return null;
+	}
+}
+
+function promptStreams(io: TuiIO): PromptStreams | null {
 	const stdin = io.stdin ?? process.stdin;
-	return stdin.isTTY && process.stdout.isTTY;
+	if (stdin.isTTY) {
+		return {
+			input: stdin,
+			output: io.promptOutput ?? process.stdout,
+			close: () => undefined
+		};
+	}
+	if (io.env.CI === 'true' || io.env.MERE_INTERACTIVE === '0') return null;
+	if (io.env.MERE_INTERACTIVE !== '1' && !process.stdout.isTTY && !process.stderr.isTTY) return null;
+	return openDevTty();
 }
 
 function withOptionalFlag(args: string[], name: string, value: string | undefined): void {
@@ -396,10 +429,10 @@ async function askApp(rl: Interface, entries: RegistryEntry[], fallback: string 
 	return options.includes(answer) ? answer : defaultValue;
 }
 
-async function collectChoices(io: TuiIO, entries: RegistryEntry[], initial: FirstUseChoices): Promise<FirstUseChoices> {
+async function collectChoices(io: TuiIO, entries: RegistryEntry[], initial: FirstUseChoices, streams: PromptStreams): Promise<FirstUseChoices> {
 	const rl = readline.createInterface({
-		input: io.stdin ?? process.stdin,
-		output: io.promptOutput ?? process.stdout,
+		input: streams.input,
+		output: streams.output,
 		terminal: true
 	});
 	try {
@@ -482,10 +515,16 @@ export async function runFirstUseTui(input: {
 	if (directWaitlistArgs) {
 		return runWaitlistCommand(input.io, input.runCommand, directWaitlistArgs);
 	}
-	if (!isInteractive(input.io)) {
-		throw new Error('Mere interactive onboarding requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs.');
+	const streams = promptStreams(input.io);
+	if (!streams) {
+		throw new Error('Mere interactive onboarding requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs. If your shell wrapper pipes stdin but you are at a terminal, set MERE_INTERACTIVE=1 to use /dev/tty for prompts.');
 	}
-	const choices = await collectChoices(input.io, input.entries, initial);
+	let choices: FirstUseChoices;
+	try {
+		choices = await collectChoices(input.io, input.entries, initial, streams);
+	} finally {
+		streams.close();
+	}
 	const waitlistArgs = buildWaitlistArgs(choices);
 	if (waitlistArgs) {
 		return runWaitlistCommand(input.io, input.runCommand, waitlistArgs);

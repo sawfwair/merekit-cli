@@ -46,15 +46,13 @@ The root CLI is responsible for discovery, onboarding, context, diagnostics, rea
 Waitlist before an invite exists:
 
 ```sh
-npm install -g @merekit/cli
-mere business waitlist join --email you@example.com
+npx --yes @merekit/cli@latest business waitlist join --email you@example.com
 ```
 
 Human waitlist or invite-code first run:
 
 ```sh
-npm install -g @merekit/cli
-mere tui
+npx --yes @merekit/cli@latest tui
 ```
 
 Headless invite bootstrap and operator workspace handoff:

@@ -48,6 +48,64 @@ test('mere.run setup reports a non-executable explicit binary as unavailable', a
   assert.match(setup.error, /mere\.run is not installed/);
 });
 
+test('mere.run setup links an installed app bundle CLI payload', async () => {
+  const home = await tempHome();
+  const appBin = path.join(home, 'Applications', 'MereRun.app', 'Contents', 'Resources', 'mere.run', 'mere.run');
+  const installBin = path.join(home, '.local', 'bin', 'mere.run');
+  await writeExecutable(
+    appBin,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'model' && args[1] === 'list') process.exit(0);
+console.log('mere.run fake app payload');
+`,
+  );
+
+  const env = { HOME: home, PATH: path.dirname(process.execPath) };
+  const setup = await setupMereRun({ env, mereRoot: path.join(home, 'mere') });
+  assert.equal(setup.ok, true);
+  assert.equal(setup.source, 'app');
+  assert.equal(setup.bin, installBin);
+  assert.ok(setup.steps.some((step) => step.action === 'app linked' || step.action === 'app copied'));
+});
+
+test('mere.run setup repairs a PATH entry that is not the CLI payload', async () => {
+  const home = await tempHome();
+  const pathBin = path.join(home, 'bin', 'mere.run');
+  const appBin = path.join(home, 'Applications', 'MereRun.app', 'Contents', 'Resources', 'mere.run', 'mere.run');
+  const installBin = path.join(home, '.local', 'bin', 'mere.run');
+  await writeExecutable(
+    pathBin,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'model' && args[1] === 'list') {
+  console.error('GUI launcher, not CLI');
+  process.exit(2);
+}
+process.exit(0);
+`,
+  );
+  await writeExecutable(
+    appBin,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'model' && args[1] === 'list') {
+  console.log('ID Category Status Size');
+  process.exit(0);
+}
+console.log('mere.run fake app payload');
+`,
+  );
+
+  const env = { HOME: home, PATH: `${path.dirname(pathBin)}${path.delimiter}${path.dirname(process.execPath)}` };
+  const setup = await setupMereRun({ env, mereRoot: path.join(home, 'mere') });
+  assert.equal(setup.ok, true);
+  assert.equal(setup.source, 'app');
+  assert.equal(setup.bin, installBin);
+  assert.ok(setup.steps.some((step) => step.action === 'path unusable'));
+  assert.ok(setup.steps.some((step) => step.action === 'app linked' || step.action === 'app copied'));
+});
+
 test('mere.run model inspection surfaces model list failures', async () => {
   const home = await tempHome();
   const bin = path.join(home, 'bin', 'mere.run');
@@ -121,4 +179,33 @@ process.exit(1);
   );
   assert.match(result.pulls[1].stderr, /pull failed text-embed-qwen3-0\.6b/);
   assert.match(result.error, /pulls failed/);
+});
+
+test('mere.run model pulls fail when the model remains missing after a zero exit pull', async () => {
+  const home = await tempHome();
+  const bin = path.join(home, 'bin', 'mere.run');
+  await writeExecutable(
+    bin,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes('--version')) {
+  console.log('mere.run fake 1.0.0');
+  process.exit(0);
+}
+if (args[0] === 'model' && args[1] === 'list') {
+  console.log('speech-asr-parakeet text missing —');
+  process.exit(0);
+}
+if (args[0] === 'model' && args[1] === 'pull') {
+  process.exit(0);
+}
+process.exit(1);
+`,
+  );
+
+  const env = { HOME: home, PATH: path.dirname(process.execPath) };
+  const result = await pullMereRunModels({ env, mereRoot: home, explicitBin: bin }, appMereRunModelRequests('media').slice(0, 1));
+  assert.equal(result.ok, false);
+  assert.equal(result.pulls[0].ok, false);
+  assert.match(result.pulls[0].stderr, /still not reported as installed/);
 });

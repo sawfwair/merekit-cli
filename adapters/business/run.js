@@ -108,6 +108,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // ../cli-auth/src/session.ts
 import os from "node:os";
@@ -230,6 +232,18 @@ async function waitForCallback(input2) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError2 = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError2) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input2.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError2}: ${errorDescription}` : authError2));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -516,6 +530,7 @@ var CLI_OPERATION_NAMES = [
   "site.save-draft",
   "site.approve",
   "site.regenerate",
+  "site.request-changes",
   "voice.status",
   "voice.calls.list",
   "voice.calls.get",
@@ -586,6 +601,26 @@ async function parseResponseBody(response) {
     return text;
   }
 }
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function errorMessageFromPayload(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!isRecord(payload)) return fallback;
+  if (typeof payload.message === "string") return payload.message;
+  if (typeof payload.error === "string") return payload.error;
+  if (isRecord(payload.error)) {
+    if (typeof payload.error.message === "string") return payload.error.message;
+    if (typeof payload.error.code === "string") return payload.error.code;
+  }
+  return fallback;
+}
+function errorDetailsFromPayload(payload) {
+  if (!isRecord(payload)) return void 0;
+  if (payload.details !== void 0) return payload.details;
+  if (isRecord(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  return void 0;
+}
 async function fetchJson2(input2, init) {
   let response;
   try {
@@ -598,13 +633,12 @@ async function fetchJson2(input2, init) {
   }
   const body = await parseResponseBody(response);
   if (!response.ok) {
-    const payload = body;
-    const message = typeof payload === "string" ? payload : payload?.error ?? payload?.message ?? `Request failed with status ${response.status}.`;
+    const message = errorMessageFromPayload(body, `Request failed with status ${response.status}.`);
     throw new CommandError(message, {
       exitCode: response.status === 401 || response.status === 403 ? 3 : 1,
       code: "http_error",
       status: response.status,
-      details: typeof payload === "object" ? payload?.details : void 0
+      details: errorDetailsFromPayload(body)
     });
   }
   return body;
@@ -698,6 +732,26 @@ async function postWorkspaceOperation(workspace, accessToken, op, input2) {
   }
   return body.data;
 }
+function isRecord2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function errorMessageFromPayload2(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!isRecord2(payload)) return fallback;
+  if (typeof payload.message === "string") return payload.message;
+  if (typeof payload.error === "string") return payload.error;
+  if (isRecord2(payload.error)) {
+    if (typeof payload.error.message === "string") return payload.error.message;
+    if (typeof payload.error.code === "string") return payload.error.code;
+  }
+  return fallback;
+}
+function errorDetailsFromPayload2(payload) {
+  if (!isRecord2(payload)) return void 0;
+  if (payload.details !== void 0) return payload.details;
+  if (isRecord2(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  return void 0;
+}
 async function fetchWorkspaceResource(workspace, accessToken, pathname, init = {}) {
   const url = new URL(pathname, workspaceBaseUrl2(workspace));
   const headers = new Headers(init.headers);
@@ -723,12 +777,12 @@ async function fetchWorkspaceResource(workspace, accessToken, pathname, init = {
         return text;
       }
     });
-    const message = typeof payload === "string" ? payload : payload?.error ?? payload?.message ?? `Request failed with status ${response.status}.`;
+    const message = errorMessageFromPayload2(payload, `Request failed with status ${response.status}.`);
     throw new CommandError(message, {
       exitCode: response.status === 401 || response.status === 403 ? 3 : 1,
       code: "http_error",
       status: response.status,
-      details: typeof payload === "object" ? payload?.details : void 0
+      details: errorDetailsFromPayload2(payload)
     });
   }
   return response;
@@ -5184,6 +5238,16 @@ function parseScheduleJson(value) {
   }
   return parsed;
 }
+function normalizeAiMode(value) {
+  const normalized = value?.trim().toLowerCase().replaceAll("-", "_");
+  if (!normalized) return void 0;
+  if (["off", "0", "false", "no", "disabled"].includes(normalized)) return "off";
+  if (["on", "1", "true", "yes", "enabled", "cloud", "cloud_ai"].includes(normalized)) return "cloud_ai";
+  if (["zero_relay", "zero"].includes(normalized)) {
+    throw usageError("Zero Relay is coming soon. Use --mode off or --mode cloud_ai.");
+  }
+  throw usageError("AI mode must be off or cloud_ai. You can also use --mode on to enable Cloud AI.");
+}
 function workspaceListFormat(data) {
   const session = data;
   return session.workspaces.map((workspace) => {
@@ -5231,18 +5295,25 @@ var commands = [
   {
     path: ["auth", "login"],
     summary: "Log in through the mere browser flow. Not required before `onboard start` or `invite redeem` \u2014 those self-bootstrap auth from the invite.",
-    options: [stringOption("console-url", "consoleUrl", "Override the mere console URL.")],
+    options: [
+      stringOption("console-url", "consoleUrl", "Override the mere console URL."),
+      stringOption("invite-code", "inviteCode", "Use a Mere invite code during browser login.")
+    ],
     schema: external_exports.object({
-      consoleUrl: optionalString
+      consoleUrl: optionalString,
+      inviteCode: optionalString
     }),
     auth: "none",
     execute: async (runtime, input2) => runtime.login({
       consoleUrl: input2.consoleUrl,
-      workspace: runtime.global.workspace
+      workspace: runtime.global.workspace,
+      inviteCode: input2.inviteCode
     }),
     format: (data) => {
       const session = data;
-      const workspace = session.workspace ? `workspace: ${session.workspace.slug} (${session.workspace.host})` : "workspace: none yet";
+      const workspace = session.workspace ? `workspace: ${session.workspace.name} (${session.workspace.id})
+slug: ${session.workspace.slug}
+host: ${session.workspace.host}` : "workspace: none yet";
       return `Logged in as ${session.user.email}
 ${workspace}`;
     }
@@ -5359,7 +5430,7 @@ next: ${payload.nextUrl}` : ""}`;
     summary: "Sign in (if needed) and bootstrap a workspace from a Mere invite code. Works zero-state \u2014 no prior `auth login` required.",
     positionals: ["code"],
     options: [
-      stringOption("name", "name", "Business name override."),
+      stringOption("name", "name", "Business name override. Required when the invite does not provide a name."),
       stringOption("slug", "slug", "Workspace subdomain override."),
       stringOption("business-mode", "businessMode", "Business mode: new or existing."),
       stringOption("base-domain", "baseDomain", "Workspace base domain."),
@@ -6852,6 +6923,17 @@ next: ${payload.nextUrl}` : ""}`;
     buildInput: (input2) => input2
   }),
   rpcCommand({
+    path: ["site", "request-changes"],
+    summary: "Move a preview-ready website request back to draft review.",
+    options: [stringOption("latest-update", "latestUpdate", "Status note to save on the request.")],
+    schema: external_exports.object({
+      latestUpdate: optionalString
+    }),
+    op: "site.request-changes",
+    buildInput: (input2) => input2,
+    risk: "write"
+  }),
+  rpcCommand({
     path: ["reach", "dashboard"],
     summary: "Show reach dashboard data.",
     schema: external_exports.object({}),
@@ -7027,8 +7109,14 @@ next: ${payload.nextUrl}` : ""}`;
   }),
   rpcCommand({
     path: ["settings", "profile", "set"],
-    summary: "Replace the business profile from JSON.",
-    options: [stringOption("profile-json", "profileJson", "Business profile JSON.")],
+    summary: "Replace the business profile from JSON. Workspace slug and host stay unchanged.",
+    options: [
+      stringOption(
+        "profile-json",
+        "profileJson",
+        "Business profile JSON; does not rename the workspace slug or host."
+      )
+    ],
     schema: external_exports.object({
       profileJson: requiredString
     }),
@@ -7048,7 +7136,7 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["settings", "ai", "set"],
     summary: "Update AI settings.",
     options: [
-      stringOption("mode", "mode", "AI mode."),
+      stringOption("mode", "mode", "AI mode: off or cloud_ai. Use on as an alias for cloud_ai."),
       stringOption("api-key", "apiKey", "API key."),
       stringOption("frontier-model", "frontierModel", "Frontier model name."),
       stringOption("fast-model", "fastModel", "Fast model name.")
@@ -7060,7 +7148,10 @@ next: ${payload.nextUrl}` : ""}`;
       fastModel: optionalString
     }),
     op: "settings.ai.set",
-    buildInput: (input2) => input2
+    buildInput: (input2) => ({
+      ...input2,
+      mode: normalizeAiMode(input2.mode)
+    })
   }),
   rpcCommand({
     path: ["settings", "slack", "get"],

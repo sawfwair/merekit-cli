@@ -94,7 +94,14 @@ The snapshot is the safest first operational read. In human mode it shows live p
 
 Requires Node.js `>=24 <26`.
 
-Install the published package from npm:
+Run the latest package without a global install. This is the recommended first run on stock macOS npm setups because it avoids `/usr/local` permission issues:
+
+```sh
+npx --yes @merekit/cli@latest --help
+npx --yes @merekit/cli@latest onboard --interactive
+```
+
+Install the published package globally when you want a persistent `mere` command:
 
 ```sh
 npm install -g @merekit/cli
@@ -102,11 +109,13 @@ mere --help
 mere onboard --interactive
 ```
 
-Run it once without a global install:
+If `npm install -g` fails with `EACCES` under `/usr/local/lib/node_modules`, either keep using `npx` or configure npm to use a user-owned prefix:
 
 ```sh
-npx --yes @merekit/cli@latest --help
-npx --yes @merekit/cli@latest onboard --interactive
+npm config set prefix ~/.local
+mkdir -p ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+npm install -g @merekit/cli
 ```
 
 With pnpm:

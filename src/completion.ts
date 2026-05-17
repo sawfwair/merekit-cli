@@ -35,6 +35,7 @@ export function renderCompletion(shell: string | undefined, registry: RegistryEn
 		...dynamicCommands
 	};
 	const thirdCommands: Record<string, string[]> = {
+		'auth login': ['--all', '--app', '--base-url', '--invite-code', '--json', '--profile', '--workspace'],
 		'finance profiles': ['current', 'list', 'login', 'use'],
 		'setup mere-run': ['model', 'models']
 	};

@@ -4,10 +4,21 @@ Mere CLI is easiest to learn as a guided first-use loop: install the public pack
 
 ## Install
 
+No global install required:
+
+```sh
+npx --yes @merekit/cli@latest --help
+npx --yes @merekit/cli@latest onboard --interactive
+```
+
+Persistent `mere` command:
+
 ```sh
 npm install -g @merekit/cli
 mere --help
 ```
+
+If stock macOS npm reports `EACCES` under `/usr/local/lib/node_modules`, use `npx` or set a user-owned prefix such as `~/.local` and add `~/.local/bin` to `PATH`.
 
 With pnpm:
 
