@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+node scripts/check-lockfile-guard.mjs
+
+changed="$(git diff --cached --name-only --diff-filter=ACMR)"
+case "$changed" in
+  *package.json*|*pnpm-lock.yaml*|*npm-shrinkwrap.json*|*security/install-lifecycle-scripts.json*)
+    pnpm check:supply-chain
+    ;;
+esac

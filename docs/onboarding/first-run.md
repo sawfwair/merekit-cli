@@ -7,7 +7,7 @@ The first run has two intentional public setup paths. Before an invite exists, j
 For a human first run:
 
 ```sh
-mere tui
+mere onboard --interactive
 ```
 
 This asks for an invite code, waitlist email, or operator workspace ID. The paths are exclusive:
@@ -16,10 +16,11 @@ This asks for an invite code, waitlist email, or operator workspace ID. The path
 - Invite code: the UI runs `mere business onboard start CODE --json` first. That command signs in or signs up through the browser when needed, bootstraps the workspace, and waits for provisioning unless you pass `--no-wait`.
 - Operator workspace ID: the UI skips invite redemption and runs the root readiness report directly.
 
-You can also launch the same UI through:
+That is the same guided flow as the waitlist and invite-code flags:
 
 ```sh
-mere onboard --interactive
+mere onboard --interactive --waitlist-email you@example.com
+mere onboard --interactive --invite-code INVITE_CODE
 ```
 
 For a headless invite-code flow:

@@ -2,89 +2,113 @@ import { openSync } from 'node:fs';
 import process from 'node:process';
 import readline from 'node:readline/promises';
 import { ReadStream, WriteStream } from 'node:tty';
-import { Box, Text, renderToString } from 'ink';
-import { createElement } from 'react';
 import { readBooleanFlag, readStringFlag } from './args.js';
 import { parseJson } from './json.js';
 const WIDTH = 78;
+const CONTENT_WIDTH = WIDTH - 4;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const h = createElement;
 function canUseColor(io) {
     return !io.env.NO_COLOR && io.env.TERM !== 'dumb';
 }
-function inkColor(useColor, tone) {
-    return useColor ? tone : undefined;
+function toneCode(tone) {
+    switch (tone) {
+        case 'blue':
+            return '34';
+        case 'cyan':
+            return '36';
+        case 'green':
+            return '32';
+        case 'magenta':
+            return '35';
+        case 'red':
+            return '31';
+        case 'yellow':
+            return '33';
+    }
 }
-function textProps(input) {
-    return {
-        ...(input.useColor && input.tone ? { color: input.tone } : {}),
-        ...(input.useColor && input.bold ? { bold: true } : {}),
-        ...(input.useColor && input.dim ? { dimColor: true } : {})
-    };
+function paint(text, useColor, tone, bold = false) {
+    if (!useColor || !tone)
+        return text;
+    const codes = [bold ? '1' : '', toneCode(tone)].filter(Boolean).join(';');
+    return `\x1b[${codes}m${text}\x1b[0m`;
 }
-function renderInk(node) {
-    return `${renderToString(node, { columns: WIDTH })}\n`;
+function padRight(value, width) {
+    return value.length >= width ? value : `${value}${' '.repeat(width - value.length)}`;
 }
-function line(content, useColor, tone) {
-    return h(Text, textProps({ useColor, tone }), content || ' ');
+function wrapLine(value, width) {
+    if (!value)
+        return [''];
+    const lines = [];
+    let current = '';
+    for (const word of value.split(/\s+/u)) {
+        if (!word)
+            continue;
+        if (!current) {
+            current = word;
+            continue;
+        }
+        if (`${current} ${word}`.length <= width) {
+            current = `${current} ${word}`;
+            continue;
+        }
+        lines.push(current);
+        current = word;
+    }
+    if (current)
+        lines.push(current);
+    return lines.flatMap((lineValue) => {
+        if (lineValue.length <= width)
+            return [lineValue];
+        const chunks = [];
+        for (let index = 0; index < lineValue.length; index += width) {
+            chunks.push(lineValue.slice(index, index + width));
+        }
+        return chunks;
+    });
 }
-function rows(items) {
-    return items.map((item, index) => h(Box, { key: index }, item));
+function shell(input) {
+    const border = `+${'-'.repeat(WIDTH - 2)}+`;
+    const separator = `|${'-'.repeat(WIDTH - 2)}|`;
+    const bodyLines = input.lines.flatMap((lineValue) => wrapLine(lineValue, CONTENT_WIDTH));
+    const header = input.eyebrow ? `${input.title}  ${input.eyebrow}` : input.title;
+    const rows = [
+        border,
+        `| ${paint(padRight(header, CONTENT_WIDTH), input.useColor, input.tone, true)} |`,
+        separator,
+        ...bodyLines.map((lineValue) => `| ${padRight(lineValue, CONTENT_WIDTH)} |`),
+        ...(input.footer ? [separator, ...wrapLine(input.footer, CONTENT_WIDTH).map((lineValue) => `| ${padRight(lineValue, CONTENT_WIDTH)} |`)] : []),
+        border
+    ];
+    return `${rows.join('\n')}\n`;
 }
-function Shell(input) {
-    const accent = inkColor(input.useColor, input.tone);
-    const boxProps = {
-        borderStyle: 'round',
-        flexDirection: 'column',
-        paddingX: 1,
-        width: WIDTH,
-        ...(accent ? { borderColor: accent } : {})
-    };
-    return h(Box, boxProps, h(Box, { justifyContent: 'space-between' }, h(Text, textProps({ useColor: input.useColor, tone: input.tone, bold: true }), input.title), input.eyebrow ? h(Text, textProps({ useColor: input.useColor, dim: true }), input.eyebrow) : null), h(Box, { flexDirection: 'column', marginTop: 1 }, input.children), input.footer ? h(Box, { marginTop: 1 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.footer)) : null);
+function keyValue(label, value) {
+    return `${label.padEnd(14)} ${value}`;
 }
-function KeyValue(input) {
-    return h(Box, null, h(Box, { width: 16 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.label)), h(Text, textProps({ useColor: input.useColor, tone: input.tone }), input.value));
+function lane(label, value, command) {
+    return [`${label.padEnd(14)} ${value}`, `${' '.repeat(15)}${command}`];
 }
-function Lane(input) {
-    return h(Box, { flexDirection: 'column', marginBottom: 1 }, h(Box, null, h(Box, { width: 15 }, h(Text, textProps({ useColor: input.useColor, tone: input.tone, bold: true }), input.label)), h(Text, null, input.value)), h(Box, { marginLeft: 15 }, h(Text, textProps({ useColor: input.useColor, dim: true }), input.command)));
-}
-function IntroView(input) {
-    const appNames = input.entries
+function renderIntroView(entries, useColor) {
+    const appNames = entries
         .map((entry) => entry.key)
         .filter((key) => key !== 'business')
         .slice(0, 6)
         .join(', ');
-    return h(Shell, {
+    return shell({
         title: 'Mere First Use',
         eyebrow: 'invite -> workspace -> agent-ready',
         tone: 'cyan',
-        useColor: input.useColor,
-        footer: appNames ? `App scopes include all, ${appNames}${input.entries.length > 6 ? ', ...' : ''}` : undefined
-    }, ...rows([
-        line('Start with whatever you have. The prompts turn it into the safest next command.', input.useColor),
-        h(Box, { flexDirection: 'column', marginTop: 1 }, h(Lane, {
-            label: 'Invite code',
-            value: 'Redeem the business invite, then run workspace readiness.',
-            command: 'mere business onboard start INVITE_CODE --json',
-            tone: 'green',
-            useColor: input.useColor
-        }), h(Lane, {
-            label: 'Email',
-            value: 'Open the protected waitlist handoff with your email filled in.',
-            command: 'mere business waitlist join --email EMAIL',
-            tone: 'yellow',
-            useColor: input.useColor
-        }), h(Lane, {
-            label: 'Workspace',
-            value: 'Operator path for re-running checks on an existing workspace.',
-            command: 'mere onboard --workspace WORKSPACE_ID --json',
-            tone: 'magenta',
-            useColor: input.useColor
-        }))
-    ]));
-}
-function CommandBanner(input) {
-    return h(Shell, { title: input.title, eyebrow: 'command handoff', tone: input.tone, useColor: input.useColor }, h(Text, textProps({ useColor: input.useColor, tone: input.tone }), input.command));
+        useColor,
+        lines: [
+            'Start with whatever you have. The prompts turn it into the safest next command.',
+            '',
+            ...lane('Invite code', 'Redeem the business invite, then run workspace readiness.', 'mere business onboard start INVITE_CODE --json'),
+            '',
+            ...lane('Email', 'Open the protected waitlist handoff with your email filled in.', 'mere business waitlist join --email EMAIL'),
+            '',
+            ...lane('Workspace', 'Operator path for re-running checks on an existing workspace.', 'mere onboard --workspace WORKSPACE_ID --json')
+        ],
+        footer: appNames ? `App scopes include all, ${appNames}${entries.length > 6 ? ', ...' : ''}` : undefined
+    });
 }
 function humanCommand(args) {
     return ['mere', ...args].map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(' ');
@@ -225,10 +249,16 @@ function workspaceFromInvitePayload(payload) {
 function renderInviteSummary(io, payload) {
     const useColor = canUseColor(io);
     if (!payload) {
-        return renderInk(h(Shell, { title: 'Invite', eyebrow: 'handoff complete', tone: 'yellow', useColor }, ...rows([
-            line('Invite command finished, but its output was not JSON.', useColor, 'yellow'),
-            line('Continuing to the readiness report.', useColor)
-        ])));
+        return shell({
+            title: 'Invite',
+            eyebrow: 'handoff complete',
+            tone: 'yellow',
+            useColor,
+            lines: [
+                'Invite command finished, but its output was not JSON.',
+                'Continuing to the readiness report.'
+            ]
+        });
     }
     const workspace = isRecord(payload.workspace) ? payload.workspace : null;
     const state = String(payload.state ?? 'unknown');
@@ -238,11 +268,17 @@ function renderInviteSummary(io, payload) {
             ? workspace.id
             : 'not returned yet';
     const nextUrl = typeof payload.nextUrl === 'string' ? payload.nextUrl : undefined;
-    return renderInk(h(Shell, { title: 'Invite Redeemed', eyebrow: 'workspace seed ready', tone: 'green', useColor }, ...rows([
-        h(KeyValue, { label: 'state', value: state, tone: state === 'ready' ? 'green' : 'yellow', useColor }),
-        h(KeyValue, { label: 'workspace', value: workspaceLabel, tone: 'cyan', useColor }),
-        ...(nextUrl ? [h(KeyValue, { label: 'next', value: nextUrl, tone: 'magenta', useColor })] : [])
-    ])));
+    return shell({
+        title: 'Invite Redeemed',
+        eyebrow: 'workspace seed ready',
+        tone: state === 'ready' ? 'green' : 'yellow',
+        useColor,
+        lines: [
+            keyValue('state', state),
+            keyValue('workspace', workspaceLabel),
+            ...(nextUrl ? [keyValue('next', nextUrl)] : [])
+        ]
+    });
 }
 function renderSummary(io, report) {
     const useColor = canUseColor(io);
@@ -268,10 +304,32 @@ function renderSummary(io, report) {
     })
         .filter(Boolean)
         .slice(0, 8);
-    return renderInk(h(Shell, { title: 'Mere First Use', eyebrow: 'readiness report', tone, useColor }, h(Box, { flexDirection: 'column' }, h(Text, textProps({ useColor, tone, bold: true }), `${status} (${score}/100)`), h(KeyValue, { label: 'workspace', value: workspace, tone: 'cyan', useColor }), h(KeyValue, { label: 'artifacts', value: String(report.outputDir ?? 'not written'), tone: 'magenta', useColor }), h(Box, { marginTop: 1, flexDirection: 'column' }, h(Text, textProps({ useColor, bold: true }), 'Apps'), ...(appLines.length ? appLines.map((item) => line(item, useColor)) : [line('No apps reported.', useColor, 'yellow')])), h(Box, { marginTop: 1, flexDirection: 'column' }, h(Text, textProps({ useColor, bold: true }), 'Next commands'), ...(nextLines.length ? nextLines.map((item) => line(item, useColor, 'cyan')) : [line('none', useColor)])))));
+    return shell({
+        title: 'Mere First Use',
+        eyebrow: 'readiness report',
+        tone,
+        useColor,
+        lines: [
+            `${status} (${score}/100)`,
+            keyValue('workspace', workspace),
+            keyValue('artifacts', String(report.outputDir ?? 'not written')),
+            '',
+            'Apps',
+            ...(appLines.length ? appLines : ['No apps reported.']),
+            '',
+            'Next commands',
+            ...(nextLines.length ? nextLines : ['none'])
+        ]
+    });
 }
 function renderCommandBanner(io, title, args, tone) {
-    return renderInk(h(CommandBanner, { title, command: humanCommand(args), tone, useColor: canUseColor(io) }));
+    return shell({
+        title,
+        eyebrow: 'command handoff',
+        tone,
+        useColor: canUseColor(io),
+        lines: [humanCommand(args)]
+    });
 }
 async function ask(rl, label, fallback) {
     const suffix = fallback ? ` [${fallback}]` : '';
@@ -300,7 +358,7 @@ async function collectChoices(io, entries, initial, streams) {
         terminal: true
     });
     try {
-        io.stdout(renderInk(h(IntroView, { entries, useColor: canUseColor(io) })));
+        io.stdout(renderIntroView(entries, canUseColor(io)));
         const firstUseValue = await ask(rl, 'Invite code, waitlist email, or operator workspace ID', initial.waitlistEmail ?? initial.inviteCode ?? initial.workspace);
         const firstUse = classifyFirstUseValue(firstUseValue);
         const inviteCode = firstUse.inviteCode;
@@ -406,7 +464,13 @@ export async function runFirstUseTui(input) {
         input.io.stdout(renderInviteSummary(input.io, invitePayload));
         choices.workspace = choices.workspace ?? workspaceFromInvitePayload(invitePayload);
         if (!choices.workspace) {
-            input.io.stdout(renderInk(h(Shell, { title: 'Workspace pending', eyebrow: 'continuing readiness checks', tone: 'yellow', useColor: canUseColor(input.io) }, line('No workspace id was returned yet; the readiness report will show workspace-scoped blockers if provisioning is still pending.', canUseColor(input.io), 'yellow'))));
+            input.io.stdout(shell({
+                title: 'Workspace pending',
+                eyebrow: 'continuing readiness checks',
+                tone: 'yellow',
+                useColor: canUseColor(input.io),
+                lines: ['No workspace id was returned yet; the readiness report will show workspace-scoped blockers if provisioning is still pending.']
+            }));
         }
     }
     const args = buildOnboardArgs(choices);

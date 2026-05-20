@@ -1,20 +1,20 @@
 # Getting Started
 
-Mere CLI is easiest to learn as a guided first-use loop: install the public package, join the waitlist or redeem an invite through the TUI when needed, inspect the generated report, then use manifests and snapshots before invoking product commands.
+Mere CLI is easiest to learn as a guided first-use loop: install the public package, join the waitlist or redeem an invite through interactive onboarding when needed, inspect the generated report, then use manifests and snapshots before invoking product commands.
 
 ## Install
 
 No global install required:
 
 ```sh
-npx --yes @merekit/cli@latest --help
+npx --yes --ignore-scripts @merekit/cli@latest --help
 npx --yes @merekit/cli@latest onboard --interactive
 ```
 
 Persistent `mere` command:
 
 ```sh
-npm install -g @merekit/cli
+npm install -g --ignore-scripts @merekit/cli
 mere --help
 ```
 
@@ -40,16 +40,16 @@ node dist/run.js --help
 For a human first run:
 
 ```sh
-mere tui
+mere onboard --interactive
 ```
 
-The TUI asks for an invite code, waitlist email, or operator workspace ID. Waitlist emails open the protected sign-up handoff, invite codes are redeemed through `mere business onboard start CODE --json`, and workspace IDs are an operator/support/agent path for re-running the safe onboarding report against an already-provisioned workspace.
+The interactive onboarding flow asks for an invite code, waitlist email, or operator workspace ID. Waitlist emails open the protected sign-up handoff, invite codes are redeemed through `mere business onboard start CODE --json`, and workspace IDs are an operator/support/agent path for re-running the safe onboarding report against an already-provisioned workspace.
 
 If you do not have an invite yet:
 
 ```sh
 mere business waitlist join --email you@example.com
-mere tui --waitlist-email you@example.com
+mere onboard --interactive --waitlist-email you@example.com
 ```
 
 For a headless invite-code flow:

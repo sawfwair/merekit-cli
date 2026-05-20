@@ -6,7 +6,7 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
-- Nothing yet.
+- Hardened npm supply-chain controls by removing the Ink/React runtime renderer dependencies, exact-pinning direct dependencies, adding a published shrinkwrap, reviewing install-time lifecycle scripts, and adding scheduled audit/signature checks.
 
 ## 0.2.3 - 2026-05-15
 

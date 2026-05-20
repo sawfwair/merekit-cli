@@ -11,3 +11,11 @@ The CLI is a client for Mere services. Possession of the CLI source or package d
 Bundled adapters intentionally expose command names, API route shape, environment variable names, and default service URLs. Treat those as public interface details, not secrets. All access decisions must be enforced by the Mere services through server-side session, bearer-token, workspace, tenant, role, and internal-service authorization checks.
 
 If a CLI command references an internal-token-only endpoint, the endpoint shape may still be public in this repository. That is acceptable only when the corresponding service rejects missing, invalid, or unauthorized tokens server-side.
+
+## npm Supply Chain
+
+Direct external dependencies are exact-pinned. Runtime transitive dependencies are published with `npm-shrinkwrap.json`, while development installs remain locked by `pnpm-lock.yaml`.
+
+Dependency install-time lifecycle scripts require explicit review in `security/install-lifecycle-scripts.json`, and pnpm is configured to run only the reviewed build-script packages. `pnpm check:supply-chain` enforces the pinning, shrinkwrap, and lifecycle allowlist.
+
+The publish workflow uses npm trusted publishing with GitHub OIDC and provenance instead of a long-lived npm publish token. Keep npm package publishing protected by maintainer 2FA and the `npm` GitHub environment.

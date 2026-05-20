@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "installLifecycleScripts": [
+    {
+      "package": "esbuild",
+      "version": "0.27.7",
+      "scripts": {
+        "postinstall": "node install.js"
+      },
+      "reason": "Dev-only Vite/VitePress tooling; esbuild validates the platform binary during install."
+    }
+  ]
+}
