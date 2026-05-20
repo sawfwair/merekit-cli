@@ -18,12 +18,20 @@ npx --yes @merekit/cli@latest --help
 npx --yes @merekit/cli@latest onboard --interactive
 ```
 
+For a stricter one-shot run, disable dependency lifecycle scripts:
+
+```sh
+npx --yes --ignore-scripts @merekit/cli@latest --help
+```
+
 Install globally when you want a persistent `mere` command:
 
 ```sh
 npm install -g @merekit/cli
 mere --help
 ```
+
+The published CLI does not require install scripts, so hardened global installs can use `npm install -g --ignore-scripts @merekit/cli`.
 
 On stock macOS npm, global installs may fail with `EACCES` under `/usr/local/lib/node_modules`. Use `npx`, use pnpm, or configure npm to install globals into a user-owned prefix:
 

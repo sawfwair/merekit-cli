@@ -10,6 +10,7 @@ pnpm docs:build
 pnpm check
 pnpm lint
 pnpm check:adapters
+pnpm check:supply-chain
 pnpm test
 pnpm coverage
 pnpm smoke
@@ -19,6 +20,8 @@ pnpm test:pack
 pnpm pack:dry
 node ../plugins/scripts/sync-cli.mjs .   # internal: sync Codex/Claude plugin catalogs to this CLI version
 gitleaks detect --source . --log-opts=--all --redact
+npm audit --audit-level=moderate --omit=dev --package-lock-only --ignore-scripts
+npm audit signatures --package-lock-only --ignore-scripts
 ```
 
 ## Public Repo Settings
@@ -35,12 +38,14 @@ gitleaks detect --source . --log-opts=--all --redact
   - Repository: `sawfwair/merekit-cli`.
   - Workflow filename: `publish.yml`.
   - Environment name: `npm`.
+- Require maintainer 2FA for npm publishing and keep releases tokenless; do not add an `NPM_TOKEN` secret for normal publishing.
 - Confirm `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `SECURITY.md`, issue templates, and pull request template are present.
 
 ## Publish
 
 - Confirm `SECURITY.md` still describes the adapter/API-shape model.
-- Confirm `CHANGELOG.md`, `package.json`, and the npm version all agree.
+- Confirm `CHANGELOG.md`, `package.json`, `pnpm-lock.yaml`, `npm-shrinkwrap.json`, and the npm version all agree.
+- Confirm dependency changes are exact-pinned and any new install-time lifecycle scripts are reviewed in `security/install-lifecycle-scripts.json`.
 - Confirm the Codex and Claude plugin catalogs are synced to this CLI version.
 - Confirm the dry-run tarball contains only intended files.
 - Merge the release PR to `main`; the `Publish` GitHub Actions workflow runs automatically when `package.json` contains a version newer than npm. It uses OIDC trusted publishing, so no long-lived npm publish token is required.

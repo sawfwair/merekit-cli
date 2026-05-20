@@ -65,11 +65,13 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:supply-chain
       - run: pnpm docs:build
       - run: pnpm test:pack
       - run: pnpm pack:dry
-      - run: npm publish --access public --tag "$NPM_TAG"
+      - run: npm publish --access public --provenance --tag "$NPM_TAG"
         env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
           NPM_TAG: ${{ needs.version.outputs.npm_tag }}
       - name: Create GitHub release
         env:

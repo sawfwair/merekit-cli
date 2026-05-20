@@ -13,13 +13,13 @@ Use read-only discovery first. Mutate only after a manifest confirms the command
 Agents can run the latest public package without a global install:
 
 ```sh
-npx --yes @merekit/cli@latest --help
+npx --yes --ignore-scripts @merekit/cli@latest --help
 ```
 
 `@merekit/cli` can also be installed globally when a persistent `mere` command is useful:
 
 ```sh
-npm install -g @merekit/cli
+npm install -g --ignore-scripts @merekit/cli
 mere --help
 ```
 

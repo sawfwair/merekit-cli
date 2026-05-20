@@ -15,6 +15,7 @@ pnpm check
 pnpm test
 pnpm coverage
 pnpm check:adapters
+pnpm check:supply-chain
 pnpm smoke
 pnpm smoke:mcp
 pnpm check:package
@@ -25,6 +26,14 @@ For the full agent-readiness gate, run:
 ```sh
 pnpm verify
 ```
+
+Enable the repository hook path once per clone if you are changing dependencies or lockfiles:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The pre-commit hook blocks staged lockfile changes by default. After reviewing the dependency diff and lifecycle-script allowlist, commit intentional lockfile updates with `MERE_ALLOW_LOCKFILE_CHANGE=1`.
 
 For docs-only changes, also run:
 
@@ -52,6 +61,8 @@ External and destructive commands must require explicit confirmation. Commands t
 Keep changes focused and describe the user-facing behavior, verification commands, and security implications. If a change affects package contents, include the relevant `pnpm check:package` or `pnpm pack:dry` result.
 
 For release-facing changes, update `CHANGELOG.md` and `docs/release-checklist.md` when needed.
+
+For dependency changes, keep direct external dependencies exact-pinned, refresh both `pnpm-lock.yaml` and `npm-shrinkwrap.json`, and update `security/install-lifecycle-scripts.json` if a new dependency declares `preinstall`, `install`, or `postinstall`.
 
 Do not include screenshots, logs, traces, or command output that reveal tokens, sessions, customer data, private workspaces, private URLs, or internal incident details.
 
