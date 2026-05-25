@@ -76,7 +76,7 @@ Commands:
   mcp serve [--allow-writes]
 
 App namespaces:
-  business finance projects agent today zone video network email gives works media deliver link
+  business finance dynasite projects agent today zone video network email gives works media deliver link
 `;
 }
 

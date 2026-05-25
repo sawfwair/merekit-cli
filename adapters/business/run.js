@@ -5227,7 +5227,9 @@ var READ_COMMANDS = /* @__PURE__ */ new Set([
   "voice.status",
   "voice.telco.call.list",
   "workspace.current",
-  "workspace.list"
+  "workspace.list",
+  "workspace.setup",
+  "workspace.status"
 ]);
 var WRITE_COMMANDS = /* @__PURE__ */ new Set(["voice.default.booth"]);
 var WRITE_COMMAND_SEGMENTS = /* @__PURE__ */ new Set([
