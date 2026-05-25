@@ -73,7 +73,7 @@ After first use, stay in the CLI: run `mere ops workspace-snapshot` for the safe
 
 The snapshot is the safest first operational read. In human mode it shows live progress while long read checks run, then prints a compact summary. With `--json`, stdout stays clean and the full grouped payload is emitted only when the snapshot is complete.
 
-For Business website work, use the request lifecycle commands instead of guessing from a preview URL. Once a site request reaches preview-ready, revise it with `mere business site request-changes`, then `site save-draft`, then `site approve`; see [Business Site Iteration](docs/business-site.md).
+For Business workspace and website work, use the workspace-aware lifecycle commands instead of platform-admin handoffs or preview-URL guessing. Create, select, inspect, and set up workspaces with `mere business workspace ...`; drive websites through `site import-existing`, the net-new site request loop, CMS/media/revision/publish commands, or `site bundle ...` for static HTML/CSS/JS bundles. Use `mere dynasite ...` for provider-level diagnostics and recovery. See [Business Workspace And Site Lifecycle](docs/business-site.md).
 
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
@@ -211,6 +211,11 @@ Delegated commands use `mere <app> ...`:
 ```sh
 mere business waitlist join --email you@example.com --json
 mere projects project list --workspace ws_123 --json
+mere business workspace status --workspace ws_123 --json
+mere business site import-existing --workspace ws_123 --url https://example.com --json
+mere business site bundle upload --workspace ws_123 --site-id site_123 --source-dir ./site-dist --json
+mere business site bundle publish --workspace ws_123 --site-id site_123 --bundle-id sb_123 --environment live --yes --json
+mere dynasite sites get --site-id site_123 --json
 mere today booking list --tenant ten_123 --remote --json
 mere zone stripe status --store str_123 --json
 mere network diagnostics metrics --workspace ws_123 --json

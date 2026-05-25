@@ -37,7 +37,7 @@ The root CLI is responsible for discovery, onboarding, context, diagnostics, rea
   </div>
   <div class="mere-step">
     <strong>Operate</strong>
-    <span>Use manifests, snapshots, and MCP tools to inspect first and delegate carefully.</span>
+    <span>Use manifests, snapshots, workspace lifecycle commands, site workflows, and MCP tools to inspect first and delegate carefully.</span>
   </div>
 </div>
 
@@ -71,6 +71,6 @@ Then open the generated `ONBOARDING.md` for a readable summary and `onboarding-r
 - [Read the onboarding report](/onboarding/report)
 - [Understand the agent context pack](/onboarding/context-pack)
 - [Follow the agent workflow](/agent)
-- [Iterate Business site requests](/business-site)
+- [Operate Business workspaces and sites](/business-site)
 - [Use the command reference](/commands)
 - [Run the release checklist](/release-checklist)
