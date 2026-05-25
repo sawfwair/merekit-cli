@@ -140,6 +140,7 @@ var COMMAND_MANIFEST = {
     }),
     manifestCommand(["sites", "publish"], "Publish a site preview or live URL.", {
       risk: "external",
+      requiresYes: true,
       flags: [...AUTH_FLAGS, "site-id", "environment"]
     }),
     manifestCommand(["sites", "bundle", "upload"], "Upload a static site bundle from a directory or zip.", {
@@ -151,10 +152,12 @@ var COMMAND_MANIFEST = {
     }),
     manifestCommand(["sites", "bundle", "publish"], "Publish a static site bundle to preview or live.", {
       risk: "external",
+      requiresYes: true,
       flags: [...AUTH_FLAGS, "site-id", "bundle-id", "environment"]
     }),
     manifestCommand(["sites", "bundle", "rollback"], "Roll back to a previous static site bundle.", {
       risk: "external",
+      requiresYes: true,
       flags: [...AUTH_FLAGS, "site-id", "bundle-id", "environment"]
     }),
     manifestCommand(["outreach", "list"], "List outreach records.", {
