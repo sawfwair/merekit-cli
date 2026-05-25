@@ -117,6 +117,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3010e55f7f1bc76b1ba4a1cb874e4024/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -168,6 +170,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -405,8 +419,8 @@ function manifestCommand(path2, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -426,28 +440,89 @@ function commandManifest() {
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
-      manifestCommand(["workspace", "use"], "Select a workspace.", { auth: "session", risk: "write" }),
+      manifestCommand(["workspace", "use"], "Select a workspace.", {
+        auth: "session",
+        risk: "write",
+        positionals: ["workspace"]
+      }),
       manifestCommand(["store", "list"], "List stores.", { auditDefault: true }),
-      manifestCommand(["store", "show"], "Show a store."),
-      manifestCommand(["products", "list"], "List products."),
-      manifestCommand(["products", "show"], "Show a product."),
-      manifestCommand(["product", "upsert"], "Upsert a product.", { risk: "write", supportsData: true }),
-      manifestCommand(["collections", "list"], "List collections."),
-      manifestCommand(["settings", "update"], "Update store settings.", { risk: "write", supportsData: true }),
-      manifestCommand(["inventory", "adjust"], "Adjust inventory.", { risk: "external", supportsData: true, requiresYes: true }),
-      manifestCommand(["orders", "list"], "List orders."),
-      manifestCommand(["orders", "show"], "Show an order."),
-      manifestCommand(["order", "fulfill"], "Fulfill an order.", { risk: "external", supportsData: true, requiresYes: true }),
-      manifestCommand(["order", "refund"], "Refund an order.", { risk: "destructive", supportsData: true, requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["customers", "list"], "List customers."),
-      manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true }),
-      manifestCommand(["checkout", "create"], "Create checkout.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "provision"], "Provision workspace connection.", { auth: "token", risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "sync"], "Sync workspace connection.", { auth: "token", risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace connection.", { auth: "token", risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { auth: "token", risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["workspace", "command"], "Run workspace command.", { auth: "token", risk: "external", supportsData: true, requiresYes: true }),
-      manifestCommand(["workspace", "order"], "Lookup workspace order.", { auth: "token" }),
+      manifestCommand(["store", "show"], "Show a store.", { positionals: ["store"] }),
+      manifestCommand(["products", "list"], "List products.", { flags: ["store", "collection", "published"] }),
+      manifestCommand(["products", "show"], "Show a product.", { positionals: ["productSlug"], flags: ["store"] }),
+      manifestCommand(["product", "upsert"], "Upsert a product.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["store", "data", "data-file"]
+      }),
+      manifestCommand(["collections", "list"], "List collections.", { flags: ["store"] }),
+      manifestCommand(["settings", "update"], "Update store settings.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["store", "name", "description", "accent-color", "support-email", "stripe-account-id", "data", "data-file"]
+      }),
+      manifestCommand(["inventory", "adjust"], "Adjust inventory.", {
+        risk: "external",
+        supportsData: true,
+        requiresYes: true,
+        flags: ["store", "variant", "quantity-delta", "note", "yes", "data", "data-file"]
+      }),
+      manifestCommand(["orders", "list"], "List orders.", { flags: ["store"] }),
+      manifestCommand(["orders", "show"], "Show an order.", { positionals: ["orderNumber"], flags: ["store"] }),
+      manifestCommand(["order", "fulfill"], "Fulfill an order.", {
+        risk: "external",
+        supportsData: true,
+        requiresYes: true,
+        positionals: ["orderId"],
+        flags: ["tracking-number", "tracking-url", "yes", "data", "data-file"]
+      }),
+      manifestCommand(["order", "refund"], "Refund an order.", {
+        risk: "destructive",
+        supportsData: true,
+        requiresYes: true,
+        requiresConfirm: true,
+        positionals: ["orderId"],
+        flags: ["order-item", "restock", "yes", "confirm", "data", "data-file"]
+      }),
+      manifestCommand(["customers", "list"], "List customers.", { flags: ["store"] }),
+      manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true, flags: ["store"] }),
+      manifestCommand(["checkout", "create"], "Create checkout.", { risk: "write", supportsData: true, flags: ["slug", "data", "data-file"] }),
+      manifestCommand(["workspace", "provision"], "Provision workspace connection.", {
+        auth: "token",
+        risk: "write",
+        supportsData: true,
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+      }),
+      manifestCommand(["workspace", "sync"], "Sync workspace connection.", {
+        auth: "token",
+        risk: "write",
+        supportsData: true,
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+      }),
+      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace connection.", {
+        auth: "token",
+        risk: "write",
+        supportsData: true,
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+      }),
+      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", {
+        auth: "token",
+        risk: "destructive",
+        requiresYes: true,
+        requiresConfirm: true,
+        flags: ["workspace", "yes", "confirm"]
+      }),
+      manifestCommand(["workspace", "command"], "Run workspace command.", {
+        auth: "token",
+        risk: "external",
+        supportsData: true,
+        positionals: ["command"],
+        flags: ["workspace", "yes", "data", "data-file"]
+      }),
+      manifestCommand(["workspace", "order"], "Lookup workspace order.", {
+        auth: "token",
+        positionals: ["orderNumber"],
+        flags: ["workspace"]
+      }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -1145,8 +1220,13 @@ function writeResult(io, options, result) {
 }
 async function runCli(argv, io) {
   try {
+    const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
+    if (normalizedArgv.includes("--version") || normalizedArgv.includes("-v") || normalizedArgv[0] === "version") {
+      writeText(io, await cliVersion());
+      return 0;
+    }
     activeSession = await loadSession(io.env);
-    const { options: globalOptions, rest } = splitGlobalFlags(argv);
+    const { options: globalOptions, rest } = splitGlobalFlags(normalizedArgv);
     if (asBoolean(globalOptions.version)) {
       writeText(io, await cliVersion());
       return 0;

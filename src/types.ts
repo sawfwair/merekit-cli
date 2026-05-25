@@ -1,6 +1,7 @@
 export type AppKey =
 	| 'business'
 	| 'finance'
+	| 'dynasite'
 	| 'projects'
 	| 'agent'
 	| 'today'

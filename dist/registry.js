@@ -4,6 +4,7 @@ import process from 'node:process';
 export const PRODUCT_APP_KEYS = [
     'business',
     'finance',
+    'dynasite',
     'projects',
     'agent',
     'today',
@@ -59,6 +60,19 @@ export function createRegistry(mereRoot, packageRoot = repo(mereRoot, 'cli')) {
             pathBins: ['merefi'],
             authKind: 'token',
             packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
+        },
+        {
+            key: 'dynasite',
+            label: 'Dynasite',
+            namespace: 'dynasite',
+            aliases: ['dynasite', 'sites', 'mere-dynasite'],
+            repoDir: repo(mereRoot, 'dynasite'),
+            envCliPath: 'MERE_DYNASITE_CLI',
+            bundledCliPath: adapter(packageRoot, 'dynasite'),
+            localCliPath: path.join(repo(mereRoot, 'dynasite'), 'dist', 'run.js'),
+            pathBins: ['mere-dynasite'],
+            authKind: 'mixed',
+            packageScripts: { build: 'build:cli', check: 'check', smoke: 'status' }
         },
         {
             key: 'projects',

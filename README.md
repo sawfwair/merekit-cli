@@ -232,6 +232,7 @@ Registered namespaces:
 | --- | --- | --- |
 | `business` | browser | Business product/workspace operations |
 | `finance` | token | Scoped finance automation |
+| `dynasite` | mixed | Dynasite site diagnostics, CMS, media, publishing, and static bundles |
 | `projects` | browser | Project, contact, knowledge, proposal, and source workflows |
 | `agent` | browser | Agent foundation lifecycle, runtime sessions, share links, and generated tools |
 | `today` | browser | Scheduling, booking, calendar, and time workflows |

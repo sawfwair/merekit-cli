@@ -119,6 +119,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_221c0030a2ec2a854d90979ee5b3cc68/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -170,6 +172,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -319,6 +333,7 @@ async function logoutRemote(input = {}) {
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["help", "json", "no-interactive", "version", "yes"]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
+  ["v", "version"],
   ["y", "yes"]
 ]);
 var CliError = class extends Error {
@@ -480,6 +495,11 @@ Discovery:
 Environment:
   WORKS_BASE_URL       Override the Works origin.
 `);
+}
+async function cliVersion() {
+  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const parsed = JSON.parse(raw);
+  return parsed.version ?? "0.0.0";
 }
 function commandManifest() {
   const command = (path2, summary, options = {}) => ({
@@ -1306,12 +1326,13 @@ async function runCli(argv, io) {
   try {
     const parsed = parseArgs(argv);
     const [group, command, ...rest] = parsed.positionals;
-    if (!group || boolFlag(parsed, "help")) {
-      printHelp(io);
+    if (boolFlag(parsed, "version") || group === "version" && command === void 0) {
+      io.stdout(`${await cliVersion()}
+`);
       return 0;
     }
-    if (boolFlag(parsed, "version")) {
-      io.stdout("mere-works 1.0.0\n");
+    if (!group || boolFlag(parsed, "help")) {
+      printHelp(io);
       return 0;
     }
     if (group === "commands") {

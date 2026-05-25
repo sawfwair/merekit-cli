@@ -9157,6 +9157,12 @@ function registerManifestCommand(program2, deps) {
 `);
   });
 }
+function registerVersionCommand(program2, deps) {
+  program2.command("version").description("Print the CLI version").action(() => {
+    deps.writers.stdout(`${CLI_VERSION}
+`);
+  });
+}
 function registerCommands(program2, deps = createCommandDependencies()) {
   registerAuthCommands(program2, deps);
   registerTokenCommands(program2, deps);
@@ -9171,6 +9177,7 @@ function registerCommands(program2, deps = createCommandDependencies()) {
   registerHealthCommands(program2, deps);
   registerCompletionCommands(program2, deps);
   registerManifestCommand(program2, deps);
+  registerVersionCommand(program2, deps);
   return program2;
 }
 async function run(argv = process.argv, deps = {}) {
@@ -9180,7 +9187,7 @@ async function run(argv = process.argv, deps = {}) {
   });
   const program2 = configureProgram(
     attachGlobalOptions(
-      new Command().name("merefi").description("mere.fi command-line interface v2").version(CLI_VERSION)
+      new Command().name("merefi").description("mere.fi command-line interface v2").version(CLI_VERSION, "-v, --version")
     ),
     resolvedDeps
   );
