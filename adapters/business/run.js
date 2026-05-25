@@ -62,6 +62,34 @@ function errorPayload(error) {
     message: error instanceof Error ? error.message : "Unexpected error."
   };
 }
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function stringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+function formatErrorForTerminal(error) {
+  const message = error instanceof Error ? error.message : "Unexpected error.";
+  if (!(error instanceof CommandError) || !isRecord(error.details)) {
+    return message;
+  }
+  const lines = [message];
+  if (typeof error.details.status === "string") {
+    lines.push(`Status: ${error.details.status}`);
+  }
+  if (typeof error.details.operation === "string") {
+    lines.push(`Operation: ${error.details.operation}`);
+  }
+  const nextCommands = stringArray(error.details.nextCommands);
+  if (nextCommands.length > 0) {
+    lines.push("Next commands:");
+    for (const command of nextCommands) {
+      lines.push(`  ${command}`);
+    }
+  }
+  return lines.join("\n");
+}
 async function confirmIfNeeded(message, options) {
   if (options.yes) return;
   if (options.noInteractive) {
@@ -527,10 +555,23 @@ var CLI_OPERATION_NAMES = [
   "site.current",
   "site.get",
   "site.create",
+  "site.import-existing",
   "site.save-draft",
   "site.approve",
   "site.regenerate",
   "site.request-changes",
+  "site.cms.get",
+  "site.cms.edit",
+  "site.cms.assist",
+  "site.media.import",
+  "site.media.upload",
+  "site.revisions.list",
+  "site.revisions.revert",
+  "site.publish",
+  "site.bundle.upload",
+  "site.bundle.status",
+  "site.bundle.publish",
+  "site.bundle.rollback",
   "voice.status",
   "voice.calls.list",
   "voice.calls.get",
@@ -601,25 +642,31 @@ async function parseResponseBody(response) {
     return text;
   }
 }
-function isRecord(value) {
+function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function errorMessageFromPayload(payload, fallback) {
   if (typeof payload === "string") return payload;
-  if (!isRecord(payload)) return fallback;
+  if (!isRecord2(payload)) return fallback;
   if (typeof payload.message === "string") return payload.message;
   if (typeof payload.error === "string") return payload.error;
-  if (isRecord(payload.error)) {
+  if (isRecord2(payload.error)) {
     if (typeof payload.error.message === "string") return payload.error.message;
     if (typeof payload.error.code === "string") return payload.error.code;
   }
   return fallback;
 }
 function errorDetailsFromPayload(payload) {
-  if (!isRecord(payload)) return void 0;
+  if (!isRecord2(payload)) return void 0;
   if (payload.details !== void 0) return payload.details;
-  if (isRecord(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  if (isRecord2(payload.error) && payload.error.details !== void 0) return payload.error.details;
   return void 0;
+}
+function errorCodeFromPayload(payload, fallback = "http_error") {
+  if (!isRecord2(payload)) return fallback;
+  if (typeof payload.code === "string") return payload.code;
+  if (isRecord2(payload.error) && typeof payload.error.code === "string") return payload.error.code;
+  return fallback;
 }
 async function fetchJson2(input2, init) {
   let response;
@@ -636,7 +683,7 @@ async function fetchJson2(input2, init) {
     const message = errorMessageFromPayload(body, `Request failed with status ${response.status}.`);
     throw new CommandError(message, {
       exitCode: response.status === 401 || response.status === 403 ? 3 : 1,
-      code: "http_error",
+      code: errorCodeFromPayload(body),
       status: response.status,
       details: errorDetailsFromPayload(body)
     });
@@ -700,6 +747,18 @@ async function bootstrapConsoleOnboarding(input2) {
     }
   ).then((payload) => payload);
 }
+async function createConsoleWorkspace(input2) {
+  const url = new URL("/api/cli/v1/workspaces", input2.baseUrl);
+  return postJson2(
+    url,
+    { ...input2.values, refreshToken: input2.refreshToken },
+    {
+      headers: {
+        authorization: `Bearer ${input2.accessToken}`
+      }
+    }
+  ).then((payload) => payload);
+}
 async function getConsoleOnboardingStatus(input2) {
   const url = new URL("/api/cli/v1/onboarding/status", input2.baseUrl);
   return postJson2(
@@ -732,25 +791,31 @@ async function postWorkspaceOperation(workspace, accessToken, op, input2) {
   }
   return body.data;
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function errorMessageFromPayload2(payload, fallback) {
   if (typeof payload === "string") return payload;
-  if (!isRecord2(payload)) return fallback;
+  if (!isRecord3(payload)) return fallback;
   if (typeof payload.message === "string") return payload.message;
   if (typeof payload.error === "string") return payload.error;
-  if (isRecord2(payload.error)) {
+  if (isRecord3(payload.error)) {
     if (typeof payload.error.message === "string") return payload.error.message;
     if (typeof payload.error.code === "string") return payload.error.code;
   }
   return fallback;
 }
 function errorDetailsFromPayload2(payload) {
-  if (!isRecord2(payload)) return void 0;
+  if (!isRecord3(payload)) return void 0;
   if (payload.details !== void 0) return payload.details;
-  if (isRecord2(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  if (isRecord3(payload.error) && payload.error.details !== void 0) return payload.error.details;
   return void 0;
+}
+function errorCodeFromPayload2(payload, fallback = "http_error") {
+  if (!isRecord3(payload)) return fallback;
+  if (typeof payload.code === "string") return payload.code;
+  if (isRecord3(payload.error) && typeof payload.error.code === "string") return payload.error.code;
+  return fallback;
 }
 async function fetchWorkspaceResource(workspace, accessToken, pathname, init = {}) {
   const url = new URL(pathname, workspaceBaseUrl2(workspace));
@@ -780,7 +845,7 @@ async function fetchWorkspaceResource(workspace, accessToken, pathname, init = {
     const message = errorMessageFromPayload2(payload, `Request failed with status ${response.status}.`);
     throw new CommandError(message, {
       exitCode: response.status === 401 || response.status === 403 ? 3 : 1,
-      code: "http_error",
+      code: errorCodeFromPayload2(payload),
       status: response.status,
       details: errorDetailsFromPayload2(payload)
     });
@@ -964,6 +1029,8 @@ async function openBusinessWaitlist(input2) {
 }
 
 // src/commands.ts
+import { readdir, readFile as readFile2, stat as stat2 } from "node:fs/promises";
+import { basename as basename2, join as join2, relative, resolve as resolvePath2 } from "node:path";
 import { parseArgs } from "node:util";
 
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -5012,6 +5079,7 @@ var requiredString = external_exports.string().min(1);
 var emailString = external_exports.string().trim().email().transform((value) => value.toLowerCase());
 var optionalString = external_exports.string().optional();
 var stringList = external_exports.array(external_exports.string()).optional().default([]);
+var optionalStringList = external_exports.array(external_exports.string()).optional();
 var optionalPositiveNumber = external_exports.preprocess(
   (value) => value === void 0 ? void 0 : Number(value),
   external_exports.number().positive().optional()
@@ -5033,6 +5101,20 @@ function booleanOption(name, key, summary, short) {
     type: "boolean",
     short
   };
+}
+function labelForInputIssue(command, issue) {
+  const firstPath = issue.path[0];
+  if (typeof firstPath !== "string") return null;
+  const option = command.options?.find((candidate) => candidate.key === firstPath);
+  if (option) return `--${option.name}`;
+  if (command.positionals?.includes(firstPath)) return `<${firstPath}>`;
+  return firstPath;
+}
+function formatInputIssue(command, issue) {
+  const label = labelForInputIssue(command, issue);
+  if (!label) return issue.message || "Invalid command arguments.";
+  if (issue.message === "Required") return `Required: ${label}`;
+  return `${label}: ${issue.message}`;
 }
 function rpcCommand(definition) {
   return {
@@ -5086,7 +5168,10 @@ var EXTERNAL_COMMANDS = /* @__PURE__ */ new Set([
   "mail.reply",
   "mail.send",
   "site.approve",
+  "site.bundle.publish",
+  "site.bundle.rollback",
   "site.regenerate",
+  "site.publish",
   "voice.number.buy",
   "voice.number.pause",
   "voice.number.resume",
@@ -5119,7 +5204,10 @@ var READ_COMMANDS = /* @__PURE__ */ new Set([
   "settings.slack.get",
   "settings.team.get",
   "site.current",
+  "site.bundle.status",
+  "site.cms.get",
   "site.get",
+  "site.revisions.list",
   "site.status",
   "tasks.get",
   "tasks.list",
@@ -5222,6 +5310,97 @@ function parseJsonText(value, optionName) {
   } catch {
     throw usageError(`Option --${optionName} must be valid JSON.`);
   }
+}
+function parseJsonObjectText(value, optionName) {
+  const parsed = parseJsonText(value, optionName);
+  if (parsed === void 0) return void 0;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw usageError(`Option --${optionName} must be a JSON object.`);
+  }
+  return parsed;
+}
+function parseJsonArrayTexts(values, optionName) {
+  if (!values || values.length === 0) return void 0;
+  return values.map((value) => parseJsonText(value, optionName));
+}
+function inferContentType(filename) {
+  const extension = filename.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase();
+  if (extension === ".html" || extension === ".htm") return "text/html; charset=utf-8";
+  if (extension === ".css") return "text/css; charset=utf-8";
+  if (extension === ".js" || extension === ".mjs") return "text/javascript; charset=utf-8";
+  if (extension === ".json") return "application/json; charset=utf-8";
+  if (extension === ".svg") return "image/svg+xml";
+  if (extension === ".png") return "image/png";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".avif") return "image/avif";
+  if (extension === ".mp4") return "video/mp4";
+  if (extension === ".webm") return "video/webm";
+  if (extension === ".ogg" || extension === ".ogv") return "video/ogg";
+  if (extension === ".woff") return "font/woff";
+  if (extension === ".woff2") return "font/woff2";
+  return "application/octet-stream";
+}
+function safeBundlePath(pathname) {
+  const parts = pathname.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
+  if (parts.length === 0 || parts.some((part) => part === "." || part === "..")) {
+    throw usageError(`Invalid bundle path: ${pathname}`);
+  }
+  return parts.join("/");
+}
+async function localFilePayload(filePath) {
+  const data = await readFile2(filePath);
+  const filename = basename2(filePath);
+  return {
+    filename,
+    mimeType: inferContentType(filename),
+    sizeBytes: data.byteLength,
+    dataBase64: data.toString("base64")
+  };
+}
+async function staticBundlePayload(input2) {
+  if (input2.sourceDir && input2.zip) {
+    throw usageError("Use either --source-dir or --zip, not both.");
+  }
+  const title = input2.title;
+  const entryPath = input2.entryPath ?? "index.html";
+  if (input2.zip) {
+    const data = await readFile2(input2.zip);
+    return {
+      title,
+      entryPath,
+      sourceName: input2.zip,
+      zipBase64: data.toString("base64")
+    };
+  }
+  if (!input2.sourceDir) throw usageError("Pass --source-dir <dir> or --zip <file>.");
+  const root = resolvePath2(input2.sourceDir);
+  const rootStat = await stat2(root);
+  if (!rootStat.isDirectory()) throw usageError("--source-dir must point at a directory.");
+  const files = [];
+  const skipDirectories = /* @__PURE__ */ new Set([".git", ".hg", ".svn", "node_modules"]);
+  async function walk(dir) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") && entry.name !== ".well-known") continue;
+      const absolute = join2(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!skipDirectories.has(entry.name)) await walk(absolute);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const path3 = safeBundlePath(relative(root, absolute));
+      const data = await readFile2(absolute);
+      files.push({
+        path: path3,
+        contentType: inferContentType(path3),
+        dataBase64: data.toString("base64"),
+        sizeBytes: data.byteLength
+      });
+    }
+  }
+  await walk(root);
+  return { title, entryPath, sourceName: input2.sourceDir, files };
 }
 function defaultVoiceScheduleWindows() {
   return Array.from({ length: 7 }, (_, day_of_week) => ({
@@ -5400,6 +5579,58 @@ ${url}`;
       return `Default workspace set to ${session.workspace.slug} (${session.workspace.host})`;
     }
   },
+  {
+    path: ["workspace", "create"],
+    summary: "Create and provision a normal customer workspace for the signed-in user.",
+    options: [
+      stringOption("name", "name", "Business/workspace name.", { required: true }),
+      stringOption("slug", "slug", "Workspace subdomain. Defaults from name."),
+      stringOption("business-mode", "businessMode", "Business mode: new or existing."),
+      stringOption("base-domain", "baseDomain", "Workspace base domain."),
+      stringOption("existing-website-url", "existingWebsiteUrl", "Existing business website URL."),
+      stringOption("existing-city", "existingCity", "Existing business city."),
+      stringOption("existing-state", "existingState", "Existing business state/province."),
+      stringOption("existing-industry", "existingIndustry", "Existing business industry."),
+      stringOption("existing-phone", "existingPhone", "Existing business phone."),
+      stringOption("existing-description", "existingDescription", "Existing business description."),
+      booleanOption("no-wait", "noWait", "Return after provisioning starts."),
+      stringOption("timeout-seconds", "timeoutSeconds", "Maximum seconds to wait for provisioning."),
+      stringOption("poll-seconds", "pollSeconds", "Seconds between provisioning status checks.")
+    ],
+    schema: external_exports.object({
+      name: requiredString,
+      slug: optionalString,
+      businessMode: external_exports.enum(["new", "existing"]).optional(),
+      baseDomain: optionalString,
+      existingWebsiteUrl: optionalString,
+      existingCity: optionalString,
+      existingState: optionalString,
+      existingIndustry: optionalString,
+      existingPhone: optionalString,
+      existingDescription: optionalString,
+      noWait: external_exports.boolean().optional(),
+      timeoutSeconds: optionalPositiveNumber,
+      pollSeconds: optionalPositiveNumber
+    }),
+    auth: "session",
+    risk: "external",
+    execute: (runtime, input2) => runtime.createWorkspace(input2),
+    format: onboardingFormat
+  },
+  rpcCommand({
+    path: ["workspace", "status"],
+    summary: "Show workspace setup and site status.",
+    schema: external_exports.object({}),
+    op: "onboarding.snapshot",
+    buildInput: () => ({})
+  }),
+  rpcCommand({
+    path: ["workspace", "setup"],
+    summary: "Show setup state and available onboarding tools for the current workspace.",
+    schema: external_exports.object({}),
+    op: "onboarding.snapshot",
+    buildInput: () => ({})
+  }),
   {
     path: ["invite", "redeem"],
     summary: "Redeem a Mere platform invite code. Signs in (or signs up) automatically if there is no local session \u2014 no prior `auth login` needed.",
@@ -6830,7 +7061,7 @@ next: ${payload.nextUrl}` : ""}`;
     options: [
       stringOption("business-name", "businessName", "Business name."),
       stringOption("current-website-url", "currentWebsiteUrl", "Existing website URL."),
-      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text."),
+      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text.", { required: true }),
       stringOption("prompt-hint", "promptHints", "Prompt hint.", { multiple: true }),
       stringOption("reference-link", "referenceLinks", "Reference link.", { multiple: true })
     ],
@@ -6845,12 +7076,39 @@ next: ${payload.nextUrl}` : ""}`;
     buildInput: (input2) => input2
   }),
   rpcCommand({
+    path: ["site", "import-existing"],
+    summary: "Import an existing website into the site request flow.",
+    options: [
+      stringOption("url", "url", "Existing website URL.", { required: true }),
+      stringOption("business-name", "businessName", "Business name."),
+      stringOption("raw-intake-text", "rawIntakeText", "Additional site brief text."),
+      stringOption("prompt-hint", "promptHints", "Prompt hint.", { multiple: true }),
+      stringOption("reference-link", "referenceLinks", "Reference link.", { multiple: true })
+    ],
+    schema: external_exports.object({
+      url: requiredString,
+      businessName: optionalString,
+      rawIntakeText: optionalString,
+      promptHints: stringList,
+      referenceLinks: stringList
+    }),
+    op: "site.import-existing",
+    buildInput: (input2) => ({
+      businessName: input2.businessName,
+      currentWebsiteUrl: input2.url,
+      rawIntakeText: input2.rawIntakeText ?? `Import and modernize the existing website at ${input2.url}.`,
+      promptHints: input2.promptHints,
+      referenceLinks: input2.referenceLinks
+    }),
+    risk: "write"
+  }),
+  rpcCommand({
     path: ["site", "save-draft"],
     summary: "Save a website request draft.",
     options: [
-      stringOption("business-name", "businessName", "Business name."),
+      stringOption("business-name", "businessName", "Business name.", { required: true }),
       stringOption("current-website-url", "currentWebsiteUrl", "Existing website URL."),
-      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text."),
+      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text.", { required: true }),
       stringOption("prompt-hint", "promptHints", "Prompt hint.", { multiple: true }),
       stringOption("reference-link", "referenceLinks", "Reference link.", { multiple: true }),
       stringOption("draft-brief-json", "draftBriefJson", "Draft brief JSON.")
@@ -6875,7 +7133,7 @@ next: ${payload.nextUrl}` : ""}`;
   }),
   rpcCommand({
     path: ["site", "approve"],
-    summary: "Approve a website request draft.",
+    summary: "Approve the current website draft. With no inputs, approves the latest saved draft.",
     options: [
       stringOption("business-name", "businessName", "Business name."),
       stringOption("current-website-url", "currentWebsiteUrl", "Existing website URL."),
@@ -6885,11 +7143,11 @@ next: ${payload.nextUrl}` : ""}`;
       stringOption("draft-brief-json", "draftBriefJson", "Draft brief JSON.")
     ],
     schema: external_exports.object({
-      businessName: requiredString,
+      businessName: optionalString,
       currentWebsiteUrl: optionalString,
-      rawIntakeText: requiredString,
-      promptHints: stringList,
-      referenceLinks: stringList,
+      rawIntakeText: optionalString,
+      promptHints: optionalStringList,
+      referenceLinks: optionalStringList,
       draftBriefJson: optionalString
     }),
     op: "site.approve",
@@ -6904,11 +7162,11 @@ next: ${payload.nextUrl}` : ""}`;
   }),
   rpcCommand({
     path: ["site", "regenerate"],
-    summary: "Regenerate a website brief.",
+    summary: "Regenerate a website brief. Resets reviewStatus to needs_review.",
     options: [
-      stringOption("business-name", "businessName", "Business name."),
+      stringOption("business-name", "businessName", "Business name.", { required: true }),
       stringOption("current-website-url", "currentWebsiteUrl", "Existing website URL."),
-      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text."),
+      stringOption("raw-intake-text", "rawIntakeText", "Raw intake text.", { required: true }),
       stringOption("prompt-hint", "promptHints", "Prompt hint.", { multiple: true }),
       stringOption("reference-link", "referenceLinks", "Reference link.", { multiple: true })
     ],
@@ -6916,8 +7174,8 @@ next: ${payload.nextUrl}` : ""}`;
       businessName: requiredString,
       currentWebsiteUrl: optionalString,
       rawIntakeText: requiredString,
-      promptHints: stringList,
-      referenceLinks: stringList
+      promptHints: optionalStringList,
+      referenceLinks: optionalStringList
     }),
     op: "site.regenerate",
     buildInput: (input2) => input2
@@ -6932,6 +7190,221 @@ next: ${payload.nextUrl}` : ""}`;
     op: "site.request-changes",
     buildInput: (input2) => input2,
     risk: "write"
+  }),
+  rpcCommand({
+    path: ["site", "cms", "get"],
+    summary: "Show the linked Dynasite CMS draft.",
+    options: [stringOption("site-id", "siteId", "Dynasite site id.")],
+    schema: external_exports.object({ siteId: optionalString }),
+    op: "site.cms.get",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["site", "cms", "edit"],
+    summary: "Apply a JSON CMS edit to the linked Dynasite draft.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("edit-json", "editJson", "CMS edit JSON object.", { required: true }),
+      stringOption("source", "source", "Revision source: manual_edit, ai_assist, revision_revert, or publish.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      editJson: requiredString,
+      source: optionalString
+    }),
+    op: "site.cms.edit",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      edit: parseJsonObjectText(input2.editJson, "edit-json"),
+      source: input2.source
+    }),
+    risk: "write"
+  }),
+  rpcCommand({
+    path: ["site", "cms", "assist"],
+    summary: "Ask Dynasite for a CMS assist patch.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("action", "action", "Assist action.", { required: true }),
+      stringOption("target-index", "targetIndex", "Optional target index.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      action: requiredString,
+      targetIndex: optionalString
+    }),
+    op: "site.cms.assist",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      action: input2.action,
+      targetIndex: parseNumberText(input2.targetIndex, "target-index")
+    }),
+    risk: "write"
+  }),
+  rpcCommand({
+    path: ["site", "media", "import"],
+    summary: "Import source-site or explicit media URLs into the linked Dynasite draft.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      booleanOption("discover", "discover", "Import discovered source-site media."),
+      stringOption("item-json", "itemJson", "Media import item JSON.", { multiple: true })
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      discover: external_exports.boolean().optional(),
+      itemJson: optionalStringList
+    }),
+    op: "site.media.import",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      discover: Boolean(input2.discover),
+      items: parseJsonArrayTexts(input2.itemJson, "item-json")
+    }),
+    risk: "write"
+  }),
+  {
+    path: ["site", "media", "upload"],
+    summary: "Upload a local image or video into the linked Dynasite draft.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("file", "file", "Local file path.", { required: true }),
+      stringOption("alt", "alt", "Alt text or video title."),
+      stringOption("role", "role", "Media role: hero or gallery.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      file: requiredString,
+      alt: optionalString,
+      role: optionalString
+    }),
+    auth: "workspace",
+    risk: "write",
+    execute: async (runtime, input2) => {
+      const typed = input2;
+      const file = await localFilePayload(typed.file);
+      return runtime.invoke("site.media.upload", {
+        siteId: typed.siteId,
+        ...file,
+        alt: typed.alt,
+        role: typed.role
+      });
+    }
+  },
+  rpcCommand({
+    path: ["site", "revisions", "list"],
+    summary: "List linked Dynasite CMS revisions.",
+    options: [stringOption("site-id", "siteId", "Dynasite site id.")],
+    schema: external_exports.object({ siteId: optionalString }),
+    op: "site.revisions.list",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["site", "revisions", "revert"],
+    summary: "Revert a linked Dynasite CMS revision.",
+    positionals: ["revisionId"],
+    options: [stringOption("site-id", "siteId", "Dynasite site id.")],
+    schema: external_exports.object({
+      revisionId: requiredString,
+      siteId: optionalString
+    }),
+    op: "site.revisions.revert",
+    buildInput: (input2) => input2,
+    risk: "write"
+  }),
+  rpcCommand({
+    path: ["site", "publish"],
+    summary: "Publish the linked Dynasite site to preview or live.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("environment", "environment", "Publish environment: preview or live.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      environment: optionalString
+    }),
+    op: "site.publish",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      environment: input2.environment === "live" ? "live" : "preview"
+    }),
+    risk: "external"
+  }),
+  {
+    path: ["site", "bundle", "upload"],
+    summary: "Upload a static site bundle from a directory or zip.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id. Defaults to the linked current site."),
+      stringOption("source-dir", "sourceDir", "Directory containing static site files."),
+      stringOption("zip", "zip", "Zip file containing static site files."),
+      stringOption("title", "title", "Bundle title."),
+      stringOption("entry-path", "entryPath", "Entry file path.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      sourceDir: optionalString,
+      zip: optionalString,
+      title: optionalString,
+      entryPath: optionalString
+    }),
+    auth: "workspace",
+    risk: "write",
+    execute: async (runtime, input2) => {
+      const typed = input2;
+      return runtime.invoke("site.bundle.upload", {
+        siteId: typed.siteId,
+        ...await staticBundlePayload(typed)
+      });
+    }
+  },
+  rpcCommand({
+    path: ["site", "bundle", "status"],
+    summary: "List static site bundles for the linked Dynasite site.",
+    options: [stringOption("site-id", "siteId", "Dynasite site id.")],
+    schema: external_exports.object({ siteId: optionalString }),
+    op: "site.bundle.status",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["site", "bundle", "publish"],
+    summary: "Publish a static site bundle to preview or live.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("bundle-id", "bundleId", "Static bundle id.", { required: true }),
+      stringOption("environment", "environment", "Publish environment: preview or live.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      bundleId: requiredString,
+      environment: optionalString
+    }),
+    op: "site.bundle.publish",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      bundleId: input2.bundleId,
+      environment: input2.environment === "live" ? "live" : "preview"
+    }),
+    risk: "external"
+  }),
+  rpcCommand({
+    path: ["site", "bundle", "rollback"],
+    summary: "Roll back to a previous static site bundle.",
+    options: [
+      stringOption("site-id", "siteId", "Dynasite site id."),
+      stringOption("bundle-id", "bundleId", "Specific static bundle id. Defaults to previous."),
+      stringOption("environment", "environment", "Publish environment: preview or live.")
+    ],
+    schema: external_exports.object({
+      siteId: optionalString,
+      bundleId: optionalString,
+      environment: optionalString
+    }),
+    op: "site.bundle.rollback",
+    buildInput: (input2) => ({
+      siteId: input2.siteId,
+      bundleId: input2.bundleId,
+      environment: input2.environment === "live" ? "live" : "preview"
+    }),
+    risk: "external"
   }),
   rpcCommand({
     path: ["reach", "dashboard"],
@@ -7109,8 +7582,14 @@ next: ${payload.nextUrl}` : ""}`;
   }),
   rpcCommand({
     path: ["settings", "profile", "set"],
-    summary: "Replace the business profile from JSON.",
-    options: [stringOption("profile-json", "profileJson", "Business profile JSON.")],
+    summary: "Replace the business profile from JSON. Workspace slug and host stay unchanged.",
+    options: [
+      stringOption(
+        "profile-json",
+        "profileJson",
+        "Business profile JSON; does not rename the workspace slug or host."
+      )
+    ],
     schema: external_exports.object({
       profileJson: requiredString
     }),
@@ -7321,7 +7800,8 @@ function parseCommand(argv) {
   }
   const parsedInput = command.schema.safeParse(inputValues);
   if (!parsedInput.success) {
-    throw usageError(parsedInput.error.issues[0]?.message ?? "Invalid command arguments.");
+    const issue = parsedInput.error.issues[0];
+    throw usageError(issue ? formatInputIssue(command, issue) : "Invalid command arguments.");
   }
   return {
     command,
@@ -7353,7 +7833,7 @@ function renderHelp(path3 = []) {
   if (exact) {
     const usage = ["mere-business", ...exact.path, ...(exact.positionals ?? []).map((item) => `<${item}>`)].join(" ");
     const optionLines = [...globalOptions, ...exact.options ?? []].map(
-      (option) => `  --${option.name}${option.short ? `, -${option.short}` : ""}  ${option.summary}`
+      (option) => `  --${option.name}${option.short ? `, -${option.short}` : ""}  ${option.summary}${option.required ? " (required)" : ""}`
     );
     return [exact.summary, "", `Usage: ${usage}`, "", "Options:", ...optionLines].join("\n");
   }
@@ -7412,8 +7892,10 @@ function renderCommandManifest() {
           supportsData: Boolean(command.options?.some((option) => option.name.includes("json"))),
           requiresYes: command.destructive || commandRisk(command) === "external",
           requiresConfirm: Boolean(command.confirmationTarget),
+          interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
           positionals: command.positionals ?? [],
           flags: [...globalOptions, ...command.options ?? []].map((option) => option.name),
+          requiredFlags: (command.options ?? []).filter((option) => option.required).map((option) => option.name),
           ...command.path.join(".") === "auth.whoami" || command.path.join(".") === "workspace.current" ? { auditDefault: true } : {}
         })),
         {
@@ -7426,8 +7908,10 @@ function renderCommandManifest() {
           supportsData: false,
           requiresYes: false,
           requiresConfirm: false,
+          interactiveConfirm: false,
           positionals: [],
-          flags: []
+          flags: [],
+          requiredFlags: []
         },
         {
           id: "commands",
@@ -7439,8 +7923,10 @@ function renderCommandManifest() {
           supportsData: false,
           requiresYes: false,
           requiresConfirm: false,
+          interactiveConfirm: false,
           positionals: [],
-          flags: ["json"]
+          flags: ["json"],
+          requiredFlags: []
         }
       ]
     },
@@ -7595,6 +8081,83 @@ async function createRuntime(globalFlags) {
           persistDefaultWorkspace: true
         })
       );
+    },
+    createWorkspace: async (input2) => {
+      const session = await ensureConsoleSession();
+      const values = compactObject({
+        name: input2.name,
+        slug: input2.slug,
+        businessMode: input2.businessMode,
+        baseDomain: input2.baseDomain,
+        existingWebsiteUrl: input2.existingWebsiteUrl,
+        existingCity: input2.existingCity,
+        existingState: input2.existingState,
+        existingIndustry: input2.existingIndustry,
+        existingPhone: input2.existingPhone,
+        existingDescription: input2.existingDescription
+      });
+      writeProgress(globalFlags, `Creating workspace ${String(input2.slug ?? input2.name ?? "").trim() || "workspace"}...`);
+      let result = await createConsoleWorkspace({
+        baseUrl: session.baseUrl,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        values
+      });
+      if (result.session) {
+        await writeSession({
+          ...result.session,
+          version: 1,
+          baseUrl: session.baseUrl,
+          lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      const workspaceId = result.workspace?.id;
+      if (!workspaceId || input2.noWait === true || result.state === "active" || result.state === "needs_attention") {
+        return stripSessionPayload(result);
+      }
+      const timeoutMs = Math.round(Number(input2.timeoutSeconds ?? 900) * 1e3);
+      const pollMs = Math.max(1e3, Math.round(Number(input2.pollSeconds ?? 5) * 1e3));
+      const deadline = Date.now() + timeoutMs;
+      let lastLine = "";
+      writeProgress(
+        globalFlags,
+        `Workspace ${result.workspace?.slug ?? workspaceId} created. Waiting for provisioning...`
+      );
+      while (Date.now() < deadline) {
+        await sleep(pollMs);
+        const latestSession = await getLocalSession() ?? session;
+        result = await getConsoleOnboardingStatus({
+          baseUrl: latestSession.baseUrl,
+          accessToken: latestSession.accessToken,
+          refreshToken: latestSession.refreshToken,
+          workspaceId
+        });
+        if (result.session) {
+          await writeSession({
+            ...result.session,
+            version: 1,
+            baseUrl: latestSession.baseUrl,
+            lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+        if (result.state === "active" || result.state === "needs_attention") {
+          return stripSessionPayload(result);
+        }
+        const line = [
+          result.provisioning?.activeStep ?? "provisioning",
+          result.provisioning?.activeOutput
+        ].filter(Boolean).join(": ");
+        if (line && line !== lastLine) {
+          writeProgress(globalFlags, line);
+          lastLine = line;
+        }
+      }
+      return {
+        ...stripSessionPayload(result),
+        state: result.state ?? "provisioning",
+        timedOut: true,
+        message: `Provisioning is still running after ${Math.round(timeoutMs / 1e3)} seconds.`
+      };
     },
     redeemInvite: async (code) => {
       await ensureSessionForInvite(code);
@@ -7789,7 +8352,7 @@ run(process.argv.slice(2)).then((code) => {
   if (parsed) {
     printJson(stderr, { ok: false, error: errorPayload(error) });
   } else {
-    stderr.write(`${error instanceof Error ? error.message : "Unexpected error."}
+    stderr.write(`${formatErrorForTerminal(error)}
 `);
   }
   process.exitCode = error instanceof CommandError ? error.exitCode : 1;

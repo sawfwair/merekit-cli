@@ -113,6 +113,8 @@ Interpretation:
 6. For structured mutations, prefer `--data-file FILE` over long inline JSON.
 7. For destructive commands, pass only the guardrails the user explicitly approved.
 
+For Business website requests, do not use `site create`, `site save-draft`, `site approve`, or `site regenerate` blindly against a preview-ready request. Check `mere business site current --workspace WORKSPACE_ID --json`; if the request is preview-ready and needs revision, run `mere business site request-changes --workspace WORKSPACE_ID --json` first. The full loop is documented in [Business Site Iteration](/business-site).
+
 ## Delegation Rules
 
 ```sh

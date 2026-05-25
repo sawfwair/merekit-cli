@@ -36,6 +36,7 @@ Maintainers regenerate these files from the Mere app repositories with \`pnpm bu
 const appBuilds = [
 	{ repo: 'business', args: ['--dir', path.join(mereRoot, 'business'), '--filter', '@zerosmb/cli', 'build'] },
 	{ repo: 'finance', script: 'build:cli' },
+	{ repo: 'dynasite', script: 'build:cli' },
 	{ repo: 'projects', script: 'build:cli' },
 	{ repo: 'agent', script: 'build:cli' },
 	{ repo: 'today', script: 'build:cli' },
@@ -54,6 +55,11 @@ const adapters = [
 		key: 'business',
 		sourceRepoPath: path.join(mereRoot, 'business'),
 		sourceArtifactPath: path.join(mereRoot, 'business', 'packages', 'cli', 'dist', 'index.js')
+	},
+	{
+		key: 'dynasite',
+		sourceRepoPath: path.join(mereRoot, 'dynasite'),
+		sourceArtifactPath: path.join(mereRoot, 'dynasite', 'dist', 'run.js')
 	},
 	{
 		key: 'projects',

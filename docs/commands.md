@@ -208,8 +208,9 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 139 | 2 | 52 read, 60 write, 15 destructive, 12 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
+| `business` | 155 | 2 | 56 read, 68 write, 15 destructive, 16 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 38 | 2 | 27 read, 7 write, 4 destructive | `base-url`, `profile`, `json`, `yes`, `confirm` |
+| `dynasite` | 21 | 2 | 12 read, 6 write, 3 external | `base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e` |
 | `projects` | 59 | 4 | 27 read, 23 write, 9 destructive | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `agent` | 26 | 5 | 10 read, 11 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file` |
 | `today` | 58 | 2 | 22 read, 25 write, 10 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `persist-to` |
@@ -221,7 +222,7 @@ This matrix is generated from the current local app manifests.
 | `works` | 40 | 0 | 15 read, 20 write, 4 destructive, 1 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `token` |
 | `media` | 15 | 3 | 8 read, 7 write | `base-url`, `store`, `local-db`, `workspace`, `token`, `json` |
 | `deliver` | 17 | 3 | 9 read, 5 write, 2 destructive, 1 external | `base-url`, `token`, `json` |
-| `link` | 12 | 0 | 9 read, 3 write | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin` |
+| `link` | 21 | 0 | 16 read, 4 write, 1 external | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin`, `executor-base-url`, `executor-token-env`, `executor-scope`, `data`, `capability`, `operator`, `operator-provider`, `operator-client`, `operator-type`, `operator-account-class`, `operator-account-id`, `operator-trust-tier`, `operator-environment`, `override` |
 
 ## Output And Exit Codes
 

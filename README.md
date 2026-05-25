@@ -73,6 +73,8 @@ After first use, stay in the CLI: run `mere ops workspace-snapshot` for the safe
 
 The snapshot is the safest first operational read. In human mode it shows live progress while long read checks run, then prints a compact summary. With `--json`, stdout stays clean and the full grouped payload is emitted only when the snapshot is complete.
 
+For Business website work, use the request lifecycle commands instead of guessing from a preview URL. Once a site request reaches preview-ready, revise it with `mere business site request-changes`, then `site save-draft`, then `site approve`; see [Business Site Iteration](docs/business-site.md).
+
 `agent bootstrap` wraps that first-use sequence and writes a secret-free context pack for an agent:
 
 ```txt
@@ -230,6 +232,7 @@ Registered namespaces:
 | --- | --- | --- |
 | `business` | browser | Business product/workspace operations |
 | `finance` | token | Scoped finance automation |
+| `dynasite` | mixed | Dynasite site diagnostics, CMS, media, publishing, and static bundles |
 | `projects` | browser | Project, contact, knowledge, proposal, and source workflows |
 | `agent` | browser | Agent foundation lifecycle, runtime sessions, share links, and generated tools |
 | `today` | browser | Scheduling, booking, calendar, and time workflows |

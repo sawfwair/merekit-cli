@@ -5362,6 +5362,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -5413,6 +5415,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -5451,6 +5465,9 @@ async function waitForCallback(input) {
           if (input.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input.workspace.trim());
           }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
           const started = await fetchJson(input.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input.notify(
@@ -5477,6 +5494,7 @@ async function loginWithBrowser(input) {
     fetchImpl: input.fetchImpl ?? fetch,
     notify: input.notify,
     workspace: input.workspace,
+    inviteCode: input.inviteCode,
     productLabel: input.productLabel
   });
   return createLocalSession(payload, {
@@ -5581,6 +5599,7 @@ Global flags:
   --workspace ID       Override MERE_EMAIL_WORKSPACE_ID
   --json               Write machine-readable JSON
   --version            Show the CLI version
+  -v                   Show the CLI version
   --no-interactive     Do not attempt interactive prompts
   --yes                Required for destructive automation
   --confirm ID         Exact target required with --yes for destructive commands
@@ -5842,6 +5861,11 @@ function splitGlobalFlags(argv) {
   let index = 0;
   while (index < argv.length) {
     const token = argv[index];
+    if (token === "-v") {
+      globalTokens.push("--version");
+      index += 1;
+      continue;
+    }
     if (!token.startsWith("--")) {
       break;
     }
@@ -6821,6 +6845,10 @@ async function runCli(argv, io) {
   try {
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     if (asBoolean(globalOptions.version)) {
+      writeText(io, await cliVersion());
+      return 0;
+    }
+    if (rest[0] === "version") {
       writeText(io, await cliVersion());
       return 0;
     }

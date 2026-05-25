@@ -16,6 +16,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.1_@sveltejs+vite-p_4e3f892a742bb9c5a510ac2c0515d785/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -169,6 +171,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl2.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl2.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl2.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl2.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -315,6 +329,7 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
 ]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
+  ["v", "version"],
   ["y", "yes"]
 ]);
 var MIME_BY_EXTENSION = /* @__PURE__ */ new Map([
@@ -1308,7 +1323,7 @@ async function handleWorkspace(parsed, io) {
 async function runCli(argv, io) {
   try {
     const parsed = parseArgv(argv);
-    if (readBooleanFlag(parsed, "version")) {
+    if (readBooleanFlag(parsed, "version") || parsed.positionals.length === 1 && parsed.positionals[0] === "version") {
       io.stdout(`${await cliVersion()}
 `);
       return 0;

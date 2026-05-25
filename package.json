@@ -1,6 +1,6 @@
 {
   "name": "@merekit/cli",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Public Mere command plane with waitlist and invite onboarding, bundled app adapters, agent context packs, audits, and MCP access.",
   "private": false,
   "license": "Apache-2.0",
@@ -51,10 +51,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "overrides": {
+    "qs": "6.15.2"
+  },
   "pnpm": {
     "overrides": {
       "@vitejs/plugin-vue": "6.0.6",
       "esbuild": "0.27.7",
+      "qs": "6.15.2",
       "vite": "6.4.2"
     }
   },
