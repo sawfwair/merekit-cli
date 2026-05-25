@@ -69,6 +69,7 @@ export default defineConfig({
         text: 'Operate',
         items: [
           { text: 'Command Reference', link: '/commands' },
+          { text: 'Business Site Iteration', link: '/business-site' },
           { text: 'Agent Workflow', link: '/agent' },
           { text: 'Ops Workflows', link: '/ops' },
           { text: 'MCP Server', link: '/mcp' }

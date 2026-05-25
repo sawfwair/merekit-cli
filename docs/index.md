@@ -71,5 +71,6 @@ Then open the generated `ONBOARDING.md` for a readable summary and `onboarding-r
 - [Read the onboarding report](/onboarding/report)
 - [Understand the agent context pack](/onboarding/context-pack)
 - [Follow the agent workflow](/agent)
+- [Iterate Business site requests](/business-site)
 - [Use the command reference](/commands)
 - [Run the release checklist](/release-checklist)
