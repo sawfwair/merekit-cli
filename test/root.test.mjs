@@ -151,6 +151,10 @@ if (args[0] === 'store' && args[1] === 'list') {
   console.log(JSON.stringify({ current: { storeId: 'store_1' }, stores: [{ storeId: 'store_1' }], args }));
   process.exit(0);
 }
+if (args[0] === 'stripe' && args[1] === 'status' && args.includes('--store')) {
+  console.error('Unknown option: --store');
+  process.exit(1);
+}
 console.log(JSON.stringify({ args }));
 `,
     'utf8',
@@ -663,6 +667,18 @@ test('delegates supported pass-through flags only', async () => {
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(payload.args, ['project', 'list', '--json', '--workspace', 'ws_1']);
+});
+
+test('retries manifest global flags in leading position when adapters require it', async () => {
+  const root = await fakeMereRoot();
+  const zoneCli = path.join(root, 'fake-zone.js');
+  await writeFakeSelectorCli(zoneCli, 'zone');
+  const result = await run(['zone', 'stripe', 'status', '--store', 'store_2', '--json'], {
+    MERE_ROOT: root,
+    MERE_ZONE_CLI: zoneCli,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout).args, ['--store', 'store_2', '--json', 'stripe', 'status']);
 });
 
 test('workspace snapshot runs read-only audit defaults for a workspace', async () => {

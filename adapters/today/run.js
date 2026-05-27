@@ -1,11 +1,31 @@
 #!/usr/bin/env node
 
 // scripts/cli/yourtime.ts
-import { readFile as readFile2 } from "node:fs/promises";
+import { readFile as readFile3 } from "node:fs/promises";
 import process3 from "node:process";
 
 // scripts/cli/args.ts
 import { readFileSync } from "node:fs";
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
+  "active",
+  "archive",
+  "clear-end",
+  "clear-project",
+  "dry-run",
+  "force",
+  "help",
+  "include-archived",
+  "inactive",
+  "json",
+  "local",
+  "remote",
+  "unarchive",
+  "version",
+  "yes"
+]);
+function isBooleanLiteral(value) {
+  return value === "true" || value === "false" || value === "1" || value === "0" || value === "yes" || value === "no";
+}
 function pushFlagValue(flags, key, value) {
   const existing = flags[key];
   if (existing === void 0) {
@@ -46,6 +66,10 @@ function parseArgv(argv) {
     }
     const rawKey = withoutPrefix;
     const next = argv[index + 1];
+    if (BOOLEAN_FLAGS.has(rawKey) && !isBooleanLiteral(next)) {
+      pushFlagValue(parsed.flags, rawKey, true);
+      continue;
+    }
     if (!next || next.startsWith("--")) {
       pushFlagValue(parsed.flags, rawKey, true);
       continue;
@@ -177,8 +201,6 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
-var CLI_AUTH_ERROR_QUERY_PARAM = "error";
-var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.1_@sveltejs+vite-p_a16694d82befbc5a365d1bd249c9e389/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -307,7 +329,7 @@ async function postJson(fetchImpl, input, body) {
   );
 }
 async function waitForCallback(input) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const server = createServer((request, response) => {
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
       if (requestUrl.pathname !== "/callback") {
@@ -316,18 +338,6 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
-      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
-      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
-      if (authError) {
-        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        response.end(
-          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
-        );
-        clearTimeout(timeout);
-        server.close();
-        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
-        return;
-      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -343,7 +353,7 @@ async function waitForCallback(input) {
         server.close();
         try {
           const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
-          resolve(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
+          resolve2(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
         } catch (error) {
           reject(error);
         }
@@ -2115,7 +2125,7 @@ async function runWrangler(options, extraArgs) {
     ...options.persistTo ? ["--persist-to", options.persistTo] : [],
     ...extraArgs
   ];
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const child = spawn2("pnpm", args, {
       cwd: options.cwd,
       env,
@@ -2134,7 +2144,7 @@ async function runWrangler(options, extraArgs) {
     });
     child.on("close", (code) => {
       if (code === 0) {
-        resolve(stdout2);
+        resolve2(stdout2);
         return;
       }
       const message = stderr2.trim() || stdout2.trim() || `wrangler exited with code ${String(code)}`;
@@ -2265,6 +2275,1580 @@ async function handleDbCommand(context, action, parsed) {
     };
   }
   throw new Error(`Unknown db action: ${action}`);
+}
+
+// scripts/cli/local-plane-command.ts
+import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os2 from "node:os";
+import path3 from "node:path";
+function stateHome2(env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  return env.XDG_DATA_HOME?.trim() || path3.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path3.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path3.join(stateHome2(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
+  }
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
+}
+function readLocalDbPath(input) {
+  const prefix = envPrefix(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path3.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path3.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path3.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
+  return {
+    value: path3.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
+    }
+  };
+}
+function formatPlaneConfigReport(report) {
+  const lines = ["Local plane config:"];
+  for (const config of report.configs) {
+    lines.push(
+      `  - ${config.appId}: data=${config.data}(${config.sources.data}) ai=${config.ai}(${config.sources.ai}) db=${config.localDbPath}(${config.sources.localDbPath}) projection=${config.cloudProjection}${config.blended ? " blended" : ""}`
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+var CloudProjectionDeliveryError = class extends Error {
+  constructor(message, status = null, responseText = null) {
+    super(message);
+    this.status = status;
+    this.responseText = responseText;
+    this.name = "CloudProjectionDeliveryError";
+  }
+  status;
+  responseText;
+};
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+
+// scripts/cli/local-store.ts
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { mkdir as mkdir2 } from "node:fs/promises";
+import path4 from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+var PLANE_TRANSFER_VERSION = 1;
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow2(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow2()
+  );
+  return id;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir2(path4.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow3();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow3();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow3();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+
+// scripts/cli/local-store.ts
+var TODAY_APP_ID = "mere-today";
+var TODAY_TIME_PAYLOAD_SCHEMA = "mere.today.time.v1";
+function isoNow4() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function makeId2(prefix) {
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 16)}`;
+}
+function stableTimeReportProjectionId(input) {
+  const digest = createHash2("sha256").update(TODAY_APP_ID).update("\0").update(input.workspaceId).update("\0").update(input.from).update("\0").update(input.to).update("\0").update(input.projectId ?? "").digest("hex").slice(0, 24);
+  return `tdpr_${digest}`;
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString2(value, label, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${label} is required for local mere.today records.`);
+  }
+  return raw.trim();
+}
+function readOptionalString(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+function readNumber(value, fallback) {
+  const raw = value === void 0 || value === null || value === "" ? fallback : Number(value);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.trunc(raw);
+}
+function readOptionalNumber(value, fallback) {
+  if (value === void 0 || value === null || value === "") return fallback;
+  const raw = Number(value);
+  return Number.isFinite(raw) ? Math.trunc(raw) : fallback;
+}
+function readBooleanInt(value, fallback = 0) {
+  if (value === void 0) return fallback;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return value === 0 ? 0 : 1;
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" ? 1 : 0;
+}
+function readDescription(value, fallback) {
+  if (value === void 0) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+function durationSeconds(startAt, endAt) {
+  if (!endAt) return null;
+  const start = Date.parse(startAt);
+  const end = Date.parse(endAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return Math.trunc((end - start) / 1e3);
+}
+function normalizeProject(input, workspaceId, existing) {
+  const now = isoNow4();
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? makeId2("time_project"),
+    tenant_id: workspaceId,
+    name: readString2(input.name, "name", existing?.name),
+    color: readOptionalString(input.color, existing?.color) ?? "#00d4aa",
+    is_archived: readBooleanInt(input.is_archived ?? input.archive, existing?.is_archived ?? 0),
+    sort_order: readNumber(input.sort_order ?? input.sortOrder ?? input.sort, existing?.sort_order ?? 0),
+    source_product: readOptionalString(input.source_product, existing?.source_product),
+    external_project_id: readOptionalString(input.external_project_id, existing?.external_project_id),
+    workspace_project_id: readOptionalString(input.workspace_project_id, existing?.workspace_project_id),
+    canonical_url: readOptionalString(input.canonical_url, existing?.canonical_url),
+    last_projected_event_id: readOptionalString(input.last_projected_event_id, existing?.last_projected_event_id),
+    managed_by_workspace: readBooleanInt(input.managed_by_workspace, existing?.managed_by_workspace ?? 0),
+    is_local: readBooleanInt(input.is_local, existing?.is_local ?? 1),
+    created_at: existing?.created_at ?? readOptionalString(input.created_at) ?? now,
+    updated_at: readOptionalString(input.updated_at) ?? now
+  };
+}
+function normalizeEntry(input, workspaceId, existing) {
+  const now = isoNow4();
+  const startAt = readString2(input.start_at ?? input.startAt ?? input.start, "start_at", existing?.start_at);
+  const endAt = readOptionalString(input.end_at ?? input.endAt ?? input.end, existing?.end_at);
+  const description = readDescription(input.description, existing?.description ?? "");
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? makeId2("time_entry"),
+    tenant_id: workspaceId,
+    project_id: readOptionalString(input.project_id ?? input.projectId ?? input.project, existing?.project_id),
+    description,
+    start_at: startAt,
+    end_at: endAt,
+    timezone: readOptionalString(input.timezone, existing?.timezone) ?? "UTC",
+    duration_seconds: readOptionalNumber(input.duration_seconds ?? input.durationSeconds, durationSeconds(startAt, endAt)),
+    created_by_user_id: readOptionalString(input.created_by_user_id ?? input.user ?? input.createdByUserId, existing?.created_by_user_id),
+    created_at: existing?.created_at ?? readOptionalString(input.created_at) ?? now,
+    updated_at: readOptionalString(input.updated_at) ?? now
+  };
+}
+function normalizePayload(value, workspaceId) {
+  if (!isRecord2(value) || value.kind !== TODAY_TIME_PAYLOAD_SCHEMA || value.version !== 1) {
+    throw new Error(`Today transfer payload must be ${TODAY_TIME_PAYLOAD_SCHEMA} version 1.`);
+  }
+  return {
+    kind: TODAY_TIME_PAYLOAD_SCHEMA,
+    version: 1,
+    projects: Array.isArray(value.projects) ? value.projects.map((entry) => normalizeProject(isRecord2(entry) ? entry : {}, workspaceId)) : [],
+    entries: Array.isArray(value.entries) ? value.entries.map((entry) => normalizeEntry(isRecord2(entry) ? entry : {}, workspaceId)) : []
+  };
+}
+var LocalTodayStore = class _LocalTodayStore {
+  constructor(dbPath, db, config, workspace) {
+    this.dbPath = dbPath;
+    this.db = db;
+    this.config = config;
+    this.workspace = workspace;
+  }
+  dbPath;
+  db;
+  config;
+  workspace;
+  static async open(input) {
+    const opened = await openLocalPlaneDatabase(input.config);
+    const db = opened.db;
+    registerPlaneApp(opened.db, TODAY_APP_ID, "Mere Today");
+    registerPlaneTransferSchema(opened.db, TODAY_APP_ID, {
+      payloadSchema: TODAY_TIME_PAYLOAD_SCHEMA,
+      displayName: "Today time transfer",
+      description: "Portable mere.today time projects and time entries."
+    });
+    upsertPlaneWorkspace(opened.db, TODAY_APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    const store = new _LocalTodayStore(opened.dbPath, db, input.config, input.workspace);
+    store.ensureSchema();
+    return store;
+  }
+  close() {
+    this.db.close();
+  }
+  ensureSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS today_local_time_projects (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        source_product TEXT,
+        external_project_id TEXT,
+        workspace_project_id TEXT,
+        canonical_url TEXT,
+        last_projected_event_id TEXT,
+        managed_by_workspace INTEGER NOT NULL DEFAULT 0,
+        is_local INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_today_local_time_projects_name
+        ON today_local_time_projects (workspace_id, name);
+
+      CREATE TABLE IF NOT EXISTS today_local_time_entries (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        project_id TEXT,
+        description TEXT NOT NULL,
+        start_at TEXT NOT NULL,
+        end_at TEXT,
+        timezone TEXT NOT NULL,
+        duration_seconds INTEGER,
+        created_by_user_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_today_local_time_entries_range
+        ON today_local_time_entries (workspace_id, start_at DESC);
+
+      CREATE TABLE IF NOT EXISTS today_local_projections (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        from_date TEXT NOT NULL,
+        to_date TEXT NOT NULL,
+        project_id TEXT,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        payload_json TEXT NOT NULL,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_today_local_projections_scope
+        ON today_local_projections (workspace_id, scope, updated_at DESC);
+    `);
+  }
+  info() {
+    const inventory = getLocalPlaneInventory(this.db, { appId: TODAY_APP_ID });
+    const count = (table) => this.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE workspace_id = ?`).get(this.workspace.workspaceId)?.count ?? 0;
+    return {
+      dbPath: this.dbPath,
+      workspaceId: this.workspace.workspaceId,
+      timeProjectCount: count("today_local_time_projects"),
+      timeEntryCount: count("today_local_time_entries"),
+      projectionCount: count("today_local_projections"),
+      localTimeStore: "enabled",
+      planeAppCount: inventory.counts.apps,
+      planeWorkspaceCount: inventory.counts.workspaces,
+      transferSchemaCount: inventory.counts.transferSchemas,
+      transferCount: inventory.counts.transfers,
+      aiJobCount: inventory.counts.aiJobs
+    };
+  }
+  listProjects(options = {}) {
+    const rows = this.db.prepare(
+      `SELECT id, workspace_id AS tenant_id, name, color, is_archived, sort_order, source_product, external_project_id,
+                workspace_project_id, canonical_url, last_projected_event_id, managed_by_workspace, is_local, created_at, updated_at
+           FROM today_local_time_projects
+          WHERE workspace_id = ? ${options.includeArchived ? "" : "AND is_archived = 0"}
+          ORDER BY sort_order, name`
+    ).all(this.workspace.workspaceId);
+    return rows;
+  }
+  getProject(projectIdOrName) {
+    const row = this.db.prepare(
+      `SELECT id, workspace_id AS tenant_id, name, color, is_archived, sort_order, source_product, external_project_id,
+                workspace_project_id, canonical_url, last_projected_event_id, managed_by_workspace, is_local, created_at, updated_at
+           FROM today_local_time_projects
+          WHERE workspace_id = ? AND (id = ? OR lower(name) = lower(?))
+          LIMIT 1`
+    ).get(this.workspace.workspaceId, projectIdOrName, projectIdOrName);
+    return row ?? null;
+  }
+  upsertProject(input) {
+    const idOrName = readOptionalString(input.id) ?? readOptionalString(input.name);
+    const project = normalizeProject(input, this.workspace.workspaceId, idOrName ? this.getProject(idOrName) ?? void 0 : void 0);
+    this.db.prepare(
+      `INSERT INTO today_local_time_projects (
+          id, workspace_id, name, color, is_archived, sort_order, source_product, external_project_id,
+          workspace_project_id, canonical_url, last_projected_event_id, managed_by_workspace, is_local, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, id) DO UPDATE SET
+          name = excluded.name,
+          color = excluded.color,
+          is_archived = excluded.is_archived,
+          sort_order = excluded.sort_order,
+          updated_at = excluded.updated_at`
+    ).run(
+      project.id,
+      project.tenant_id,
+      project.name,
+      project.color,
+      project.is_archived,
+      project.sort_order,
+      project.source_product,
+      project.external_project_id,
+      project.workspace_project_id,
+      project.canonical_url,
+      project.last_projected_event_id,
+      project.managed_by_workspace,
+      project.is_local,
+      project.created_at,
+      project.updated_at
+    );
+    return project;
+  }
+  deleteProject(projectIdOrName) {
+    const project = this.getProject(projectIdOrName);
+    if (!project) return false;
+    const result = this.db.prepare("DELETE FROM today_local_time_projects WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, project.id);
+    return Number(result.changes) > 0;
+  }
+  listEntries(options = {}) {
+    const clauses = ["workspace_id = ?"];
+    const params = [this.workspace.workspaceId];
+    if (options.from) {
+      clauses.push("start_at >= ?");
+      params.push(options.from);
+    }
+    if (options.to) {
+      clauses.push("start_at <= ?");
+      params.push(options.to);
+    }
+    if (options.projectId) {
+      clauses.push("project_id = ?");
+      params.push(options.projectId);
+    }
+    params.push(options.limit ?? 50, options.offset ?? 0);
+    return this.db.prepare(
+      `SELECT id, workspace_id AS tenant_id, project_id, description, start_at, end_at, timezone, duration_seconds,
+                created_by_user_id, created_at, updated_at
+           FROM today_local_time_entries
+          WHERE ${clauses.join(" AND ")}
+          ORDER BY start_at DESC
+          LIMIT ? OFFSET ?`
+    ).all(...params);
+  }
+  getEntry(entryId) {
+    const row = this.db.prepare(
+      `SELECT id, workspace_id AS tenant_id, project_id, description, start_at, end_at, timezone, duration_seconds,
+                created_by_user_id, created_at, updated_at
+           FROM today_local_time_entries
+          WHERE workspace_id = ? AND id = ?
+          LIMIT 1`
+    ).get(this.workspace.workspaceId, entryId);
+    return row ?? null;
+  }
+  currentEntry() {
+    const row = this.db.prepare(
+      `SELECT id, workspace_id AS tenant_id, project_id, description, start_at, end_at, timezone, duration_seconds,
+                created_by_user_id, created_at, updated_at
+           FROM today_local_time_entries
+          WHERE workspace_id = ? AND end_at IS NULL
+          ORDER BY start_at DESC
+          LIMIT 1`
+    ).get(this.workspace.workspaceId);
+    return row ?? null;
+  }
+  upsertEntry(input) {
+    const id = readOptionalString(input.id);
+    const entry = normalizeEntry(input, this.workspace.workspaceId, id ? this.getEntry(id) ?? void 0 : void 0);
+    this.db.prepare(
+      `INSERT INTO today_local_time_entries (
+          id, workspace_id, project_id, description, start_at, end_at, timezone, duration_seconds,
+          created_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, id) DO UPDATE SET
+          project_id = excluded.project_id,
+          description = excluded.description,
+          start_at = excluded.start_at,
+          end_at = excluded.end_at,
+          timezone = excluded.timezone,
+          duration_seconds = excluded.duration_seconds,
+          updated_at = excluded.updated_at`
+    ).run(
+      entry.id,
+      entry.tenant_id,
+      entry.project_id,
+      entry.description,
+      entry.start_at,
+      entry.end_at,
+      entry.timezone,
+      entry.duration_seconds,
+      entry.created_by_user_id,
+      entry.created_at,
+      entry.updated_at
+    );
+    return entry;
+  }
+  deleteEntry(entryId) {
+    const result = this.db.prepare("DELETE FROM today_local_time_entries WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, entryId);
+    return Number(result.changes) > 0;
+  }
+  getTimeReportProjection(projectionId) {
+    const row = this.db.prepare("SELECT published_at, revoked_at FROM today_local_projections WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, projectionId);
+    return row ?? null;
+  }
+  buildTimeReportProjectionEnvelope(input) {
+    const entries = this.listEntries({
+      from: input.from,
+      to: input.to,
+      projectId: input.projectId,
+      limit: 5e3,
+      offset: 0
+    }).filter((entry) => entry.end_at !== null);
+    const projectMap = new Map(this.listProjects({ includeArchived: true }).map((project) => [project.id, project]));
+    const rollups = /* @__PURE__ */ new Map();
+    let noProjectTotalSeconds = 0;
+    let noProjectEntryCount = 0;
+    for (const entry of entries) {
+      if (!entry.project_id) {
+        noProjectTotalSeconds += entry.duration_seconds ?? 0;
+        noProjectEntryCount += 1;
+        continue;
+      }
+      const current = rollups.get(entry.project_id) ?? { totalSeconds: 0, entryCount: 0 };
+      current.totalSeconds += entry.duration_seconds ?? 0;
+      current.entryCount += 1;
+      rollups.set(entry.project_id, current);
+    }
+    const projects = [...rollups.entries()].map(([projectId, rollup]) => {
+      const project = projectMap.get(projectId);
+      return {
+        id: projectId,
+        name: project?.name ?? projectId,
+        color: project?.color ?? "#777777",
+        isArchived: project?.is_archived === 1,
+        totalSeconds: rollup.totalSeconds,
+        entryCount: rollup.entryCount
+      };
+    });
+    if (noProjectEntryCount > 0) {
+      projects.push({
+        id: "unassigned",
+        name: "Unassigned",
+        color: "#777777",
+        isArchived: false,
+        totalSeconds: noProjectTotalSeconds,
+        entryCount: noProjectEntryCount
+      });
+    }
+    const projectionId = stableTimeReportProjectionId({
+      workspaceId: this.workspace.workspaceId,
+      from: input.from,
+      to: input.to,
+      projectId: input.projectId
+    });
+    const existing = this.getTimeReportProjection(projectionId);
+    const now = isoNow4();
+    const publishedAt = input.action === "revoke" ? existing?.published_at ?? now : now;
+    const revokedAt = input.action === "revoke" ? now : null;
+    return {
+      version: 1,
+      event: {
+        type: input.action === "revoke" ? "today.time-report.projection.revoked" : "today.time-report.projection.upserted",
+        appId: TODAY_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        projection: {
+          id: projectionId,
+          scope: "time-report",
+          from: input.from,
+          to: input.to,
+          projectId: input.projectId,
+          publishedByUserId: input.publishedByUserId,
+          publishedByEmail: input.publishedByEmail,
+          publishedAt,
+          revokedAt
+        },
+        report: {
+          workspaceId: this.workspace.workspaceId,
+          from: input.from,
+          to: input.to,
+          projectId: input.projectId,
+          totalSeconds: entries.reduce((sum, entry) => sum + (entry.duration_seconds ?? 0), 0),
+          entryCount: entries.length,
+          projectCount: projects.length
+        },
+        projects,
+        exclusions: [
+          "time entry descriptions",
+          "exact start/end timestamps",
+          "booking records",
+          "calendar events",
+          "availability rules",
+          "Google busy ranges",
+          "tenant admin records",
+          "raw local time rows"
+        ]
+      }
+    };
+  }
+  recordTimeReportProjection(envelope) {
+    const now = isoNow4();
+    this.db.prepare(
+      `INSERT INTO today_local_projections (
+          id, workspace_id, scope, from_date, to_date, project_id, published_at, revoked_at,
+          payload_json, last_projected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          scope = excluded.scope,
+          from_date = excluded.from_date,
+          to_date = excluded.to_date,
+          project_id = excluded.project_id,
+          published_at = excluded.published_at,
+          revoked_at = excluded.revoked_at,
+          payload_json = excluded.payload_json,
+          last_projected_at = excluded.last_projected_at,
+          updated_at = excluded.updated_at`
+    ).run(
+      envelope.event.projection.id,
+      envelope.event.workspaceId,
+      envelope.event.projection.scope,
+      envelope.event.projection.from,
+      envelope.event.projection.to,
+      envelope.event.projection.projectId,
+      envelope.event.projection.publishedAt,
+      envelope.event.projection.revokedAt,
+      JSON.stringify(envelope),
+      now,
+      now
+    );
+  }
+  exportPayload() {
+    return {
+      kind: TODAY_TIME_PAYLOAD_SCHEMA,
+      version: 1,
+      projects: this.listProjects({ includeArchived: true }),
+      entries: this.listEntries({ limit: 5e3, offset: 0 })
+    };
+  }
+  exportBundle() {
+    const payload = this.exportPayload();
+    const bundle = createPlaneTransferBundle({
+      appId: TODAY_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      plane: this.config,
+      payloadSchema: TODAY_TIME_PAYLOAD_SCHEMA,
+      payload
+    });
+    recordPlaneTransfer(this.db, {
+      appId: TODAY_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      direction: "export",
+      source: { data: this.config.data, ai: this.config.ai },
+      payloadSchema: TODAY_TIME_PAYLOAD_SCHEMA,
+      payloadSha256: bundle.payloadSha256
+    });
+    return bundle;
+  }
+  importPlan(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: TODAY_APP_ID,
+      payloadSchema: TODAY_TIME_PAYLOAD_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    return createPlaneTransferImportPlan({
+      appId: bundle?.appId ?? TODAY_APP_ID,
+      workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+      payloadSchema: bundle?.payloadSchema ?? TODAY_TIME_PAYLOAD_SCHEMA,
+      payload: normalized,
+      bundle,
+      destination: { data: this.config.data, ai: this.config.ai }
+    });
+  }
+  importValue(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: TODAY_APP_ID,
+      payloadSchema: TODAY_TIME_PAYLOAD_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    this.db.exec("BEGIN");
+    try {
+      for (const project of normalized.projects) this.upsertProject({ ...project });
+      for (const entry of normalized.entries) this.upsertEntry({ ...entry });
+      const source = bundle?.source;
+      const transferId = recordPlaneTransfer(this.db, {
+        appId: TODAY_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        direction: "import",
+        source,
+        destination: { data: this.config.data, ai: this.config.ai },
+        payloadSchema: bundle?.payloadSchema ?? TODAY_TIME_PAYLOAD_SCHEMA,
+        payloadSha256: bundle?.payloadSha256 ?? hashPlanePayload(normalized)
+      });
+      this.db.exec("COMMIT");
+      return {
+        ok: true,
+        store: "local",
+        workspaceId: this.workspace.workspaceId,
+        timeProjectCount: normalized.projects.length,
+        timeEntryCount: normalized.entries.length,
+        transferId
+      };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+};
+
+// scripts/cli/local-plane-command.ts
+function resolveTodayPlaneConfig(parsed, env) {
+  return resolvePlaneConfigInspection({
+    appId: TODAY_APP_ID,
+    env,
+    data: readStringFlag(parsed, "store"),
+    ai: readStringFlag(parsed, "ai"),
+    localDbPath: readStringFlag(parsed, "local-db")
+  });
+}
+function isLocalDataRoute(parsed, env) {
+  return resolveTodayPlaneConfig(parsed, env).data === "local";
+}
+function localWorkspace(parsed, env) {
+  const workspaceId = readStringFlag(parsed, "workspace") ?? readStringFlag(parsed, "tenant") ?? env.MERE_TODAY_WORKSPACE ?? env.YOURTIME_WORKSPACE ?? "personal";
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: workspaceId === "personal" ? "Personal Today" : workspaceId
+  };
+}
+async function openLocalTodayStore(parsed, env) {
+  const config = resolveTodayPlaneConfig(parsed, env);
+  if (config.data !== "local") {
+    throw new Error("This command requires --store local so mere.today local data stays explicit.");
+  }
+  return LocalTodayStore.open({
+    config,
+    workspace: localWorkspace(parsed, env)
+  });
+}
+async function withLocalStore(parsed, env, handler) {
+  const store = await openLocalTodayStore(parsed, env);
+  try {
+    return await handler(store);
+  } finally {
+    store.close();
+  }
+}
+function projectIdFromFlag(parsed) {
+  return readStringFlag(parsed, "project") ?? null;
+}
+function resolveProjectId(store, selector) {
+  if (!selector) return null;
+  return store.getProject(selector)?.id ?? selector;
+}
+function publishedByUserId(parsed, env) {
+  return readStringFlag(parsed, "published-by-user-id") ?? env.MERE_TODAY_USER_ID ?? env.MERE_USER_ID ?? "local-cli";
+}
+function publishedByEmail(parsed, env) {
+  return readStringFlag(parsed, "published-by-email") ?? env.MERE_TODAY_USER_EMAIL ?? env.MERE_USER_EMAIL ?? null;
+}
+function csvEscape(value) {
+  if (!value.includes(",") && !value.includes('"') && !value.includes("\n")) return value;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+async function handleLocalPlaneCommand(parsed, env, writers) {
+  const [resource, action] = parsed.positionals;
+  if (resource === "store" && action === "info") {
+    const config = resolveTodayPlaneConfig(parsed, env);
+    if (config.data === "local") {
+      return withLocalStore(parsed, env, (store) => ({
+        ok: true,
+        app: TODAY_APP_ID,
+        store: config.data,
+        ai: config.ai,
+        cloudProjection: config.cloudProjection,
+        blended: config.blended,
+        ...store.info(),
+        localAiSupported: false,
+        sources: config.sources
+      }));
+    }
+    if (readBooleanFlag(parsed, "json", false)) {
+      return {
+        ok: true,
+        app: TODAY_APP_ID,
+        store: config.data,
+        ai: config.ai,
+        cloudProjection: config.cloudProjection,
+        blended: config.blended,
+        dbPath: config.localDbPath,
+        localTimeStore: "available",
+        localAiSupported: false,
+        sources: config.sources
+      };
+    }
+    writers.stdout(
+      formatPlaneConfigReport({
+        kind: "mere.local-plane.config",
+        configs: [config]
+      })
+    );
+    writers.stdout("Hosted booking, calendar, and time APIs remain Cloudflare-owned unless --store local is selected for supported time commands.\n");
+    return "";
+  }
+  if (resource === "export") {
+    return withLocalStore(parsed, env, async (store) => {
+      const bundle = store.exportBundle();
+      const output = readStringFlag(parsed, "output");
+      if (!output) return bundle;
+      const target = resolve(output);
+      await mkdir3(dirname(target), { recursive: true });
+      await writeFile2(target, JSON.stringify(bundle, null, 2));
+      return {
+        ok: true,
+        path: target,
+        appId: bundle.appId,
+        workspaceId: bundle.workspaceId,
+        payloadSchema: bundle.payloadSchema,
+        payloadSha256: bundle.payloadSha256,
+        timeProjectCount: bundle.payload.projects.length,
+        timeEntryCount: bundle.payload.entries.length
+      };
+    });
+  }
+  if (resource === "import") {
+    return withLocalStore(parsed, env, async (store) => {
+      const value = JSON.parse(await readFile2(readRequiredStringFlag(parsed, "file"), "utf8"));
+      return readBooleanFlag(parsed, "dry-run", false) ? store.importPlan(value) : store.importValue(value);
+    });
+  }
+  if (resource === "time-project") {
+    return withLocalStore(parsed, env, (store) => {
+      if (action === "list") return store.listProjects({ includeArchived: readBooleanFlag(parsed, "include-archived", false) });
+      if (action === "get") return store.getProject(readRequiredStringFlag(parsed, "project"));
+      if (action === "create") {
+        return store.upsertProject({
+          name: readRequiredStringFlag(parsed, "name"),
+          color: readStringFlag(parsed, "color"),
+          sort: readNumberFlag(parsed, "sort") ?? 0
+        });
+      }
+      if (action === "update") {
+        return store.upsertProject({
+          id: readRequiredStringFlag(parsed, "project"),
+          name: readStringFlag(parsed, "name"),
+          color: readStringFlag(parsed, "color"),
+          sort: readNumberFlag(parsed, "sort"),
+          is_archived: readBooleanFlag(parsed, "archive", false) ? 1 : readBooleanFlag(parsed, "unarchive", false) ? 0 : void 0
+        });
+      }
+      if (action === "delete") {
+        const project = readRequiredStringFlag(parsed, "project");
+        requireExactConfirmation(parsed, "delete time project", project);
+        return { ok: store.deleteProject(project) };
+      }
+      throw new Error(`Unknown local time-project action: ${action}`);
+    });
+  }
+  if (resource === "time-entry") {
+    return withLocalStore(parsed, env, (store) => {
+      if (action === "current") return store.currentEntry();
+      if (action === "list") {
+        return store.listEntries({
+          from: readStringFlag(parsed, "from"),
+          to: readStringFlag(parsed, "to"),
+          projectId: resolveProjectId(store, projectIdFromFlag(parsed)),
+          limit: readNumberFlag(parsed, "limit") ?? 50,
+          offset: readNumberFlag(parsed, "offset") ?? 0
+        });
+      }
+      if (action === "get") return store.getEntry(readRequiredStringFlag(parsed, "entry"));
+      if (action === "start") {
+        return store.upsertEntry({
+          description: readStringFlag(parsed, "description") ?? "",
+          project_id: resolveProjectId(store, projectIdFromFlag(parsed)),
+          start_at: (/* @__PURE__ */ new Date()).toISOString(),
+          timezone: readStringFlag(parsed, "timezone") ?? "UTC",
+          created_by_user_id: readStringFlag(parsed, "user") ?? "cli"
+        });
+      }
+      if (action === "stop") {
+        const entryId = readStringFlag(parsed, "entry") ?? store.currentEntry()?.id;
+        if (!entryId) throw new Error("Provide --entry or start a running timer first");
+        const entry = store.getEntry(entryId);
+        if (!entry) throw new Error(`Running time entry not found: ${entryId}`);
+        return store.upsertEntry({ ...entry, end_at: (/* @__PURE__ */ new Date()).toISOString() });
+      }
+      if (action === "create") {
+        return store.upsertEntry({
+          description: readStringFlag(parsed, "description") ?? "",
+          project_id: resolveProjectId(store, projectIdFromFlag(parsed)),
+          start_at: readRequiredStringFlag(parsed, "start"),
+          end_at: readRequiredStringFlag(parsed, "end"),
+          timezone: readStringFlag(parsed, "timezone") ?? "UTC",
+          created_by_user_id: readStringFlag(parsed, "user") ?? "cli"
+        });
+      }
+      if (action === "update") {
+        const entry = store.getEntry(readRequiredStringFlag(parsed, "entry"));
+        if (!entry) throw new Error(`Time entry not found: ${readRequiredStringFlag(parsed, "entry")}`);
+        return store.upsertEntry({
+          ...entry,
+          description: readStringFlag(parsed, "description") ?? entry.description,
+          project_id: readBooleanFlag(parsed, "clear-project", false) ? null : resolveProjectId(store, projectIdFromFlag(parsed)) ?? entry.project_id,
+          start_at: readStringFlag(parsed, "start") ?? entry.start_at,
+          end_at: readBooleanFlag(parsed, "clear-end", false) ? null : readStringFlag(parsed, "end") ?? entry.end_at,
+          timezone: readStringFlag(parsed, "timezone") ?? entry.timezone
+        });
+      }
+      if (action === "delete") {
+        const entryId = readRequiredStringFlag(parsed, "entry");
+        requireExactConfirmation(parsed, "delete time entry", entryId);
+        return { ok: store.deleteEntry(entryId) };
+      }
+      throw new Error(`Unknown local time-entry action: ${action}`);
+    });
+  }
+  if (resource === "time-report" && action === "summary") {
+    return withLocalStore(parsed, env, (store) => {
+      const from = readRequiredStringFlag(parsed, "from");
+      const to = readRequiredStringFlag(parsed, "to");
+      const entries = store.listEntries({ from, to, limit: 5e3, offset: 0 });
+      const completedEntries = entries.filter((entry) => entry.end_at !== null);
+      return {
+        workspaceId: localWorkspace(parsed, env).workspaceId,
+        from,
+        to,
+        totalSeconds: completedEntries.reduce((sum, entry) => sum + (entry.duration_seconds ?? 0), 0),
+        entryCount: completedEntries.length
+      };
+    });
+  }
+  if (resource === "time-report" && (action === "publish" || action === "revoke")) {
+    return withLocalStore(parsed, env, async (store) => {
+      const from = readRequiredStringFlag(parsed, "from");
+      const to = readRequiredStringFlag(parsed, "to");
+      const projectId = resolveProjectId(store, projectIdFromFlag(parsed));
+      const envelope = store.buildTimeReportProjectionEnvelope({
+        action,
+        from,
+        to,
+        projectId,
+        publishedByUserId: publishedByUserId(parsed, env),
+        publishedByEmail: publishedByEmail(parsed, env)
+      });
+      if (readBooleanFlag(parsed, "dry-run", false)) {
+        let receiverUrl;
+        try {
+          receiverUrl = resolveCloudProjectionTarget({
+            appId: TODAY_APP_ID,
+            env,
+            receiverUrl: readStringFlag(parsed, "projection-url"),
+            bearerToken: readStringFlag(parsed, "projection-token")
+          }).receiverUrl;
+        } catch {
+          receiverUrl = void 0;
+        }
+        return {
+          ok: true,
+          dryRun: true,
+          app: TODAY_APP_ID,
+          action,
+          store: "local",
+          projection: "cloudflare",
+          projectionId: envelope.event.projection.id,
+          receiverUrl,
+          event: envelope
+        };
+      }
+      const delivery = await deliverCloudProjectionEvent({
+        appId: TODAY_APP_ID,
+        env,
+        receiverUrl: readStringFlag(parsed, "projection-url"),
+        bearerToken: readStringFlag(parsed, "projection-token"),
+        event: envelope
+      });
+      store.recordTimeReportProjection(envelope);
+      return {
+        ok: true,
+        app: TODAY_APP_ID,
+        action,
+        store: "local",
+        projection: "cloudflare",
+        projectionId: envelope.event.projection.id,
+        receiverUrl: delivery.receiverUrl,
+        status: delivery.status,
+        receiver: delivery.responseJson,
+        bookingDeliveryLocal: false,
+        calendarDeliveryLocal: false,
+        cloudProjectionLocal: false
+      };
+    });
+  }
+  if (resource === "time-report" && action === "export-csv") {
+    return withLocalStore(parsed, env, (store) => {
+      const entries = store.listEntries({
+        from: readRequiredStringFlag(parsed, "from"),
+        to: readRequiredStringFlag(parsed, "to"),
+        limit: 5e3,
+        offset: 0
+      });
+      const projects = new Map(store.listProjects({ includeArchived: true }).map((project) => [project.id, project]));
+      return [
+        ["Date", "Start", "End", "Duration (h)", "Project", "Description"].join(","),
+        ...entries.filter((entry) => entry.end_at !== null).map(
+          (entry) => [
+            entry.start_at.slice(0, 10),
+            entry.start_at.slice(11, 16),
+            entry.end_at ? entry.end_at.slice(11, 16) : "",
+            ((entry.duration_seconds ?? 0) / 3600).toFixed(2),
+            entry.project_id ? projects.get(entry.project_id)?.name ?? entry.project_id : "No project",
+            entry.description
+          ].map((value) => csvEscape(value)).join(",")
+        )
+      ].join("\n");
+    });
+  }
+  throw new Error(`Unsupported local mere.today command: ${resource} ${action}`.trim());
 }
 
 // scripts/cli/output.ts
@@ -2937,12 +4521,12 @@ async function stopRunningEntryIfNeeded(db, tenantId) {
     return;
   }
   const endAt = nowInTimeZone(running.timezone);
-  const durationSeconds = computeDurationSeconds(running.start_at, endAt);
+  const durationSeconds2 = computeDurationSeconds(running.start_at, endAt);
   await db.prepare(
     `UPDATE time_entries
        SET end_at = ?, duration_seconds = ?, updated_at = ?
        WHERE tenant_id = ? AND id = ? AND end_at IS NULL`
-  ).bind(endAt, durationSeconds, isoNow(), tenantId, running.id).run();
+  ).bind(endAt, durationSeconds2, isoNow(), tenantId, running.id).run();
 }
 async function getRunningTimeEntry(db, tenantId) {
   return db.prepare("SELECT * FROM time_entries WHERE tenant_id = ? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1").bind(tenantId).first();
@@ -2991,12 +4575,12 @@ async function stopTimeEntry(db, tenantId, entryId) {
     return null;
   }
   const endAt = nowInTimeZone(existing.timezone);
-  const durationSeconds = computeDurationSeconds(existing.start_at, endAt);
+  const durationSeconds2 = computeDurationSeconds(existing.start_at, endAt);
   await db.prepare(
     `UPDATE time_entries
        SET end_at = ?, duration_seconds = ?, updated_at = ?
        WHERE tenant_id = ? AND id = ? AND end_at IS NULL`
-  ).bind(endAt, durationSeconds, isoNow(), tenantId, entryId).run();
+  ).bind(endAt, durationSeconds2, isoNow(), tenantId, entryId).run();
   return getTimeEntryById(db, tenantId, entryId);
 }
 async function createTimeEntry(db, tenantId, input) {
@@ -3007,7 +4591,7 @@ async function createTimeEntry(db, tenantId, input) {
   }
   const now = isoNow();
   const id = makeId();
-  const durationSeconds = computeDurationSeconds(startAt, endAt);
+  const durationSeconds2 = computeDurationSeconds(startAt, endAt);
   await db.prepare(
     `INSERT INTO time_entries (
         id,
@@ -3030,7 +4614,7 @@ async function createTimeEntry(db, tenantId, input) {
     startAt,
     endAt,
     input.timezone,
-    durationSeconds,
+    durationSeconds2,
     input.userId ?? null,
     now,
     now
@@ -3307,6 +4891,11 @@ Usage:
 Global flags:
   --base-url <url>        Override YOURTIME_BASE_URL for browser auth
   --workspace <id>        Preferred workspace for browser auth
+  --store <local|cloud>   Choose supported local/cloud data-plane commands
+  --ai <local|cloud>      Choose AI plane for local-plane inspection
+  --local-db <path>       Override the shared Mere local-plane SQLite path
+  --projection-url <url>  Cloudflare Business projection receiver URL
+  --projection-token <token> Cloudflare Business projection bearer token
   --json                  Write machine-readable JSON
   --version               Show the CLI version
   --no-interactive        Reserved for non-interactive automation
@@ -3320,6 +4909,9 @@ Resources:
   db query --sql "SELECT * FROM tenants"
   db migrate [--dir migrations]
   db migrate --file migrations/0005_vnext_calendar.sql
+  store info
+  export --output ./today-time.bundle.json
+  import --file ./today-time.bundle.json [--dry-run]
   completion [bash|zsh|fish]
 
   tenant list
@@ -3383,7 +4975,13 @@ Resources:
   time-entry delete --tenant <tenantId> --entry <id>
 
   time-report summary --tenant <tenantId> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+  time-report publish --tenant <tenantId> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+  time-report revoke --tenant <tenantId> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
   time-report export-csv --tenant <tenantId> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+
+Local plane:
+  --store local currently supports time-project, time-entry, time-report, store info, export, import, and selected time-report publish/revoke.
+  Hosted booking, shared calendar, tenant admin, Google busy import, and D1 operations remain Cloudflare/D1-owned.
 `);
 }
 var COMPLETION_WORDS = [
@@ -3393,18 +4991,21 @@ var COMPLETION_WORDS = [
   "completion",
   "availability",
   "db",
+  "export",
   "google",
+  "import",
   "membership",
   "service",
+  "store",
   "tenant",
   "time-entry",
   "time-project",
   "time-report"
 ];
-function manifestCommand(path3, summary, options = {}) {
+function manifestCommand(path5, summary, options = {}) {
   return {
-    id: path3.join("."),
-    path: path3,
+    id: path5.join("."),
+    path: path5,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -3438,6 +5039,13 @@ function commandManifest() {
       "remote",
       "local",
       "db",
+      "store",
+      "ai",
+      "local-db",
+      "projection-url",
+      "projection-token",
+      "published-by-user-id",
+      "published-by-email",
       "persist-to"
     ],
     commands: [
@@ -3446,6 +5054,9 @@ function commandManifest() {
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none", risk: "write" }),
       manifestCommand(["db", "migrate"], "Run local migrations.", { auth: "none", risk: "write" }),
+      manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
+      manifestCommand(["export"], "Export local mere.today time transfer bundle.", { auth: "none", risk: "read" }),
+      manifestCommand(["import"], "Import local mere.today time transfer bundle.", { auth: "none", risk: "write" }),
       manifestCommand(["tenant", "resolve"], "Resolve workspace to tenant.", { auditDefault: true }),
       manifestCommand(["tenant", "list"], "List tenants."),
       manifestCommand(["tenant", "get"], "Get tenant."),
@@ -3483,6 +5094,8 @@ function commandManifest() {
       manifestCommand(["time-entry", "start"], "Start timer.", { risk: "write", supportsData: true }),
       manifestCommand(["time-entry", "stop"], "Stop timer.", { risk: "write" }),
       manifestCommand(["time-report", "summary"], "Summarize time."),
+      manifestCommand(["time-report", "publish"], "Publish selected local time-report totals to Business.", { auth: "none", risk: "external", auditDefault: true }),
+      manifestCommand(["time-report", "revoke"], "Revoke selected local time-report projection from Business.", { auth: "none", risk: "external", auditDefault: true }),
       manifestCommand(["time-report", "export-csv"], "Export time CSV."),
       ...[
         ["service", "delete"],
@@ -3492,7 +5105,7 @@ function commandManifest() {
         ["google", "disconnect"],
         ["time-project", "delete"],
         ["time-entry", "delete"]
-      ].map((path3) => manifestCommand(path3, `${path3.join(" ")}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })),
+      ].map((path5) => manifestCommand(path5, `${path5.join(" ")}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -3529,22 +5142,22 @@ function completionScript(shell) {
   }
   throw new Error("Unknown shell. Expected bash, zsh, or fish.");
 }
-function isRecord(value) {
+function isRecord3(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 async function parseJsonResponse(response) {
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const message = isRecord(payload) && typeof payload.error === "string" ? payload.error : `Request failed with ${String(response.status)}`;
+    const message = isRecord3(payload) && typeof payload.error === "string" ? payload.error : `Request failed with ${String(response.status)}`;
     throw new Error(message);
   }
   return payload;
 }
 function renderTenantResolveSummary(payload) {
-  if (!isRecord(payload)) return payload === null || payload === void 0 ? "" : JSON.stringify(payload);
-  const raw = isRecord(payload.raw) ? payload.raw : {};
-  const workspace = isRecord(payload.workspace) ? payload.workspace : {};
+  if (!isRecord3(payload)) return payload === null || payload === void 0 ? "" : JSON.stringify(payload);
+  const raw = isRecord3(payload.raw) ? payload.raw : {};
+  const workspace = isRecord3(payload.workspace) ? payload.workspace : {};
   const id = typeof raw.id === "string" ? raw.id : "(unknown)";
   const slug = typeof raw.slug === "string" ? raw.slug : "(unknown)";
   const name = typeof raw.name === "string" ? raw.name : "(unknown)";
@@ -3573,7 +5186,7 @@ async function handleTenantResolveCommand(parsed, io) {
   return parseJsonResponse(response);
 }
 async function cliVersion() {
-  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const raw = await readFile3(new URL("../package.json", import.meta.url), "utf8");
   const parsed = JSON.parse(raw);
   return parsed.version ?? "0.0.0";
 }
@@ -3601,6 +5214,25 @@ function createContext(parsed) {
     env: createCliEnv(db),
     json: readBooleanFlag(parsed, "json", false)
   };
+}
+function emitCliResult(result, json, io) {
+  if (result === "") return;
+  const originalStdout = process3.stdout.write.bind(process3.stdout);
+  const originalStderr = process3.stderr.write.bind(process3.stderr);
+  process3.stdout.write = ((chunk) => {
+    io.stdout(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return true;
+  });
+  process3.stderr.write = ((chunk) => {
+    io.stderr(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return true;
+  });
+  try {
+    writeOutput(result, { json });
+  } finally {
+    process3.stdout.write = originalStdout;
+    process3.stderr.write = originalStderr;
+  }
 }
 async function dispatch(context, parsed) {
   const [resource, action] = parsed.positionals;
@@ -3664,6 +5296,18 @@ async function runCli(argv, io) {
 `);
       return 0;
     }
+    const resource = parsed.positionals[0];
+    const localCapableResources = /* @__PURE__ */ new Set(["time-project", "time-entry", "time-report"]);
+    const localPlaneResource = resource === "store" || resource === "export" || resource === "import";
+    const requestedLocalData = readStringFlag(parsed, "store") !== void 0 && isLocalDataRoute(parsed, io.env);
+    if (localPlaneResource || requestedLocalData && localCapableResources.has(resource)) {
+      const result2 = await handleLocalPlaneCommand(parsed, io.env, { stdout: io.stdout });
+      emitCliResult(result2, readBooleanFlag(parsed, "json", false), io);
+      return 0;
+    }
+    if (requestedLocalData) {
+      throw new Error(`--store local is not supported for ${resource}. Supported local commands are time-project, time-entry, time-report, store info, export, and import.`);
+    }
     await hydrateActiveSession(io.env);
     if (parsed.positionals[0] === "auth") {
       const result2 = await handleAuthCommand(parsed, io);
@@ -3695,24 +5339,7 @@ async function runCli(argv, io) {
     }
     const context = createContext(parsed);
     const result = await dispatch(context, parsed);
-    if (result !== "") {
-      const originalStdout = process3.stdout.write.bind(process3.stdout);
-      const originalStderr = process3.stderr.write.bind(process3.stderr);
-      process3.stdout.write = ((chunk) => {
-        io.stdout(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
-        return true;
-      });
-      process3.stderr.write = ((chunk) => {
-        io.stderr(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
-        return true;
-      });
-      try {
-        writeOutput(result, { json: context.json });
-      } finally {
-        process3.stdout.write = originalStdout;
-        process3.stderr.write = originalStderr;
-      }
-    }
+    emitCliResult(result, context.json, io);
     return 0;
   } catch (error) {
     io.stderr(`${error instanceof Error ? error.message : String(error)}

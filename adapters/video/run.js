@@ -790,8 +790,8 @@ function resolveDeepgramSpeechConfig(env) {
 }
 
 // cli/meets.ts
-import { mkdir as mkdir2, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
-import { dirname, resolve as resolvePath } from "node:path";
+import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolvePath2 } from "node:path";
 
 // cli/meeting-host.ts
 init_json();
@@ -1538,9 +1538,9 @@ var MeetsCliClient = class {
     );
   }
   async bootstrapAgent(roomSlug, input) {
-    const path2 = this.token ? `/api/internal/mere/rooms/by-slug/${encodeURIComponent(roomSlug)}/agent-bootstrap` : `/api/room/${encodeURIComponent(roomSlug)}/agent-bootstrap`;
+    const path4 = this.token ? `/api/internal/mere/rooms/by-slug/${encodeURIComponent(roomSlug)}/agent-bootstrap` : `/api/room/${encodeURIComponent(roomSlug)}/agent-bootstrap`;
     const response = await this.request(
-      path2,
+      path4,
       {
         method: "POST",
         body: JSON.stringify(normalizeAgentBootstrapRequest(input))
@@ -1550,7 +1550,7 @@ var MeetsCliClient = class {
     );
     return normalizeBootstrapResponse(response, this.baseUrl);
   }
-  async request(path2, init, parser, requiresToken) {
+  async request(path4, init, parser, requiresToken) {
     if (requiresToken && !this.token) {
       throw new CliError("This command requires `mere-video auth login` or MEETS_INTERNAL_TOKEN.", 1);
     }
@@ -1562,7 +1562,7 @@ var MeetsCliClient = class {
     if (this.token) {
       headers.set("authorization", `Bearer ${this.token}`);
     }
-    const response = await this.fetchImpl(new URL(path2, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path4, this.baseUrl), {
       ...init,
       headers
     });
@@ -1590,8 +1590,6 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
-var CLI_AUTH_ERROR_QUERY_PARAM = "error";
-var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -1643,18 +1641,6 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
-      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
-      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
-      if (authError) {
-        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        response.end(
-          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
-        );
-        clearTimeout(timeout);
-        server.close();
-        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
-        return;
-      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -1834,6 +1820,1656 @@ function formatDuration(seconds) {
   return remainderMinutes === 0 ? `${hours}h` : `${hours}h ${remainderMinutes}m`;
 }
 
+// cli/local-plane.ts
+import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname, resolve as resolvePath } from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os2 from "node:os";
+import path2 from "node:path";
+function stateHome2(env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  return env.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path2.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path2.join(stateHome2(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
+  }
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
+}
+function readLocalDbPath(input) {
+  const prefix = envPrefix(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path2.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
+  return {
+    value: path2.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
+    }
+  };
+}
+function formatPlaneConfigReport(report) {
+  const lines = ["Local plane config:"];
+  for (const config of report.configs) {
+    lines.push(
+      `  - ${config.appId}: data=${config.data}(${config.sources.data}) ai=${config.ai}(${config.sources.ai}) db=${config.localDbPath}(${config.sources.localDbPath}) projection=${config.cloudProjection}${config.blended ? " blended" : ""}`
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+var CloudProjectionDeliveryError = class extends Error {
+  constructor(message, status = null, responseText = null) {
+    super(message);
+    this.status = status;
+    this.responseText = responseText;
+    this.name = "CloudProjectionDeliveryError";
+  }
+};
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+
+// cli/local-plane.ts
+init_json();
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { mkdir as mkdir2 } from "node:fs/promises";
+import path3 from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+var PLANE_TRANSFER_VERSION = 1;
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord2(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord2(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord2(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir2(path3.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+
+// cli/local-store.ts
+import { createHash as createHash2 } from "node:crypto";
+var VIDEO_APP_ID = "mere-video";
+var VIDEO_ARCHIVE_SCHEMA = "mere.video.archive.v1";
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function isRecord3(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString2(value, label, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${label} is required for local mere.video records.`);
+  }
+  return raw.trim();
+}
+function readOptionalString(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+function readNumber(value, fallback = 0) {
+  const raw = value === void 0 || value === null || value === "" ? fallback : Number(value);
+  return Number.isFinite(raw) ? Math.trunc(raw) : fallback;
+}
+function readOptionalNumber(value, fallback = null) {
+  if (value === void 0) return fallback;
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+function readBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+function rowString(row, key) {
+  return readString2(row[key], key);
+}
+function rowBoolean(row, key) {
+  return readBoolean(row[key]);
+}
+function stableMeetingProjectionId(input) {
+  const digest = createHash2("sha256").update([VIDEO_APP_ID, input.workspaceId, input.meetingId, "meeting-archive-summary"].join("\n")).digest("hex").slice(0, 24);
+  return `vidpr_${digest}`;
+}
+function dateOnly(value) {
+  return value?.slice(0, 10) ?? null;
+}
+function normalizeRoom(input, workspaceId, existing) {
+  const now = isoNow3();
+  const slug = readString2(input.slug, "slug", existing?.slug);
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? slug,
+    workspaceId,
+    slug,
+    name: readOptionalString(input.name, existing?.name),
+    isPersistent: readBoolean(input.isPersistent ?? input.is_persistent, existing?.isPersistent ?? false),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt ?? input.created_at) ?? now,
+    updatedAt: readOptionalString(input.updatedAt ?? input.updated_at) ?? now,
+    archivedAt: readOptionalString(input.archivedAt ?? input.archived_at, existing?.archivedAt)
+  };
+}
+function normalizeMeeting(input, workspaceId, existing) {
+  const now = isoNow3();
+  const roomId = readString2(input.roomId ?? input.room_id, "roomId", existing?.roomId);
+  return {
+    id: existing?.id ?? readString2(input.id, "id"),
+    workspaceId,
+    roomId,
+    roomSlug: readString2(input.roomSlug ?? input.room_slug, "roomSlug", existing?.roomSlug),
+    roomName: readOptionalString(input.roomName ?? input.room_name, existing?.roomName),
+    peakParticipants: readNumber(input.peakParticipants ?? input.peak_participants, existing?.peakParticipants ?? 0),
+    startedAt: readString2(input.startedAt ?? input.started_at, "startedAt", existing?.startedAt),
+    endedAt: readOptionalString(input.endedAt ?? input.ended_at, existing?.endedAt),
+    durationSeconds: readOptionalNumber(input.durationSeconds ?? input.duration_seconds, existing?.durationSeconds),
+    status: readOptionalString(input.status, existing?.status) ?? "archived",
+    canonicalUrl: readOptionalString(input.canonicalUrl ?? input.canonical_url, existing?.canonicalUrl),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt ?? input.created_at) ?? now,
+    updatedAt: readOptionalString(input.updatedAt ?? input.updated_at) ?? now
+  };
+}
+function normalizeParticipant(input, workspaceId, fallbackMeetingId) {
+  const now = isoNow3();
+  const meetingId = readString2(input.meetingId ?? input.meeting_id, "meetingId", fallbackMeetingId);
+  const displayName = readString2(input.displayName ?? input.display_name, "displayName");
+  return {
+    id: readOptionalString(input.id) ?? `participant_${meetingId}_${displayName.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}`,
+    workspaceId,
+    meetingId,
+    displayName,
+    joinedAt: readOptionalString(input.joinedAt ?? input.joined_at) ?? now,
+    leftAt: readOptionalString(input.leftAt ?? input.left_at),
+    durationSeconds: readOptionalNumber(input.durationSeconds ?? input.duration_seconds)
+  };
+}
+function normalizeTranscriptSegment(input, workspaceId, fallbackMeetingId) {
+  const now = isoNow3();
+  const meetingId = readString2(input.meetingId ?? input.meeting_id, "meetingId", fallbackMeetingId);
+  const text = readString2(input.text, "text");
+  return {
+    id: readOptionalString(input.id) ?? `segment_${meetingId}_${hashPlanePayload({ text, at: now }).slice(0, 16)}`,
+    workspaceId,
+    meetingId,
+    speakerName: readOptionalString(input.speakerName ?? input.speaker_name),
+    text,
+    timestamp: readOptionalString(input.timestamp ?? input.createdAt ?? input.created_at) ?? now,
+    source: readOptionalString(input.source)
+  };
+}
+function normalizeRecordingRef(input, workspaceId, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? readString2(input.id, "id"),
+    workspaceId,
+    meetingId: readString2(input.meetingId ?? input.meeting_id, "meetingId", existing?.meetingId),
+    name: readOptionalString(input.name ?? input.displayName ?? input.display_name, existing?.name),
+    status: readOptionalString(input.status, existing?.status) ?? "archived",
+    sourceUrl: readOptionalString(input.sourceUrl ?? input.source_url, existing?.sourceUrl),
+    localPath: readOptionalString(input.localPath ?? input.local_path, existing?.localPath),
+    mimeType: readOptionalString(input.mimeType ?? input.mime_type, existing?.mimeType),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt ?? input.created_at) ?? now,
+    updatedAt: readOptionalString(input.updatedAt ?? input.updated_at) ?? now
+  };
+}
+function normalizePayload(value, workspaceId) {
+  if (!isRecord3(value) || value.kind !== VIDEO_ARCHIVE_SCHEMA || value.version !== 1) {
+    throw new Error(`Video transfer payload must be ${VIDEO_ARCHIVE_SCHEMA} version 1.`);
+  }
+  return {
+    kind: VIDEO_ARCHIVE_SCHEMA,
+    version: 1,
+    rooms: Array.isArray(value.rooms) ? value.rooms.map((entry) => normalizeRoom(isRecord3(entry) ? entry : {}, workspaceId)) : [],
+    meetings: Array.isArray(value.meetings) ? value.meetings.map((entry) => normalizeMeeting(isRecord3(entry) ? entry : {}, workspaceId)) : [],
+    participants: Array.isArray(value.participants) ? value.participants.map((entry) => normalizeParticipant(isRecord3(entry) ? entry : {}, workspaceId)) : [],
+    transcriptSegments: Array.isArray(value.transcriptSegments) ? value.transcriptSegments.map((entry) => normalizeTranscriptSegment(isRecord3(entry) ? entry : {}, workspaceId)) : [],
+    recordingRefs: Array.isArray(value.recordingRefs) ? value.recordingRefs.map((entry) => normalizeRecordingRef(isRecord3(entry) ? entry : {}, workspaceId)) : []
+  };
+}
+var LocalVideoStore = class _LocalVideoStore {
+  constructor(dbPath, db, config, workspace) {
+    this.dbPath = dbPath;
+    this.db = db;
+    this.config = config;
+    this.workspace = workspace;
+  }
+  static async open(input) {
+    const opened = await openLocalPlaneDatabase(input.config);
+    const db = opened.db;
+    registerPlaneApp(opened.db, VIDEO_APP_ID, "Mere Video");
+    registerPlaneTransferSchema(opened.db, VIDEO_APP_ID, {
+      payloadSchema: VIDEO_ARCHIVE_SCHEMA,
+      displayName: "Video archive transfer",
+      description: "Portable mere.video room and meeting archive metadata; live Calls, presence, and media control stay hosted."
+    });
+    upsertPlaneWorkspace(opened.db, VIDEO_APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    const store = new _LocalVideoStore(opened.dbPath, db, input.config, input.workspace);
+    store.ensureSchema();
+    return store;
+  }
+  close() {
+    this.db.close();
+  }
+  ensureSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS video_local_rooms (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        name TEXT,
+        is_persistent INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        archived_at TEXT,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_video_local_rooms_slug
+        ON video_local_rooms (workspace_id, slug);
+
+      CREATE TABLE IF NOT EXISTS video_local_meetings (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        room_slug TEXT NOT NULL,
+        room_name TEXT,
+        peak_participants INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        duration_seconds INTEGER,
+        status TEXT NOT NULL,
+        canonical_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_video_local_meetings_room
+        ON video_local_meetings (workspace_id, room_id, started_at DESC);
+
+      CREATE TABLE IF NOT EXISTS video_local_participants (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        joined_at TEXT NOT NULL,
+        left_at TEXT,
+        duration_seconds INTEGER,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_video_local_participants_meeting
+        ON video_local_participants (workspace_id, meeting_id, joined_at ASC);
+
+      CREATE TABLE IF NOT EXISTS video_local_transcript_segments (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        speaker_name TEXT,
+        text TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        source TEXT,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_video_local_transcript_segments_meeting
+        ON video_local_transcript_segments (workspace_id, meeting_id, timestamp ASC);
+
+      CREATE TABLE IF NOT EXISTS video_local_recording_refs (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        name TEXT,
+        status TEXT NOT NULL,
+        source_url TEXT,
+        local_path TEXT,
+        mime_type TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_video_local_recording_refs_meeting
+        ON video_local_recording_refs (workspace_id, meeting_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS video_local_projections (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        meeting_id TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        payload_json TEXT NOT NULL,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_video_local_projections_workspace_scope
+        ON video_local_projections (workspace_id, scope, updated_at DESC);
+    `);
+  }
+  info() {
+    const inventory = getLocalPlaneInventory(this.db, { appId: VIDEO_APP_ID });
+    const count = (table) => this.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE workspace_id = ?`).get(this.workspace.workspaceId)?.count ?? 0;
+    return {
+      dbPath: this.dbPath,
+      workspaceId: this.workspace.workspaceId,
+      roomCount: count("video_local_rooms"),
+      meetingCount: count("video_local_meetings"),
+      participantCount: count("video_local_participants"),
+      transcriptSegmentCount: count("video_local_transcript_segments"),
+      recordingRefCount: count("video_local_recording_refs"),
+      projectionCount: count("video_local_projections"),
+      localArchive: "enabled",
+      liveCallsLocal: false,
+      roomPresenceLocal: false,
+      recordingControlLocal: false,
+      planeAppCount: inventory.counts.apps,
+      planeWorkspaceCount: inventory.counts.workspaces,
+      transferSchemaCount: inventory.counts.transferSchemas,
+      transferCount: inventory.counts.transfers,
+      aiJobCount: inventory.counts.aiJobs
+    };
+  }
+  listRooms() {
+    return this.db.prepare("SELECT * FROM video_local_rooms WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC").all(this.workspace.workspaceId).map((row) => ({
+      id: rowString(row, "id"),
+      workspaceId: rowString(row, "workspace_id"),
+      slug: rowString(row, "slug"),
+      name: readOptionalString(row.name),
+      isPersistent: rowBoolean(row, "is_persistent"),
+      createdAt: rowString(row, "created_at"),
+      updatedAt: readOptionalString(row.updated_at),
+      archivedAt: readOptionalString(row.archived_at)
+    }));
+  }
+  getRoom(idOrSlug) {
+    return this.listRooms().find((room) => room.id === idOrSlug || room.slug === idOrSlug) ?? null;
+  }
+  upsertRoom(input) {
+    const selector = readOptionalString(input.id) ?? readOptionalString(input.slug);
+    const room = normalizeRoom(input, this.workspace.workspaceId, selector ? this.getRoom(selector) ?? void 0 : void 0);
+    this.db.prepare(
+      `INSERT INTO video_local_rooms (id, workspace_id, slug, name, is_persistent, created_at, updated_at, archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           slug = excluded.slug,
+           name = excluded.name,
+           is_persistent = excluded.is_persistent,
+           updated_at = excluded.updated_at,
+           archived_at = excluded.archived_at`
+    ).run(
+      room.id,
+      room.workspaceId,
+      room.slug,
+      room.name,
+      room.isPersistent ? 1 : 0,
+      room.createdAt,
+      room.updatedAt,
+      room.archivedAt
+    );
+    return room;
+  }
+  listMeetings() {
+    return this.db.prepare("SELECT * FROM video_local_meetings WHERE workspace_id = ? ORDER BY started_at DESC").all(this.workspace.workspaceId).map((row) => this.meetingFromRow(row));
+  }
+  getMeeting(meetingId) {
+    const row = this.db.prepare("SELECT * FROM video_local_meetings WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, meetingId);
+    if (!row) return null;
+    return {
+      ...this.meetingFromRow(row),
+      participants: this.listParticipants(meetingId),
+      transcriptSegments: this.listTranscriptSegments(meetingId),
+      recordingRefs: this.listRecordingRefs({ meetingId })
+    };
+  }
+  upsertMeeting(input) {
+    const id = readOptionalString(input.id);
+    const existing = id ? this.getMeeting(id) ?? void 0 : void 0;
+    const meeting = normalizeMeeting(input, this.workspace.workspaceId, existing);
+    this.db.prepare(
+      `INSERT INTO video_local_meetings (id, workspace_id, room_id, room_slug, room_name, peak_participants, started_at, ended_at, duration_seconds, status, canonical_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           room_id = excluded.room_id,
+           room_slug = excluded.room_slug,
+           room_name = excluded.room_name,
+           peak_participants = excluded.peak_participants,
+           started_at = excluded.started_at,
+           ended_at = excluded.ended_at,
+           duration_seconds = excluded.duration_seconds,
+           status = excluded.status,
+           canonical_url = excluded.canonical_url,
+           updated_at = excluded.updated_at`
+    ).run(
+      meeting.id,
+      meeting.workspaceId,
+      meeting.roomId,
+      meeting.roomSlug,
+      meeting.roomName,
+      meeting.peakParticipants,
+      meeting.startedAt,
+      meeting.endedAt,
+      meeting.durationSeconds,
+      meeting.status,
+      meeting.canonicalUrl,
+      meeting.createdAt,
+      meeting.updatedAt
+    );
+    return meeting;
+  }
+  upsertParticipant(input) {
+    const participant = normalizeParticipant(input, this.workspace.workspaceId);
+    this.db.prepare(
+      `INSERT OR REPLACE INTO video_local_participants (id, workspace_id, meeting_id, display_name, joined_at, left_at, duration_seconds)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      participant.id,
+      participant.workspaceId,
+      participant.meetingId,
+      participant.displayName,
+      participant.joinedAt,
+      participant.leftAt,
+      participant.durationSeconds
+    );
+    return participant;
+  }
+  listParticipants(meetingId) {
+    return this.db.prepare("SELECT * FROM video_local_participants WHERE workspace_id = ? AND meeting_id = ? ORDER BY joined_at ASC").all(this.workspace.workspaceId, meetingId).map((row) => ({
+      id: rowString(row, "id"),
+      workspaceId: rowString(row, "workspace_id"),
+      meetingId: rowString(row, "meeting_id"),
+      displayName: rowString(row, "display_name"),
+      joinedAt: rowString(row, "joined_at"),
+      leftAt: readOptionalString(row.left_at),
+      durationSeconds: readOptionalNumber(row.duration_seconds)
+    }));
+  }
+  upsertTranscriptSegment(input) {
+    const segment = normalizeTranscriptSegment(input, this.workspace.workspaceId);
+    this.db.prepare(
+      `INSERT OR REPLACE INTO video_local_transcript_segments (id, workspace_id, meeting_id, speaker_name, text, timestamp, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(segment.id, segment.workspaceId, segment.meetingId, segment.speakerName, segment.text, segment.timestamp, segment.source);
+    return segment;
+  }
+  listTranscriptSegments(meetingId) {
+    return this.db.prepare("SELECT * FROM video_local_transcript_segments WHERE workspace_id = ? AND meeting_id = ? ORDER BY timestamp ASC").all(this.workspace.workspaceId, meetingId).map((row) => ({
+      id: rowString(row, "id"),
+      workspaceId: rowString(row, "workspace_id"),
+      meetingId: rowString(row, "meeting_id"),
+      speakerName: readOptionalString(row.speaker_name),
+      text: rowString(row, "text"),
+      timestamp: rowString(row, "timestamp"),
+      source: readOptionalString(row.source)
+    }));
+  }
+  upsertRecordingRef(input) {
+    const id = readOptionalString(input.id);
+    const existing = id ? this.getRecordingRef(id) ?? void 0 : void 0;
+    const recording = normalizeRecordingRef(input, this.workspace.workspaceId, existing);
+    this.db.prepare(
+      `INSERT INTO video_local_recording_refs (id, workspace_id, meeting_id, name, status, source_url, local_path, mime_type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           meeting_id = excluded.meeting_id,
+           name = excluded.name,
+           status = excluded.status,
+           source_url = excluded.source_url,
+           local_path = excluded.local_path,
+           mime_type = excluded.mime_type,
+           updated_at = excluded.updated_at`
+    ).run(
+      recording.id,
+      recording.workspaceId,
+      recording.meetingId,
+      recording.name,
+      recording.status,
+      recording.sourceUrl,
+      recording.localPath,
+      recording.mimeType,
+      recording.createdAt,
+      recording.updatedAt
+    );
+    return recording;
+  }
+  listRecordingRefs(options = {}) {
+    const rows = options.meetingId ? this.db.prepare("SELECT * FROM video_local_recording_refs WHERE workspace_id = ? AND meeting_id = ? ORDER BY created_at DESC").all(this.workspace.workspaceId, options.meetingId) : this.db.prepare("SELECT * FROM video_local_recording_refs WHERE workspace_id = ? ORDER BY created_at DESC").all(this.workspace.workspaceId);
+    return rows.map((row) => this.recordingRefFromRow(row));
+  }
+  getRecordingRef(recordingId) {
+    const row = this.db.prepare("SELECT * FROM video_local_recording_refs WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, recordingId);
+    return row ? this.recordingRefFromRow(row) : null;
+  }
+  getMeetingProjection(projectionId) {
+    const row = this.db.prepare("SELECT published_at, revoked_at FROM video_local_projections WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, projectionId);
+    return row ?? null;
+  }
+  buildMeetingProjectionEnvelope(input) {
+    const meeting = this.getMeeting(input.meetingId);
+    if (!meeting) throw new Error(`Local Video meeting not found: ${input.meetingId}`);
+    const room = this.getRoom(meeting.roomId);
+    const projectionId = stableMeetingProjectionId({
+      workspaceId: this.workspace.workspaceId,
+      meetingId: meeting.id
+    });
+    const existing = this.getMeetingProjection(projectionId);
+    const now = isoNow3();
+    const publishedAt = existing?.published_at ?? now;
+    const revokedAt = input.action === "revoke" ? now : null;
+    const transcriptCharacterCount = meeting.transcriptSegments.reduce((total, segment) => total + segment.text.length, 0);
+    const readyRecordingRefCount = meeting.recordingRefs.filter((recording) => recording.status === "ready").length;
+    return {
+      version: 1,
+      appId: VIDEO_APP_ID,
+      event: {
+        type: input.action === "publish" ? "video.meeting.projection.upserted" : "video.meeting.projection.revoked",
+        workspaceId: this.workspace.workspaceId,
+        projection: {
+          id: projectionId,
+          scope: "meeting-archive-summary",
+          meetingId: meeting.id,
+          roomId: meeting.roomId,
+          publishedByUserId: input.publishedByUserId,
+          publishedByEmail: input.publishedByEmail,
+          publishedAt,
+          revokedAt
+        },
+        meeting: {
+          id: meeting.id,
+          roomId: meeting.roomId,
+          status: meeting.status,
+          startedOn: dateOnly(meeting.startedAt),
+          ended: Boolean(meeting.endedAt),
+          durationSeconds: meeting.durationSeconds,
+          peakParticipants: meeting.peakParticipants
+        },
+        summary: {
+          workspaceId: this.workspace.workspaceId,
+          meetingId: meeting.id,
+          roomId: meeting.roomId,
+          participantCount: meeting.participants.length,
+          transcriptSegmentCount: meeting.transcriptSegments.length,
+          transcriptCharacterCount,
+          recordingRefCount: meeting.recordingRefs.length,
+          readyRecordingRefCount,
+          hasTranscript: meeting.transcriptSegments.length > 0,
+          hasRecordingReferences: meeting.recordingRefs.length > 0,
+          roomKnown: Boolean(room),
+          roomIsPersistent: room ? room.isPersistent : null,
+          roomArchived: room ? Boolean(room.archivedAt) : null
+        },
+        exclusions: [
+          "room slugs and room names",
+          "participant display names",
+          "participant join and leave timestamps",
+          "transcript text",
+          "transcript speaker names",
+          "transcript timestamps",
+          "recording names",
+          "recording source URLs",
+          "recording local paths",
+          "recording MIME types",
+          "canonical meeting URLs",
+          "exact meeting start and end timestamps",
+          "live Calls session state",
+          "room presence records",
+          "recording bytes and control state",
+          "client diagnostics",
+          "raw local archive rows",
+          "transfer bundle payloads"
+        ]
+      }
+    };
+  }
+  recordMeetingProjection(envelope) {
+    const now = isoNow3();
+    this.db.prepare(
+      `INSERT INTO video_local_projections (
+          id, workspace_id, scope, meeting_id, room_id, published_at, revoked_at, payload_json, last_projected_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          scope = excluded.scope,
+          meeting_id = excluded.meeting_id,
+          room_id = excluded.room_id,
+          published_at = excluded.published_at,
+          revoked_at = excluded.revoked_at,
+          payload_json = excluded.payload_json,
+          last_projected_at = excluded.last_projected_at,
+          updated_at = excluded.updated_at`
+    ).run(
+      envelope.event.projection.id,
+      this.workspace.workspaceId,
+      envelope.event.projection.scope,
+      envelope.event.projection.meetingId,
+      envelope.event.projection.roomId,
+      envelope.event.projection.publishedAt,
+      envelope.event.projection.revokedAt,
+      JSON.stringify(envelope),
+      now,
+      now
+    );
+  }
+  exportPayload() {
+    return {
+      kind: VIDEO_ARCHIVE_SCHEMA,
+      version: 1,
+      rooms: this.listRooms(),
+      meetings: this.listMeetings(),
+      participants: this.listMeetings().flatMap((meeting) => this.listParticipants(meeting.id)),
+      transcriptSegments: this.listMeetings().flatMap((meeting) => this.listTranscriptSegments(meeting.id)),
+      recordingRefs: this.listRecordingRefs()
+    };
+  }
+  exportBundle() {
+    const payload = this.exportPayload();
+    const bundle = createPlaneTransferBundle({
+      appId: VIDEO_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      plane: this.config,
+      payloadSchema: VIDEO_ARCHIVE_SCHEMA,
+      payload
+    });
+    recordPlaneTransfer(this.db, {
+      appId: VIDEO_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      direction: "export",
+      source: { data: this.config.data, ai: this.config.ai },
+      payloadSchema: VIDEO_ARCHIVE_SCHEMA,
+      payloadSha256: bundle.payloadSha256
+    });
+    return bundle;
+  }
+  importPlan(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: VIDEO_APP_ID,
+      payloadSchema: VIDEO_ARCHIVE_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    return createPlaneTransferImportPlan({
+      appId: bundle?.appId ?? VIDEO_APP_ID,
+      workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+      payloadSchema: bundle?.payloadSchema ?? VIDEO_ARCHIVE_SCHEMA,
+      payload: normalized,
+      bundle,
+      destination: { data: this.config.data, ai: this.config.ai }
+    });
+  }
+  importValue(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: VIDEO_APP_ID,
+      payloadSchema: VIDEO_ARCHIVE_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    this.db.exec("BEGIN");
+    try {
+      for (const room of normalized.rooms) this.upsertRoom({ ...room });
+      for (const meeting of normalized.meetings) this.upsertMeeting({ ...meeting });
+      for (const participant of normalized.participants) this.upsertParticipant({ ...participant });
+      for (const segment of normalized.transcriptSegments) this.upsertTranscriptSegment({ ...segment });
+      for (const recording of normalized.recordingRefs) this.upsertRecordingRef({ ...recording });
+      const source = bundle?.source;
+      const transferId = recordPlaneTransfer(this.db, {
+        appId: VIDEO_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        direction: "import",
+        source,
+        destination: { data: this.config.data, ai: this.config.ai },
+        payloadSchema: bundle?.payloadSchema ?? VIDEO_ARCHIVE_SCHEMA,
+        payloadSha256: bundle?.payloadSha256 ?? hashPlanePayload(normalized)
+      });
+      this.db.exec("COMMIT");
+      return {
+        ok: true,
+        dataPlane: "local",
+        workspaceId: this.workspace.workspaceId,
+        roomCount: normalized.rooms.length,
+        meetingCount: normalized.meetings.length,
+        participantCount: normalized.participants.length,
+        transcriptSegmentCount: normalized.transcriptSegments.length,
+        recordingRefCount: normalized.recordingRefs.length,
+        transferId,
+        liveCallsLocal: false
+      };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  meetingFromRow(row) {
+    return {
+      id: rowString(row, "id"),
+      workspaceId: rowString(row, "workspace_id"),
+      roomId: rowString(row, "room_id"),
+      roomSlug: rowString(row, "room_slug"),
+      roomName: readOptionalString(row.room_name),
+      peakParticipants: readNumber(row.peak_participants),
+      startedAt: rowString(row, "started_at"),
+      endedAt: readOptionalString(row.ended_at),
+      durationSeconds: readOptionalNumber(row.duration_seconds),
+      status: rowString(row, "status"),
+      canonicalUrl: readOptionalString(row.canonical_url),
+      createdAt: rowString(row, "created_at"),
+      updatedAt: rowString(row, "updated_at")
+    };
+  }
+  recordingRefFromRow(row) {
+    return {
+      id: rowString(row, "id"),
+      workspaceId: rowString(row, "workspace_id"),
+      meetingId: rowString(row, "meeting_id"),
+      name: readOptionalString(row.name),
+      status: rowString(row, "status"),
+      sourceUrl: readOptionalString(row.source_url),
+      localPath: readOptionalString(row.local_path),
+      mimeType: readOptionalString(row.mime_type),
+      createdAt: rowString(row, "created_at"),
+      updatedAt: rowString(row, "updated_at")
+    };
+  }
+};
+
+// cli/local-plane.ts
+function asString(value) {
+  return typeof value === "string" ? value : void 0;
+}
+function asBoolean(value) {
+  return value === true;
+}
+function trimOption(value) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : void 0;
+}
+function resolveVideoPlaneConfig(globalOptions, io) {
+  return resolvePlaneConfigInspection({
+    appId: VIDEO_APP_ID,
+    env: io.env,
+    data: asString(globalOptions.store),
+    ai: asString(globalOptions.ai),
+    localDbPath: asString(globalOptions["local-db"])
+  });
+}
+function isLocalDataRoute(globalOptions, io) {
+  return resolveVideoPlaneConfig(globalOptions, io).data === "local";
+}
+function localWorkspace(options, io) {
+  const workspaceId = trimOption(asString(options.workspace)) ?? trimOption(io.env.MEETS_DEFAULT_WORKSPACE_ID) ?? trimOption(io.env.MEETS_WORKSPACE_ID) ?? "personal";
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: workspaceId === "personal" ? "Personal Video Archive" : workspaceId
+  };
+}
+function projectionActor(options, io) {
+  return {
+    publishedByUserId: trimOption(asString(options["published-by-user-id"])) ?? trimOption(io.env.MERE_VIDEO_USER_ID) ?? trimOption(io.env.MEREVIDEO_USER_ID) ?? trimOption(io.env.MEETS_USER_ID) ?? trimOption(io.env.USER) ?? "local-user",
+    publishedByEmail: trimOption(asString(options["published-by-email"])) ?? trimOption(io.env.MERE_VIDEO_USER_EMAIL) ?? trimOption(io.env.MEREVIDEO_USER_EMAIL) ?? trimOption(io.env.MEETS_USER_EMAIL) ?? trimOption(io.env.EMAIL) ?? null
+  };
+}
+async function openLocalStore(globalOptions, commandOptions, io) {
+  const config = resolveVideoPlaneConfig(globalOptions, io);
+  if (config.data !== "local") {
+    throw new Error("This command requires --store local so mere.video local data stays explicit.");
+  }
+  return LocalVideoStore.open({
+    config,
+    workspace: localWorkspace({ ...globalOptions, ...commandOptions }, io)
+  });
+}
+async function withLocalStore(globalOptions, commandOptions, io, handler) {
+  const store = await openLocalStore(globalOptions, commandOptions, io);
+  try {
+    return await handler(store);
+  } finally {
+    store.close();
+  }
+}
+function readRequired(options, key) {
+  const value = trimOption(asString(options[key]));
+  if (!value) throw new Error(`Missing required --${key}.`);
+  return value;
+}
+function readJsonData(options) {
+  const raw = asString(options.data) ?? "{}";
+  const parsed = parseJsonText(raw, "local video archive data");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--data must be a JSON object.");
+  }
+  return parsed;
+}
+async function handleLocalStoreInfo(globalOptions, io) {
+  const config = resolveVideoPlaneConfig(globalOptions, io);
+  if (config.data === "local") {
+    return withLocalStore(globalOptions, {}, io, (store) => ({
+      ok: true,
+      app: VIDEO_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      ...store.info(),
+      localAiSupported: false,
+      sources: config.sources
+    }));
+  }
+  if (asBoolean(globalOptions.json)) {
+    return {
+      ok: true,
+      app: VIDEO_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      dbPath: config.localDbPath,
+      localArchive: "available",
+      liveCallsLocal: false,
+      roomPresenceLocal: false,
+      recordingControlLocal: false,
+      localAiSupported: false,
+      sources: config.sources
+    };
+  }
+  io.stdout(
+    formatPlaneConfigReport({
+      kind: "mere.local-plane.config",
+      configs: [config]
+    })
+  );
+  io.stdout("Cloudflare Calls, room Durable Objects, live presence, recording control, and hosted transcript collection remain Cloudflare-owned unless --store local is selected for archive metadata commands.\n");
+  return "";
+}
+async function handleLocalExport(globalOptions, options, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    const bundle = store.exportBundle();
+    const output = asString(options.output);
+    if (!output) return bundle;
+    const target = resolvePath(output);
+    await mkdir3(dirname(target), { recursive: true });
+    await writeFile2(target, JSON.stringify(bundle, null, 2));
+    return {
+      ok: true,
+      path: target,
+      appId: bundle.appId,
+      workspaceId: bundle.workspaceId,
+      payloadSchema: bundle.payloadSchema,
+      payloadSha256: bundle.payloadSha256,
+      roomCount: bundle.payload.rooms.length,
+      meetingCount: bundle.payload.meetings.length,
+      participantCount: bundle.payload.participants.length,
+      transcriptSegmentCount: bundle.payload.transcriptSegments.length,
+      recordingRefCount: bundle.payload.recordingRefs.length
+    };
+  });
+}
+async function handleLocalImport(globalOptions, options, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    const value = parseJsonText(await readFile2(readRequired(options, "file"), "utf8"), "local video archive transfer bundle");
+    return asBoolean(options["dry-run"]) ? store.importPlan(value) : store.importValue(value);
+  });
+}
+async function handleLocalRooms(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, (store) => {
+    if (action === "list") return store.listRooms();
+    if (action === "show") {
+      const id = positionals[0];
+      if (!id) throw new Error("rooms show requires <room-id|slug>.");
+      return { ok: true, room: store.getRoom(id) };
+    }
+    if (action === "upsert") return store.upsertRoom(readJsonData(options));
+    throw new Error("Unknown local rooms action: expected list, show, or upsert.");
+  });
+}
+async function handleLocalMeetings(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    if (action === "list") return { ok: true, meetings: store.listMeetings() };
+    if (action === "show") {
+      const id = positionals[0];
+      if (!id) throw new Error("meetings show requires <meeting-id>.");
+      return store.getMeeting(id);
+    }
+    if (action === "upsert") return store.upsertMeeting(readJsonData(options));
+    if (action === "publish" || action === "revoke") {
+      const meetingId = positionals[0];
+      if (!meetingId) throw new Error(`meetings ${action} requires <meeting-id>.`);
+      const envelope = store.buildMeetingProjectionEnvelope({
+        action,
+        meetingId,
+        ...projectionActor(options, io)
+      });
+      if (asBoolean(options["dry-run"])) {
+        let receiverUrl;
+        try {
+          receiverUrl = resolveCloudProjectionTarget({
+            appId: VIDEO_APP_ID,
+            env: io.env,
+            receiverUrl: trimOption(asString(options["projection-url"])),
+            bearerToken: trimOption(asString(options["projection-token"]))
+          }).receiverUrl;
+        } catch {
+          receiverUrl = void 0;
+        }
+        return {
+          ok: true,
+          dryRun: true,
+          store: "local",
+          projection: "cloudflare",
+          action,
+          projectionId: envelope.event.projection.id,
+          receiverUrl,
+          event: envelope
+        };
+      }
+      const delivery = await deliverCloudProjectionEvent({
+        appId: VIDEO_APP_ID,
+        env: io.env,
+        receiverUrl: trimOption(asString(options["projection-url"])),
+        bearerToken: trimOption(asString(options["projection-token"])),
+        event: envelope,
+        fetchImpl: async (input, init) => (io.fetchImpl ?? fetch)(input, init)
+      });
+      store.recordMeetingProjection(envelope);
+      return {
+        ok: true,
+        store: "local",
+        projection: "cloudflare",
+        action,
+        projectionId: envelope.event.projection.id,
+        receiverUrl: delivery.receiverUrl,
+        status: delivery.status,
+        receiver: delivery.responseJson,
+        summary: envelope.event.summary
+      };
+    }
+    throw new Error("Unknown local meetings action: expected list, show, upsert, publish, or revoke.");
+  });
+}
+async function handleLocalParticipants(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, (store) => {
+    if (action === "list") {
+      const meetingId = positionals[0];
+      if (!meetingId) throw new Error("participants list requires <meeting-id>.");
+      return { ok: true, participants: store.listParticipants(meetingId) };
+    }
+    if (action === "upsert") return store.upsertParticipant(readJsonData(options));
+    throw new Error("Unknown local participants action: expected list or upsert.");
+  });
+}
+function transcriptText(segments) {
+  return segments.map((segment) => `${segment.speakerName ?? "Speaker"}: ${segment.text}`).join("\n");
+}
+async function handleLocalTranscripts(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    if (action === "upsert") return store.upsertTranscriptSegment(readJsonData(options));
+    const meetingId = positionals[0];
+    if (!meetingId) throw new Error(`transcripts ${action ?? "(missing)"} requires <meeting-id>.`);
+    const segments = store.listTranscriptSegments(meetingId);
+    if (action === "list") return { ok: true, segments };
+    if (action === "export") {
+      const format = trimOption(asString(options.format)) ?? (asBoolean(options.json) ? "json" : "txt");
+      const output = trimOption(asString(options.output));
+      const text = format === "json" ? JSON.stringify({ ok: true, segments }, null, 2) : transcriptText(segments);
+      if (format !== "json" && format !== "txt") {
+        throw new Error("transcripts export --format must be json or txt.");
+      }
+      if (!output) return text;
+      const target = resolvePath(output);
+      await mkdir3(dirname(target), { recursive: true });
+      await writeFile2(target, text);
+      return { ok: true, meetingId, output: target, format };
+    }
+    throw new Error("Unknown local transcripts action: expected list, export, or upsert.");
+  });
+}
+async function handleLocalRecordings(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, (store) => {
+    if (action === "list") return { ok: true, recordings: store.listRecordingRefs({ meetingId: asString(options.meeting) }) };
+    if (action === "show") {
+      const id = positionals[0];
+      if (!id) throw new Error("recordings show requires <recording-id>.");
+      return { ok: true, recording: store.getRecordingRef(id) };
+    }
+    if (action === "upsert") return store.upsertRecordingRef(readJsonData(options));
+    throw new Error("Unknown local recordings action: expected list, show, or upsert. Start, stop, status, and download remain hosted.");
+  });
+}
+
 // cli/meets.ts
 var activeSession = null;
 var HELP_TEXT = `mere-video CLI (alias: meets)
@@ -1845,11 +3481,16 @@ Global flags:
   --base-url URL        Override MEETS_BASE_URL
   --workspace ID        Override MEETS_DEFAULT_WORKSPACE_ID
   --token TOKEN         Override MEETS_INTERNAL_TOKEN
+  --store local|cloud   Choose supported local/cloud data-plane commands
+  --ai local|cloud      Choose AI plane for local-plane inspection
+  --local-db PATH       Override the shared Mere local-plane SQLite path
   --json                Write machine-readable JSON
   --version             Show the CLI version
   --no-interactive      Reserved for non-interactive automation
   --yes                 Required for destructive automation
   --confirm ID          Exact target required with --yes for destructive commands
+  --projection-url URL   Cloudflare Business projection receiver for local publish/revoke
+  --projection-token TOKEN Cloudflare Business projection bearer token
   --help                Show this help
 
 Commands:
@@ -1868,8 +3509,13 @@ Commands:
   mere-video rooms update <room-id> [--name NAME] [--slug SLUG] [--base-url URL] [--token TOKEN] [--json]
   mere-video rooms archive <room-id> [--base-url URL] [--token TOKEN] [--yes] [--json]
   mere-video rooms invite <slug> [--base-url URL] [--json]
+  mere-video store info [--json]
+  mere-video export --output ./video-archive.bundle.json [--json]
+  mere-video import --file ./video-archive.bundle.json [--dry-run] [--json]
   mere-video meetings list [--workspace WORKSPACE_ID] [--base-url URL] [--token TOKEN] [--json]
   mere-video meetings show <meeting-id> [--workspace WORKSPACE_ID] [--json]
+  mere-video meetings publish <meeting-id> --projection-url URL --projection-token TOKEN [--dry-run] [--json]
+  mere-video meetings revoke <meeting-id> --projection-url URL --projection-token TOKEN [--dry-run] [--json]
   mere-video participants list <meeting-id> [--workspace WORKSPACE_ID] [--json]
   mere-video recordings start <meeting-id> [--workspace WORKSPACE_ID] [--name NAME] [--no-run] [--max-seconds N] [--json]
   mere-video recordings stop <meeting-id> [--workspace WORKSPACE_ID] [--json]
@@ -1890,17 +3536,34 @@ Environment:
   MEETS_INTERNAL_TOKEN      Bearer token override for internal/service access
   MEETS_DEFAULT_WORKSPACE_ID Default workspace for list/create commands
   MEETS_WORKSPACE_ID        Alias for MEETS_DEFAULT_WORKSPACE_ID
+  MERE_VIDEO_PROJECTION_URL Cloudflare Business projection receiver URL
+  MERE_VIDEO_PROJECTION_TOKEN Cloudflare Business projection bearer token
+
+Local plane:
+  --store local currently supports archive metadata commands: rooms list/show/upsert,
+  meetings list/show/upsert/publish/revoke, participants list/upsert, transcripts
+  list/export/upsert, recording references list/show/upsert, store info, export, and import.
+  Cloudflare Calls, room Durable Objects, live presence, recording control, hosted
+  transcript collection, Business projection receiving, and public room delivery remain Cloudflare-owned.
 `;
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
   workspace: "string",
   token: "string",
+  store: "string",
+  ai: "string",
+  "local-db": "string",
   json: "boolean",
   help: "boolean",
   version: "boolean",
   "no-interactive": "boolean",
   yes: "boolean",
-  confirm: "string"
+  confirm: "string",
+  "projection-url": "string",
+  "projection-token": "string",
+  "published-by-user-id": "string",
+  "published-by-email": "string",
+  "dry-run": "boolean"
 };
 var COMPLETION_WORDS = [
   "access-links",
@@ -1908,18 +3571,21 @@ var COMPLETION_WORDS = [
   "auth",
   "completion",
   "diagnostics",
+  "export",
   "health",
+  "import",
   "meetings",
   "participants",
   "recordings",
   "rooms",
+  "store",
   "transcripts",
   "workspace"
 ];
-function manifestCommand(path2, summary, options = {}) {
+function manifestCommand(path4, summary, options = {}) {
   return {
-    id: path2.join("."),
-    path: path2,
+    id: path4.join("."),
+    path: path4,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -1927,8 +3593,8 @@ function manifestCommand(path2, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -1941,7 +3607,24 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MEETS_BASE_URL"],
     sessionPath: "~/.local/state/mere-video/session.json",
-    globalFlags: ["base-url", "workspace", "json", "yes", "confirm"],
+    globalFlags: [
+      "base-url",
+      "workspace",
+      "store",
+      "ai",
+      "local-db",
+      "json",
+      "yes",
+      "confirm",
+      "projection-url",
+      "projection-token",
+      "published-by-user-id",
+      "published-by-email",
+      "data",
+      "output",
+      "file",
+      "dry-run"
+    ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
@@ -1949,24 +3632,46 @@ function commandManifest() {
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
+      manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
+      manifestCommand(["export"], "Export local room/meeting archive transfer bundle.", { auth: "none" }),
+      manifestCommand(["import"], "Import local room/meeting archive transfer bundle.", { auth: "none", risk: "write" }),
       manifestCommand(["health"], "Show app health.", { auditDefault: true }),
       manifestCommand(["rooms", "list"], "List rooms.", { auditDefault: true }),
       manifestCommand(["rooms", "show"], "Show room."),
       manifestCommand(["rooms", "create"], "Create room.", { risk: "write", supportsData: true }),
       manifestCommand(["rooms", "update"], "Update room.", { risk: "write", supportsData: true }),
       manifestCommand(["rooms", "archive"], "Archive room.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["rooms", "upsert"], "Upsert local room metadata.", { auth: "none", risk: "write", supportsData: true }),
       manifestCommand(["rooms", "invite"], "Create room invite link.", { risk: "write" }),
       manifestCommand(["meetings", "list"], "List meetings.", { auditDefault: true }),
-      manifestCommand(["meetings", "show"], "Show meeting."),
+      manifestCommand(["meetings", "show"], "Show meeting.", { positionals: ["meetingId"] }),
+      manifestCommand(["meetings", "upsert"], "Upsert local meeting metadata.", { auth: "none", risk: "write", supportsData: true }),
+      manifestCommand(["meetings", "publish"], "Publish selected local meeting archive summary to Business.", {
+        auth: "none",
+        risk: "external",
+        auditDefault: true,
+        positionals: ["meetingId"],
+        flags: ["projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"]
+      }),
+      manifestCommand(["meetings", "revoke"], "Revoke selected local meeting archive summary from Business.", {
+        auth: "none",
+        risk: "external",
+        auditDefault: true,
+        positionals: ["meetingId"],
+        flags: ["projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"]
+      }),
       manifestCommand(["participants", "list"], "List meeting participants."),
+      manifestCommand(["participants", "upsert"], "Upsert local meeting participant metadata.", { auth: "none", risk: "write", supportsData: true }),
       manifestCommand(["recordings", "start"], "Start recording lifecycle.", { risk: "external", supportsData: true, requiresYes: true }),
       manifestCommand(["recordings", "stop"], "Stop recording lifecycle.", { risk: "external", requiresYes: true }),
       manifestCommand(["recordings", "status"], "Show recording status."),
       manifestCommand(["recordings", "list"], "List recordings."),
       manifestCommand(["recordings", "show"], "Show recording."),
+      manifestCommand(["recordings", "upsert"], "Upsert local recording reference.", { auth: "none", risk: "write", supportsData: true }),
       manifestCommand(["recordings", "download"], "Download recording artifact."),
       manifestCommand(["transcripts", "list"], "List transcript turns."),
       manifestCommand(["transcripts", "export"], "Export transcript artifact."),
+      manifestCommand(["transcripts", "upsert"], "Upsert local transcript segment.", { auth: "none", risk: "write", supportsData: true }),
       manifestCommand(["access-links", "room"], "Create room access link.", { risk: "write" }),
       manifestCommand(["diagnostics", "health"], "Show diagnostics health.", { auditDefault: true }),
       manifestCommand(["diagnostics", "room-worker"], "Show room worker diagnostics."),
@@ -1980,7 +3685,7 @@ function commandManifest() {
   };
 }
 async function cliVersion() {
-  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const raw = await readFile3(new URL("../package.json", import.meta.url), "utf8");
   const parsed = parseJsonText(raw, "package metadata");
   return parsed.version ?? "0.0.0";
 }
@@ -2085,35 +3790,35 @@ function mergeOptions(globalOptions, localOptions) {
     ...localOptions
   };
 }
-function asString(value) {
+function asString2(value) {
   return typeof value === "string" ? value : void 0;
 }
-function asBoolean(value) {
+function asBoolean2(value) {
   return value === true;
 }
 function requireDestructiveConfirmation(options, label, target) {
-  if (!asBoolean(options.yes)) {
+  if (!asBoolean2(options.yes)) {
     throw new CliError(`Refusing to ${label} ${target} without --yes.`, 2);
   }
-  if (asString(options.confirm) !== target) {
+  if (asString2(options.confirm) !== target) {
     throw new CliError(`Refusing to ${label} ${target} without --confirm ${target}.`, 2);
   }
 }
 function resolveBaseUrl(options, env) {
-  const baseUrl = asString(options["base-url"]) ?? env.MEETS_BASE_URL ?? activeSession?.baseUrl ?? "https://mere.video";
+  const baseUrl = asString2(options["base-url"]) ?? env.MEETS_BASE_URL ?? activeSession?.baseUrl ?? "https://mere.video";
   if (!baseUrl) {
     throw new CliError("Missing base URL. Set MEETS_BASE_URL or pass --base-url.");
   }
   return baseUrl;
 }
 function resolveToken(options, env) {
-  return asString(options.token) ?? env.MEETS_INTERNAL_TOKEN ?? activeSession?.accessToken;
+  return asString2(options.token) ?? env.MEETS_INTERNAL_TOKEN ?? activeSession?.accessToken;
 }
 function resolveExternalToken(options, env) {
-  return asString(options.token) ?? env.MEETS_INTERNAL_TOKEN;
+  return asString2(options.token) ?? env.MEETS_INTERNAL_TOKEN;
 }
 function resolveWorkspace(options, env) {
-  const workspaceId = asString(options.workspace) ?? env.MEETS_DEFAULT_WORKSPACE_ID ?? env.MEETS_WORKSPACE_ID ?? activeSession?.defaultWorkspaceId ?? void 0;
+  const workspaceId = asString2(options.workspace) ?? env.MEETS_DEFAULT_WORKSPACE_ID ?? env.MEETS_WORKSPACE_ID ?? activeSession?.defaultWorkspaceId ?? void 0;
   if (!workspaceId) {
     throw new CliError(
       "Missing workspace ID. Set MEETS_DEFAULT_WORKSPACE_ID or pass --workspace."
@@ -2121,7 +3826,7 @@ function resolveWorkspace(options, env) {
   }
   return workspaceId;
 }
-function trimOption(value) {
+function trimOption2(value) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : void 0;
 }
@@ -2146,10 +3851,17 @@ function writeText(io, value) {
   io.stdout(`${value}
 `);
 }
+function writeResult(io, value) {
+  if (typeof value === "string") {
+    writeText(io, value);
+    return;
+  }
+  writeJson(io, value);
+}
 async function writeBytesFile(pathname, bytes) {
-  const target = resolvePath(pathname);
-  await mkdir2(dirname(target), { recursive: true });
-  await writeFile2(target, bytes);
+  const target = resolvePath2(pathname);
+  await mkdir4(dirname2(target), { recursive: true });
+  await writeFile3(target, bytes);
   return target;
 }
 async function writeTextFile(pathname, text) {
@@ -2256,6 +3968,80 @@ function invitePayload(client, slug) {
     url: client.buildRoomUrl(slug)
   };
 }
+async function handleLocalDataCommand(io, globalOptions, group, action, args) {
+  let result;
+  const localData = isLocalDataRoute(globalOptions, io);
+  if (group === "store") {
+    if (action !== "info") throw new CliError("Unknown store action: expected info.");
+    result = await handleLocalStoreInfo(globalOptions, io);
+  } else if (group === "export") {
+    const { options } = parseFlags([action, ...args].filter((token) => token != null), {
+      workspace: "string",
+      output: "string",
+      json: "boolean"
+    });
+    result = await handleLocalExport(globalOptions, mergeOptions(globalOptions, options), io);
+  } else if (group === "import") {
+    const { options } = parseFlags([action, ...args].filter((token) => token != null), {
+      workspace: "string",
+      file: "string",
+      "dry-run": "boolean",
+      json: "boolean"
+    });
+    result = await handleLocalImport(globalOptions, mergeOptions(globalOptions, options), io);
+  } else if (localData && group === "rooms") {
+    const { options, positionals } = parseFlags(args, {
+      workspace: "string",
+      data: "string",
+      json: "boolean"
+    });
+    result = await handleLocalRooms(action, globalOptions, mergeOptions(globalOptions, options), positionals, io);
+  } else if (localData && group === "meetings") {
+    const { options, positionals } = parseFlags(args, {
+      workspace: "string",
+      data: "string",
+      "projection-url": "string",
+      "projection-token": "string",
+      "published-by-user-id": "string",
+      "published-by-email": "string",
+      "dry-run": "boolean",
+      json: "boolean"
+    });
+    result = await handleLocalMeetings(action, globalOptions, mergeOptions(globalOptions, options), positionals, io);
+  } else if (localData && group === "participants") {
+    const { options, positionals } = parseFlags(args, {
+      workspace: "string",
+      data: "string",
+      json: "boolean"
+    });
+    result = await handleLocalParticipants(action, globalOptions, mergeOptions(globalOptions, options), positionals, io);
+  } else if (localData && group === "transcripts") {
+    const { options, positionals } = parseFlags(args, {
+      workspace: "string",
+      data: "string",
+      format: "string",
+      output: "string",
+      json: "boolean"
+    });
+    result = await handleLocalTranscripts(action, globalOptions, mergeOptions(globalOptions, options), positionals, io);
+  } else if (localData && group === "recordings") {
+    const { options, positionals } = parseFlags(args, {
+      workspace: "string",
+      meeting: "string",
+      data: "string",
+      json: "boolean"
+    });
+    result = await handleLocalRecordings(action, globalOptions, mergeOptions(globalOptions, options), positionals, io);
+  } else if (localData) {
+    throw new CliError(
+      `--store local is not supported for ${group ?? "(missing)"}. Supported local commands are store info, rooms, meetings publish/revoke, meetings archive metadata, participants, transcripts, recording references, export, and import. Live Calls, agents, recording control, diagnostics, Business projection receiving, and public room delivery remain hosted.`
+    );
+  } else {
+    return false;
+  }
+  writeResult(io, result);
+  return true;
+}
 async function handleHealth(io, globalOptions, args) {
   const { options: localOptions, positionals } = parseFlags(args, {
     "base-url": "string",
@@ -2264,7 +4050,7 @@ async function handleHealth(io, globalOptions, args) {
     help: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  if (asBoolean(options.help)) {
+  if (asBoolean2(options.help)) {
     writeText(io, HELP_TEXT);
     return;
   }
@@ -2273,7 +4059,7 @@ async function handleHealth(io, globalOptions, args) {
   }
   const client = createClient(io, options);
   const health = await client.health();
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, health);
     return;
   }
@@ -2292,7 +4078,7 @@ async function handleRoomList(io, globalOptions, args) {
   }
   const client = createClient(io, options);
   const rooms = await client.listRooms(resolveWorkspace(options, io.env));
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, rooms);
     return;
   }
@@ -2314,7 +4100,7 @@ async function handleRoomShow(io, globalOptions, args) {
   if (!room.room) {
     throw new CliError(`Room ${roomId} was not found.`);
   }
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, room);
     return;
   }
@@ -2337,13 +4123,13 @@ async function handleRoomCreate(io, globalOptions, args) {
   const client = createClient(io, options);
   const payload = {
     zerosmbWorkspaceId: resolveWorkspace(options, io.env),
-    name: trimOption(asString(options.name)),
-    slug: trimOption(asString(options.slug)),
-    isPersistent: asBoolean(options.persistent)
+    name: trimOption2(asString2(options.name)),
+    slug: trimOption2(asString2(options.slug)),
+    isPersistent: asBoolean2(options.persistent)
   };
   const created = await client.createRoom(payload);
   const invite = invitePayload(client, created.slug);
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, { ...created, inviteUrl: invite.url });
     return;
   }
@@ -2370,8 +4156,8 @@ async function handleRoomUpdate(io, globalOptions, args) {
     throw new CliError("rooms update requires exactly one <room-id>.");
   }
   const payload = {
-    name: trimOption(asString(options.name)),
-    slug: trimOption(asString(options.slug))
+    name: trimOption2(asString2(options.name)),
+    slug: trimOption2(asString2(options.slug))
   };
   if (!payload.name && !payload.slug) {
     throw new CliError("rooms update requires at least one of --name or --slug.");
@@ -2381,7 +4167,7 @@ async function handleRoomUpdate(io, globalOptions, args) {
   if (!updated.room) {
     throw new CliError(`Room ${roomId} was not found.`);
   }
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, updated);
     return;
   }
@@ -2403,7 +4189,7 @@ async function handleRoomArchive(io, globalOptions, args) {
   requireDestructiveConfirmation(options, "archive room", roomId);
   const client = createClient(io, options);
   const archived = await client.archiveRoom(roomId);
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, { ...archived, roomId });
     return;
   }
@@ -2415,13 +4201,13 @@ async function handleRoomInvite(io, globalOptions, args) {
     json: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  const slug = trimOption(positionals[0]);
+  const slug = trimOption2(positionals[0]);
   if (!slug || positionals.length !== 1) {
     throw new CliError("rooms invite requires exactly one <slug>.");
   }
   const client = createClient(io, options);
   const invite = invitePayload(client, slug);
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, invite);
     return;
   }
@@ -2440,7 +4226,7 @@ async function handleMeetingsList(io, globalOptions, args) {
   }
   const client = createClient(io, options);
   const meetings = await client.listMeetings(resolveWorkspace(options, io.env));
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, meetings);
     return;
   }
@@ -2454,7 +4240,7 @@ async function handleMeetingsShow(io, globalOptions, args) {
     json: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  const meetingId = trimOption(positionals[0]);
+  const meetingId = trimOption2(positionals[0]);
   if (!meetingId || positionals.length !== 1) {
     throw new CliError("meetings show requires exactly one <meeting-id>.");
   }
@@ -2470,13 +4256,13 @@ async function handleParticipantsList(io, globalOptions, args) {
     json: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  const meetingId = trimOption(positionals[0]);
+  const meetingId = trimOption2(positionals[0]);
   if (!meetingId || positionals.length !== 1) {
     throw new CliError("participants list requires exactly one <meeting-id>.");
   }
   const client = createClient(io, options);
   const detail = await client.getMeeting(resolveWorkspace(options, io.env), meetingId);
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, detail);
     return;
   }
@@ -2519,14 +4305,14 @@ async function handleRecordings(io, globalOptions, action, args) {
   }
   switch (action) {
     case "start": {
-      const meetingId = trimOption(positionals[0]);
+      const meetingId = trimOption2(positionals[0]);
       if (!meetingId || positionals.length !== 1) {
         throw new CliError("recordings start requires exactly one <meeting-id>.");
       }
       const result = await client.startRecording(workspaceId, meetingId, {
-        displayName: trimOption(asString(options.name))
+        displayName: trimOption2(asString2(options.name))
       });
-      if (asBoolean(options.json) || asBoolean(options["no-run"])) {
+      if (asBoolean2(options.json) || asBoolean2(options["no-run"])) {
         writeJson(io, result);
         return;
       }
@@ -2543,7 +4329,7 @@ async function handleRecordings(io, globalOptions, action, args) {
           completePath: result.completePath,
           controlPath: result.controlPath,
           testMode: false,
-          maxSeconds: parsePositiveInt(asString(options["max-seconds"]), "--max-seconds")
+          maxSeconds: parsePositiveInt(asString2(options["max-seconds"]), "--max-seconds")
         },
         onLog: (message) => io.stderr(`${message}
 `)
@@ -2566,7 +4352,7 @@ async function handleRecordings(io, globalOptions, action, args) {
       return;
     }
     case "stop": {
-      const target = trimOption(positionals[0]);
+      const target = trimOption2(positionals[0]);
       if (!target || positionals.length !== 1) {
         throw new CliError("recordings stop requires exactly one <meeting-id>.");
       }
@@ -2574,7 +4360,7 @@ async function handleRecordings(io, globalOptions, action, args) {
       return;
     }
     case "status": {
-      const meetingId = trimOption(positionals[0]);
+      const meetingId = trimOption2(positionals[0]);
       if (!meetingId || positionals.length !== 1) {
         throw new CliError("recordings status requires exactly one <meeting-id>.");
       }
@@ -2586,14 +4372,14 @@ async function handleRecordings(io, globalOptions, action, args) {
         throw new CliError("recordings list does not accept positional arguments.");
       }
       const result = await client.listRecordings(workspaceId, {
-        meetingId: trimOption(asString(options.meeting)),
-        limit: parsePositiveInt(asString(options.limit), "--limit")
+        meetingId: trimOption2(asString2(options.meeting)),
+        limit: parsePositiveInt(asString2(options.limit), "--limit")
       });
       writeText(io, JSON.stringify(result, null, 2));
       return;
     }
     case "show": {
-      const recordingId = trimOption(positionals[0]);
+      const recordingId = trimOption2(positionals[0]);
       if (!recordingId || positionals.length !== 1) {
         throw new CliError("recordings show requires exactly one <recording-id>.");
       }
@@ -2601,19 +4387,19 @@ async function handleRecordings(io, globalOptions, action, args) {
       return;
     }
     case "download": {
-      const recordingId = trimOption(positionals[0]);
-      const output = trimOption(asString(options.output));
+      const recordingId = trimOption2(positionals[0]);
+      const output = trimOption2(asString2(options.output));
       if (!recordingId || positionals.length !== 1) {
         throw new CliError("recordings download requires exactly one <recording-id>.");
       }
       if (!output) {
         throw new CliError("recordings download requires --output FILE.");
       }
-      const path2 = await writeBytesFile(output, await client.downloadRecording(workspaceId, recordingId));
-      if (asBoolean(options.json)) {
-        writeJson(io, { recordingId, output: path2 });
+      const path4 = await writeBytesFile(output, await client.downloadRecording(workspaceId, recordingId));
+      if (asBoolean2(options.json)) {
+        writeJson(io, { recordingId, output: path4 });
       } else {
-        writeText(io, `Downloaded recording ${recordingId} to ${path2}.`);
+        writeText(io, `Downloaded recording ${recordingId} to ${path4}.`);
       }
       return;
     }
@@ -2642,7 +4428,7 @@ async function handleTranscripts(io, globalOptions, action, args) {
   if (!action) {
     throw new CliError("Unknown transcripts command: (missing).");
   }
-  const meetingId = trimOption(positionals[0]);
+  const meetingId = trimOption2(positionals[0]);
   if (!meetingId || positionals.length !== 1) {
     throw new CliError(`transcripts ${action} requires exactly one <meeting-id>.`);
   }
@@ -2653,14 +4439,14 @@ async function handleTranscripts(io, globalOptions, action, args) {
       writeText(io, JSON.stringify(detail, null, 2));
       return;
     case "export": {
-      const format = trimOption(asString(options.format)) ?? (asBoolean(options.json) ? "json" : "txt");
-      const output = trimOption(asString(options.output));
+      const format = trimOption2(asString2(options.format)) ?? (asBoolean2(options.json) ? "json" : "txt");
+      const output = trimOption2(asString2(options.output));
       if (format === "json") {
         const text2 = JSON.stringify(detail, null, 2);
         if (output) {
-          const path2 = await writeTextFile(output, text2);
-          if (asBoolean(options.json)) writeJson(io, { meetingId, output: path2, format });
-          else writeText(io, `Exported transcript ${meetingId} to ${path2}.`);
+          const path4 = await writeTextFile(output, text2);
+          if (asBoolean2(options.json)) writeJson(io, { meetingId, output: path4, format });
+          else writeText(io, `Exported transcript ${meetingId} to ${path4}.`);
           return;
         }
         writeText(io, text2);
@@ -2671,9 +4457,9 @@ async function handleTranscripts(io, globalOptions, action, args) {
       }
       const text = transcriptTextFromSegments(detail);
       if (output) {
-        const path2 = await writeTextFile(output, text);
-        if (asBoolean(options.json)) writeJson(io, { meetingId, output: path2, format });
-        else writeText(io, `Exported transcript ${meetingId} to ${path2}.`);
+        const path4 = await writeTextFile(output, text);
+        if (asBoolean2(options.json)) writeJson(io, { meetingId, output: path4, format });
+        else writeText(io, `Exported transcript ${meetingId} to ${path4}.`);
         return;
       }
       writeText(io, text);
@@ -2712,7 +4498,7 @@ async function handleDiagnostics(io, globalOptions, action, args) {
       io,
       JSON.stringify(
         await client.listClientErrors(workspaceId, {
-          limit: parsePositiveInt(asString(options.limit), "--limit")
+          limit: parsePositiveInt(asString2(options.limit), "--limit")
         }),
         null,
         2
@@ -2721,7 +4507,7 @@ async function handleDiagnostics(io, globalOptions, action, args) {
     return;
   }
   if (action === "client-error") {
-    const errorId = trimOption(positionals[0]);
+    const errorId = trimOption2(positionals[0]);
     if (!errorId || positionals.length !== 1) {
       throw new CliError("diagnostics client-error requires exactly one <error-id>.");
     }
@@ -2736,7 +4522,7 @@ async function handleAgentVoiceConfig(io, globalOptions, args) {
     help: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  if (asBoolean(options.help)) {
+  if (asBoolean2(options.help)) {
     writeText(io, HELP_TEXT);
     return;
   }
@@ -2744,7 +4530,7 @@ async function handleAgentVoiceConfig(io, globalOptions, args) {
     throw new CliError("agent voice-config does not accept positional arguments.");
   }
   const config = resolveDeepgramSpeechConfig(io.env);
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, config);
   } else {
     writeText(
@@ -2773,35 +4559,35 @@ async function handleAgentJoin(io, globalOptions, args) {
     json: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  const roomSlug = trimOption(positionals[0]);
+  const roomSlug = trimOption2(positionals[0]);
   if (!roomSlug || positionals.length !== 1) {
     throw new CliError("agent join requires exactly one <room-slug>.");
   }
-  const displayName = trimOption(asString(options.name));
+  const displayName = trimOption2(asString2(options.name));
   if (!displayName) {
     throw new CliError("agent join requires --name.");
   }
-  const wakeMode = trimOption(asString(options["wake-mode"]));
+  const wakeMode = trimOption2(asString2(options["wake-mode"]));
   if (wakeMode && wakeMode !== "addressed" && wakeMode !== "manual" && wakeMode !== "always-on") {
     throw new CliError("agent join --wake-mode must be one of addressed, manual, or always-on.");
   }
-  const runtime = trimOption(asString(options.runtime)) ?? "presence";
+  const runtime = trimOption2(asString2(options.runtime)) ?? "presence";
   if (runtime !== "presence" && runtime !== "browser") {
     throw new CliError("agent join --runtime must be one of presence or browser.");
   }
   const client = createClient(io, options);
   const bootstrap = await client.bootstrapAgent(roomSlug, {
     displayName,
-    agentId: trimOption(asString(options["agent-id"])),
+    agentId: trimOption2(asString2(options["agent-id"])),
     wakeMode
   });
-  if (asBoolean(options.connect)) {
-    if (asBoolean(options.json)) {
+  if (asBoolean2(options.connect)) {
+    if (asBoolean2(options.json)) {
       throw new CliError("agent join --connect cannot be combined with --json.");
     }
-    const agentCommand = trimOption(asString(options["agent-command"]));
-    const testTranscript = trimOption(asString(options["test-transcript"]));
-    const testSpeaker = trimOption(asString(options["test-speaker"])) ?? "Test Speaker";
+    const agentCommand = trimOption2(asString2(options["agent-command"]));
+    const testTranscript = trimOption2(asString2(options["test-transcript"]));
+    const testSpeaker = trimOption2(asString2(options["test-speaker"])) ?? "Test Speaker";
     const speechConfig = resolveDeepgramSpeechConfig(io.env);
     if (runtime === "browser") {
       const baseUrl = resolveBaseUrl(options, io.env);
@@ -2911,7 +4697,7 @@ async function handleAgentJoin(io, globalOptions, args) {
     await audioPipeline.stop();
     return;
   }
-  if (asBoolean(options.json)) {
+  if (asBoolean2(options.json)) {
     writeJson(io, bootstrap);
     return;
   }
@@ -2923,7 +4709,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
     help: "boolean"
   });
   const options = mergeOptions(globalOptions, localOptions);
-  if (asBoolean(options.help)) {
+  if (asBoolean2(options.help)) {
     writeText(io, HELP_TEXT);
     return;
   }
@@ -2935,7 +4721,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
     if (positionals.length > 0) {
       throw new CliError("workspace list does not accept positional arguments.");
     }
-    if (asBoolean(options.json)) {
+    if (asBoolean2(options.json)) {
       writeJson(io, session.workspaces);
     } else {
       writeText(
@@ -2951,7 +4737,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
     }
     const defaultWorkspace = session.workspaces.find((workspace) => workspace.id === session.defaultWorkspaceId) ?? null;
     const result = { current: session.workspace, defaultWorkspace };
-    if (asBoolean(options.json)) {
+    if (asBoolean2(options.json)) {
       writeJson(io, result);
     } else {
       writeText(
@@ -2965,7 +4751,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
     return;
   }
   if (action === "use") {
-    const selector = trimOption(positionals[0]);
+    const selector = trimOption2(positionals[0]);
     if (!selector || positionals.length !== 1) {
       throw new CliError("workspace use requires exactly one <id|slug|host>.");
     }
@@ -2977,7 +4763,7 @@ async function handleWorkspaceCommand(io, globalOptions, action, args) {
     });
     await saveSession(refreshed, io.env);
     activeSession = refreshed;
-    if (asBoolean(options.json)) {
+    if (asBoolean2(options.json)) {
       writeJson(io, refreshed);
     } else {
       writeText(io, renderSessionSummary(refreshed));
@@ -3003,17 +4789,21 @@ async function runCli(argv, io) {
       writeJson(io, commandManifest());
       return 0;
     }
+    if (asBoolean2(globalOptions.help) || !group || group === "help" || group === "--help") {
+      writeText(io, HELP_TEXT);
+      return 0;
+    }
+    const localPlaneCommand = group === "store" || group === "export" || group === "import" || isLocalDataRoute(globalOptions, io);
     activeSession = await loadSession(io.env);
     const isWorkspaceMetadataCommand = group === "workspace" && ["list", "current", "use"].includes(action ?? "");
-    if (group !== "auth" && !isWorkspaceMetadataCommand && activeSession && !resolveExternalToken(globalOptions, io.env)) {
+    if (group !== "auth" && !isWorkspaceMetadataCommand && !localPlaneCommand && activeSession && !resolveExternalToken(globalOptions, io.env)) {
       activeSession = await ensureWorkspaceSession(activeSession, {
-        workspace: asString(globalOptions.workspace) ?? io.env.MEETS_DEFAULT_WORKSPACE_ID ?? io.env.MEETS_WORKSPACE_ID ?? void 0,
+        workspace: asString2(globalOptions.workspace) ?? io.env.MEETS_DEFAULT_WORKSPACE_ID ?? io.env.MEETS_WORKSPACE_ID ?? void 0,
         fetchImpl: io.fetchImpl
       });
       await saveSession(activeSession, io.env);
     }
-    if (asBoolean(globalOptions.help) || !group || group === "help" || group === "--help") {
-      writeText(io, HELP_TEXT);
+    if (await handleLocalDataCommand(io, globalOptions, group, action, args)) {
       return 0;
     }
     if (group === "auth") {
@@ -3026,7 +4816,7 @@ async function runCli(argv, io) {
             help: "boolean"
           });
           const options = mergeOptions(globalOptions, localOptions);
-          if (asBoolean(options.help)) {
+          if (asBoolean2(options.help)) {
             writeText(io, HELP_TEXT);
             return 0;
           }
@@ -3036,17 +4826,17 @@ async function runCli(argv, io) {
           const session = pickWorkspaceSession(
             await loginWithBrowser2({
               baseUrl: resolveBaseUrl(options, io.env),
-              workspace: asString(options.workspace),
+              workspace: asString2(options.workspace),
               fetchImpl: io.fetchImpl,
               notify: (message) => io.stderr(`${message}
 `),
               env: io.env
             }),
-            asString(options.workspace)
+            asString2(options.workspace)
           );
           await saveSession(session, io.env);
           activeSession = session;
-          if (asBoolean(options.json)) {
+          if (asBoolean2(options.json)) {
             writeJson(io, session);
           } else {
             writeText(io, renderSessionSummary(session));
@@ -3059,7 +4849,7 @@ async function runCli(argv, io) {
             help: "boolean"
           });
           const options = mergeOptions(globalOptions, localOptions);
-          if (asBoolean(options.help)) {
+          if (asBoolean2(options.help)) {
             writeText(io, HELP_TEXT);
             return 0;
           }
@@ -3069,7 +4859,7 @@ async function runCli(argv, io) {
           if (!activeSession) {
             throw new CliError("No local session found. Run `mere-video auth login` first.");
           }
-          if (asBoolean(options.json)) {
+          if (asBoolean2(options.json)) {
             writeJson(io, activeSession);
           } else {
             writeText(io, renderSessionSummary(activeSession));
@@ -3082,7 +4872,7 @@ async function runCli(argv, io) {
             help: "boolean"
           });
           const options = mergeOptions(globalOptions, localOptions);
-          if (asBoolean(options.help)) {
+          if (asBoolean2(options.help)) {
             writeText(io, HELP_TEXT);
             return 0;
           }
@@ -3094,7 +4884,7 @@ async function runCli(argv, io) {
             env: io.env
           });
           activeSession = null;
-          if (asBoolean(options.json)) {
+          if (asBoolean2(options.json)) {
             writeJson(io, { loggedOut });
           } else {
             writeText(io, loggedOut ? "Logged out." : "No local session found.");

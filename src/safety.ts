@@ -70,6 +70,7 @@ export const READ_ONLY_EXACT_COMMANDS = new Set([
 	'commands',
 	'completion',
 	'diagnostics.provider-sync',
+	'export',
 	'import.status',
 	'tenant.resolve'
 ]);

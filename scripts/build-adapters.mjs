@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,8 +8,17 @@ import { build as esbuild } from 'esbuild';
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mereRoot = path.resolve(process.env.MERE_ROOT ?? path.join(packageRoot, '..'));
 const adaptersDir = path.join(packageRoot, 'adapters');
-const linkPackageRoot = path.join(mereRoot, 'merekit-link');
 const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
+
+function repo(name) {
+	const direct = path.join(mereRoot, name);
+	if (existsSync(direct)) return direct;
+	const prefixed = path.join(mereRoot, `mere-${name}`);
+	if (existsSync(prefixed)) return prefixed;
+	return direct;
+}
+
+const linkPackageRoot = path.join(mereRoot, 'merekit-link');
 function createAdaptersReadme(adapterKeys) {
 	return `# Generated Adapters
 
@@ -34,7 +44,7 @@ Maintainers regenerate these files from the Mere app repositories with \`pnpm bu
 }
 
 const appBuilds = [
-	{ repo: 'business', args: ['--dir', path.join(mereRoot, 'business'), '--filter', '@zerosmb/cli', 'build'] },
+	{ repo: 'business', args: ['--dir', repo('business'), '--filter', '@zerosmb/cli', 'build'] },
 	{ repo: 'finance', script: 'build:cli' },
 	{ repo: 'dynasite', script: 'build:cli' },
 	{ repo: 'projects', script: 'build:cli' },
@@ -53,68 +63,68 @@ const appBuilds = [
 const adapters = [
 	{
 		key: 'business',
-		sourceRepoPath: path.join(mereRoot, 'business'),
-		sourceArtifactPath: path.join(mereRoot, 'business', 'packages', 'cli', 'dist', 'index.js')
+		sourceRepoPath: repo('business'),
+		sourceArtifactPath: path.join(repo('business'), 'packages', 'cli', 'dist', 'index.js')
 	},
 	{
 		key: 'dynasite',
-		sourceRepoPath: path.join(mereRoot, 'dynasite'),
-		sourceArtifactPath: path.join(mereRoot, 'dynasite', 'dist', 'run.js')
+		sourceRepoPath: repo('dynasite'),
+		sourceArtifactPath: path.join(repo('dynasite'), 'dist', 'run.js')
 	},
 	{
 		key: 'projects',
-		sourceRepoPath: path.join(mereRoot, 'projects'),
-		sourceArtifactPath: path.join(mereRoot, 'projects', 'dist', 'run.js')
+		sourceRepoPath: repo('projects'),
+		sourceArtifactPath: path.join(repo('projects'), 'dist', 'run.js')
 	},
 	{
 		key: 'agent',
-		sourceRepoPath: path.join(mereRoot, 'agent'),
-		sourceArtifactPath: path.join(mereRoot, 'agent', 'cli-dist', 'run.js')
+		sourceRepoPath: repo('agent'),
+		sourceArtifactPath: path.join(repo('agent'), 'cli-dist', 'run.js')
 	},
 	{
 		key: 'today',
-		sourceRepoPath: path.join(mereRoot, 'today'),
-		sourceArtifactPath: path.join(mereRoot, 'today', 'dist', 'run.js')
+		sourceRepoPath: repo('today'),
+		sourceArtifactPath: path.join(repo('today'), 'dist', 'run.js')
 	},
 	{
 		key: 'zone',
-		sourceRepoPath: path.join(mereRoot, 'zone'),
-		sourceArtifactPath: path.join(mereRoot, 'zone', 'dist', 'run.js')
+		sourceRepoPath: repo('zone'),
+		sourceArtifactPath: path.join(repo('zone'), 'dist', 'run.js')
 	},
 	{
 		key: 'video',
-		sourceRepoPath: path.join(mereRoot, 'video'),
-		sourceArtifactPath: path.join(mereRoot, 'video', 'dist', 'run.js')
+		sourceRepoPath: repo('video'),
+		sourceArtifactPath: path.join(repo('video'), 'dist', 'run.js')
 	},
 	{
 		key: 'network',
-		sourceRepoPath: path.join(mereRoot, 'network'),
-		sourceArtifactPath: path.join(mereRoot, 'network', 'dist', 'run.js')
+		sourceRepoPath: repo('network'),
+		sourceArtifactPath: path.join(repo('network'), 'dist', 'run.js')
 	},
 	{
 		key: 'email',
-		sourceRepoPath: path.join(mereRoot, 'email'),
-		sourceArtifactPath: path.join(mereRoot, 'email', 'dist', 'run.js')
+		sourceRepoPath: repo('email'),
+		sourceArtifactPath: path.join(repo('email'), 'dist', 'run.js')
 	},
 	{
 		key: 'gives',
-		sourceRepoPath: path.join(mereRoot, 'gives'),
-		sourceArtifactPath: path.join(mereRoot, 'gives', 'dist', 'run.js')
+		sourceRepoPath: repo('gives'),
+		sourceArtifactPath: path.join(repo('gives'), 'dist', 'run.js')
 	},
 	{
 		key: 'works',
-		sourceRepoPath: path.join(mereRoot, 'works'),
-		sourceArtifactPath: path.join(mereRoot, 'works', 'dist', 'run.js')
+		sourceRepoPath: repo('works'),
+		sourceArtifactPath: path.join(repo('works'), 'dist', 'run.js')
 	},
 	{
 		key: 'media',
-		sourceRepoPath: path.join(mereRoot, 'media'),
-		sourceArtifactPath: path.join(mereRoot, 'media', 'dist', 'run.js')
+		sourceRepoPath: repo('media'),
+		sourceArtifactPath: path.join(repo('media'), 'dist', 'run.js')
 	},
 	{
 		key: 'deliver',
-		sourceRepoPath: path.join(mereRoot, 'deliver'),
-		sourceArtifactPath: path.join(mereRoot, 'deliver', 'cli', 'run.js')
+		sourceRepoPath: repo('deliver'),
+		sourceArtifactPath: path.join(repo('deliver'), 'cli', 'run.js')
 	}
 ];
 
@@ -187,14 +197,14 @@ async function bundleFinanceAdapter() {
 	const target = path.join(targetDir, 'run.js');
 	await mkdir(targetDir, { recursive: true });
 	await esbuild({
-		entryPoints: [path.join(mereRoot, 'finance', 'packages', 'cli', 'bin', 'merefi.ts')],
+		entryPoints: [path.join(repo('finance'), 'packages', 'cli', 'bin', 'merefi.ts')],
 		bundle: true,
 		platform: 'node',
 		format: 'esm',
 		target: ['node24'],
 		outfile: target,
 		banner: { js: 'import { createRequire as __mereCreateRequire } from "node:module";const require = __mereCreateRequire(import.meta.url);' },
-		absWorkingDir: path.join(mereRoot, 'finance'),
+		absWorkingDir: repo('finance'),
 		logLevel: 'silent'
 	});
 	await stripSourceMapReference(target);
@@ -216,7 +226,7 @@ function validateAdapter(key, target) {
 }
 
 for (const build of appBuilds) {
-	run(pnpm, build.args ?? ['--dir', path.join(mereRoot, build.repo), build.script]);
+	run(pnpm, build.args ?? ['--dir', repo(build.repo), build.script]);
 }
 
 for (const adapter of staticAdapters) {
@@ -268,8 +278,8 @@ const financeTarget = await bundleFinanceAdapter();
 validateAdapter('finance', financeTarget);
 manifest.adapters.splice(1, 0, {
 	app: 'finance',
-	sourceRepoPath: 'finance',
-	sourceArtifactPath: path.join('finance', 'packages', 'cli', 'bin', 'merefi.ts'),
+	sourceRepoPath: path.relative(mereRoot, repo('finance')),
+	sourceArtifactPath: path.relative(mereRoot, path.join(repo('finance'), 'packages', 'cli', 'bin', 'merefi.ts')),
 	adapterPath: path.relative(packageRoot, financeTarget),
 	builtAt
 });

@@ -515,9 +515,9 @@ function envWithPnpm(env: NodeJS.ProcessEnv, pnpm: string): NodeJS.ProcessEnv {
 
 function splitPassthroughFlags(
 	flags: Record<string, string | boolean | string[]>,
-	supported: Set<string>
+	supported: Set<string>,
+	leadingNames: Set<string>
 ): { leading: Record<string, string | boolean | string[]>; trailing: Record<string, string | boolean | string[]> } {
-	const leadingNames = new Set(['base-url', 'workspace', 'profile', 'json']);
 	const leading: Record<string, string | boolean | string[]> = {};
 	const trailing: Record<string, string | boolean | string[]> = {};
 	for (const [name, value] of Object.entries(flags)) {
@@ -528,10 +528,13 @@ function splitPassthroughFlags(
 	return { leading, trailing };
 }
 
-function shouldRetryWithLeadingGlobals(result: ProcessResult): boolean {
+function shouldRetryWithLeadingGlobals(result: ProcessResult, leadingNames: Set<string>): boolean {
 	if (result.code === 0) return false;
 	const text = `${result.stderr}\n${result.stdout}`;
-	return /Unknown option: --(?:base-url|workspace|profile|json)\b/.test(text);
+	for (const match of text.matchAll(/Unknown option: --([a-z0-9-]+)\b/g)) {
+		if (leadingNames.has(match[1] ?? '')) return true;
+	}
+	return false;
 }
 
 function pickFlags(
@@ -584,14 +587,15 @@ export async function delegateToApp(
 	if (!manifestResult.ok) throw new Error(`${entry.label} command manifest unavailable: ${manifestResult.error}`);
 	const command = findManifestCommand(manifestResult.manifest, appArgs);
 	const supported = supportedFlagNames(manifestResult.manifest, command);
-	const { leading, trailing } = splitPassthroughFlags(passthroughFlags, supported);
+	const leadingNames = new Set(['base-url', 'workspace', 'profile', 'json', ...(manifestResult.manifest?.globalFlags ?? [])]);
+	const { leading, trailing } = splitPassthroughFlags(passthroughFlags, supported, leadingNames);
 	const trailingArgs = [...resolved.args, ...appArgs, ...flagArgs(passthroughFlags, supported)];
 	const leadingArgs = [...resolved.args, ...flagArgs(leading, supported), ...appArgs, ...flagArgs(trailing, supported)];
 	const cwd = executionCwd(entry, resolved);
 	const started = Date.now();
 	let finalArgs = trailingArgs;
 	let result = await runCapture(resolved.command, finalArgs, { cwd, env: io.env });
-	if (shouldRetryWithLeadingGlobals(result) && leadingArgs.join('\0') !== trailingArgs.join('\0')) {
+	if (shouldRetryWithLeadingGlobals(result, leadingNames) && leadingArgs.join('\0') !== trailingArgs.join('\0')) {
 		finalArgs = leadingArgs;
 		result = await runCapture(resolved.command, finalArgs, { cwd, env: io.env });
 	}

@@ -6,6 +6,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.4.0 - 2026-05-27
+
+- Regenerated all bundled app adapters from the current Mere workspace, expanding the command surface for local-plane aware apps.
+- Added the updated Email adapter with local-plane sync and traversal commands, including `sync pull`, `threads list`, `threads latest`, and local search/show flows.
+- Updated root CLI delegation so manifest-declared app globals such as `--store`, `--local-db`, and adapter-specific local-plane flags are retried before the app command when adapters require leading options.
+- Updated the generated command matrix and adapter safety checks for the refreshed local/cloud adapter surface.
+
 ## 0.3.0 - 2026-05-25
 
 - Added the bundled Dynasite root adapter so `mere dynasite ...` is available for direct site diagnostics, CMS/media operations, publishing, and static bundle management.
