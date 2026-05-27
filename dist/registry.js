@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -20,7 +21,13 @@ export const PRODUCT_APP_KEYS = [
 ];
 export const APP_KEYS = [...PRODUCT_APP_KEYS];
 function repo(mereRoot, name) {
-    return path.join(mereRoot, name);
+    const direct = path.join(mereRoot, name);
+    if (existsSync(direct))
+        return direct;
+    const prefixed = path.join(mereRoot, `mere-${name}`);
+    if (existsSync(prefixed))
+        return prefixed;
+    return direct;
 }
 function adapter(packageRoot, key) {
     return path.join(packageRoot, 'adapters', key, 'run.js');

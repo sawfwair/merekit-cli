@@ -1,14 +1,1485 @@
 #!/usr/bin/env node
 
+// cli/local-plane.ts
+import { mkdir as mkdir2, readFile, writeFile } from "fs/promises";
+import { dirname, resolve as resolvePath } from "path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os from "os";
+import path from "path";
+function stateHome(env) {
+  const home = env.HOME?.trim() || os.homedir();
+  return env.XDG_DATA_HOME?.trim() || path.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path.join(stateHome(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
+  }
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
+}
+function readLocalDbPath(input) {
+  const prefix = envPrefix(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
+  return {
+    value: path.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
+    }
+  };
+}
+function formatPlaneConfigReport(report) {
+  const lines = ["Local plane config:"];
+  for (const config of report.configs) {
+    lines.push(
+      `  - ${config.appId}: data=${config.data}(${config.sources.data}) ai=${config.ai}(${config.sources.ai}) db=${config.localDbPath}(${config.sources.localDbPath}) projection=${config.cloudProjection}${config.blended ? " blended" : ""}`
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+var CloudProjectionDeliveryError = class extends Error {
+  constructor(message, status = null, responseText = null) {
+    super(message);
+    this.status = status;
+    this.responseText = responseText;
+    this.name = "CloudProjectionDeliveryError";
+  }
+};
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl2 = input.fetchImpl ?? fetch;
+  const response = await fetchImpl2(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { randomUUID as randomUUID2 } from "crypto";
+import { mkdir } from "fs/promises";
+import os2 from "os";
+import path2 from "path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "crypto";
+var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+var PLANE_TRANSFER_VERSION = 1;
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir(path2.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace2) => ({
+      workspaceId: workspace2.workspace_id,
+      slug: workspace2.slug,
+      name: workspace2.name,
+      appCount: Number(workspace2.app_count),
+      updatedAt: workspace2.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace2) => ({
+      appId: workspace2.app_id,
+      workspaceId: workspace2.workspace_id,
+      slug: workspace2.slug,
+      name: workspace2.name,
+      dataPlane: workspace2.data_plane,
+      aiPlane: workspace2.ai_plane,
+      cloudProjection: workspace2.cloud_projection,
+      updatedAt: workspace2.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+
+// cli/local-store.ts
+import { createHash as createHash2 } from "crypto";
+var DYNASITE_APP_ID = "mere-dynasite";
+var DYNASITE_ARCHIVE_SCHEMA = "mere.dynasite.archive.v1";
+var RECORD_TYPES = [
+  "businesses",
+  "sites",
+  "intelPackages",
+  "sourceSites",
+  "cmsDrafts",
+  "revisions",
+  "publications",
+  "media",
+  "staticBundles",
+  "leads",
+  "outreach"
+];
+var RECORD_TYPE_LABELS = {
+  businesses: "business",
+  sites: "site",
+  intelPackages: "intel package",
+  sourceSites: "source site snapshot",
+  cmsDrafts: "CMS draft",
+  revisions: "site revision",
+  publications: "site publication",
+  media: "site media item",
+  staticBundles: "static bundle",
+  leads: "lead",
+  outreach: "outreach record"
+};
+var COUNT_FIELDS = {
+  businesses: "businessCount",
+  sites: "siteCount",
+  intelPackages: "intelPackageCount",
+  sourceSites: "sourceSiteCount",
+  cmsDrafts: "cmsDraftCount",
+  revisions: "revisionCount",
+  publications: "publicationCount",
+  media: "mediaCount",
+  staticBundles: "staticBundleCount",
+  leads: "leadCount",
+  outreach: "outreachCount"
+};
+var BUSINESS_SCOPED_TYPES = /* @__PURE__ */ new Set(["intelPackages", "sourceSites", "outreach"]);
+var SITE_SCOPED_TYPES = /* @__PURE__ */ new Set([
+  "cmsDrafts",
+  "revisions",
+  "publications",
+  "media",
+  "staticBundles",
+  "leads"
+]);
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function isRecord2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseJsonObject(value) {
+  if (isRecord2(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = JSON.parse(value);
+    return isRecord2(parsed) ? parsed : {};
+  }
+  return {};
+}
+function readString2(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} is required for local Dynasite records.`);
+  }
+  return value.trim();
+}
+function readOptionalString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function readFirstString(input, keys) {
+  for (const key of keys) {
+    const value = readOptionalString(input[key]);
+    if (value) return value;
+  }
+  return null;
+}
+function readRecordId(input, type) {
+  const id = readFirstString(input, [
+    "id",
+    "recordId",
+    "record_id",
+    "bundleId",
+    "bundle_id",
+    "leadId",
+    "lead_id",
+    "inquiryId",
+    "inquiry_id",
+    "revisionId",
+    "revision_id",
+    "publicationId",
+    "publication_id"
+  ]);
+  return readString2(id, `${RECORD_TYPE_LABELS[type]} id`);
+}
+function readBusinessId(input, type, id) {
+  if (type === "businesses") return id;
+  return readFirstString(input, ["businessId", "business_id"]);
+}
+function readSiteId(input, type, id) {
+  if (type === "sites") return id;
+  return readFirstString(input, ["siteId", "site_id"]);
+}
+function normalizePayloadRecord(input, type, workspaceId, existing) {
+  const id = readRecordId(input, type);
+  const now = isoNow3();
+  const createdAt = readOptionalString(input.createdAt ?? input.created_at) ?? readOptionalString(existing?.createdAt) ?? now;
+  const updatedAt = readOptionalString(input.updatedAt ?? input.updated_at) ?? now;
+  const businessId = readBusinessId(input, type, id) ?? readOptionalString(existing?.businessId);
+  const siteId = readSiteId(input, type, id) ?? readOptionalString(existing?.siteId);
+  if (BUSINESS_SCOPED_TYPES.has(type) && !businessId) {
+    throw new Error(`${RECORD_TYPE_LABELS[type]} requires businessId.`);
+  }
+  if (SITE_SCOPED_TYPES.has(type) && !siteId) {
+    throw new Error(`${RECORD_TYPE_LABELS[type]} requires siteId.`);
+  }
+  return {
+    id,
+    businessId,
+    siteId,
+    createdAt,
+    updatedAt,
+    payload: {
+      ...existing ?? {},
+      ...input,
+      id,
+      workspaceId,
+      recordType: type,
+      businessId,
+      siteId,
+      createdAt,
+      updatedAt
+    }
+  };
+}
+function rowPayload(row) {
+  const payload = parseJsonObject(row.payload_json);
+  return {
+    ...payload,
+    id: readString2(row.record_id, "record_id"),
+    workspaceId: readString2(row.workspace_id, "workspace_id"),
+    recordType: readString2(row.record_type, "record_type"),
+    businessId: readOptionalString(row.business_id),
+    siteId: readOptionalString(row.site_id),
+    createdAt: readString2(row.created_at, "created_at"),
+    updatedAt: readString2(row.updated_at, "updated_at")
+  };
+}
+function stableSiteProjectionId(input) {
+  const digest = createHash2("sha256").update([DYNASITE_APP_ID, input.workspaceId, input.siteId, "site-summary"].join("\n")).digest("hex").slice(0, 24);
+  return `dynpr_${digest}`;
+}
+function dateOnly(value) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 10) : null;
+}
+function optionalPayloadString(payload, key) {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function normalizePayload(value, workspaceId) {
+  if (!isRecord2(value) || value.kind !== DYNASITE_ARCHIVE_SCHEMA || value.version !== 1) {
+    throw new Error(`Dynasite transfer payload must be ${DYNASITE_ARCHIVE_SCHEMA} version 1.`);
+  }
+  const readList = (key) => Array.isArray(value[key]) ? value[key].filter(isRecord2).map((entry) => normalizePayloadRecord(entry, key, workspaceId).payload) : [];
+  return {
+    kind: DYNASITE_ARCHIVE_SCHEMA,
+    version: 1,
+    businesses: readList("businesses"),
+    sites: readList("sites"),
+    intelPackages: readList("intelPackages"),
+    sourceSites: readList("sourceSites"),
+    cmsDrafts: readList("cmsDrafts"),
+    revisions: readList("revisions"),
+    publications: readList("publications"),
+    media: readList("media"),
+    staticBundles: readList("staticBundles"),
+    leads: readList("leads"),
+    outreach: readList("outreach")
+  };
+}
+var LocalDynasiteStore = class _LocalDynasiteStore {
+  constructor(dbPath, db, config, workspace2) {
+    this.dbPath = dbPath;
+    this.db = db;
+    this.config = config;
+    this.workspace = workspace2;
+  }
+  static async open(input) {
+    const opened = await openLocalPlaneDatabase(input.config);
+    registerPlaneApp(opened.db, DYNASITE_APP_ID, "Dynasite");
+    registerPlaneTransferSchema(opened.db, DYNASITE_APP_ID, {
+      payloadSchema: DYNASITE_ARCHIVE_SCHEMA,
+      displayName: "Dynasite archive transfer",
+      description: "Portable prospect, site, CMS, media metadata, static bundle metadata, lead, and outreach archive records; research jobs, generation, previews, publishing, and bridge delivery stay hosted."
+    });
+    upsertPlaneWorkspace(opened.db, DYNASITE_APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    const store = new _LocalDynasiteStore(opened.dbPath, opened.db, input.config, input.workspace);
+    store.ensureSchema();
+    return store;
+  }
+  close() {
+    this.db.close();
+  }
+  ensureSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS dynasite_local_records (
+        record_type TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        business_id TEXT,
+        site_id TEXT,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, record_type, record_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_dynasite_local_records_business
+        ON dynasite_local_records (workspace_id, business_id, record_type, updated_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_dynasite_local_records_site
+        ON dynasite_local_records (workspace_id, site_id, record_type, updated_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_dynasite_local_records_type
+        ON dynasite_local_records (workspace_id, record_type, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS dynasite_local_projections (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        site_id TEXT NOT NULL,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        payload_json TEXT NOT NULL,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_dynasite_local_projections_workspace_scope
+        ON dynasite_local_projections (workspace_id, scope, updated_at DESC);
+    `);
+  }
+  count(type) {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM dynasite_local_records WHERE workspace_id = ? AND record_type = ?").get(this.workspace.workspaceId, type);
+    return row?.count ?? 0;
+  }
+  counts() {
+    return Object.fromEntries(RECORD_TYPES.map((type) => [COUNT_FIELDS[type], this.count(type)]));
+  }
+  projectionCount() {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM dynasite_local_projections WHERE workspace_id = ?").get(this.workspace.workspaceId);
+    return row?.count ?? 0;
+  }
+  info() {
+    const inventory = getLocalPlaneInventory(this.db, { appId: DYNASITE_APP_ID });
+    return {
+      dbPath: this.dbPath,
+      workspaceId: this.workspace.workspaceId,
+      ...this.counts(),
+      projectionCount: this.projectionCount(),
+      localArchive: "enabled",
+      researchJobsLocal: false,
+      sourceCrawlingLocal: false,
+      generationLocal: false,
+      previewHostingLocal: false,
+      publishingLocal: false,
+      staticBundleBytesLocal: false,
+      emdashProvisioningLocal: false,
+      leadForwardingLocal: false,
+      bridgeDeliveryLocal: false,
+      planeAppCount: inventory.counts.apps,
+      planeWorkspaceCount: inventory.counts.workspaces,
+      transferSchemaCount: inventory.counts.transferSchemas,
+      transferCount: inventory.counts.transfers,
+      aiJobCount: inventory.counts.aiJobs
+    };
+  }
+  listRecords(type, filterId) {
+    let rows;
+    if (filterId && (BUSINESS_SCOPED_TYPES.has(type) || type === "sites")) {
+      rows = this.db.prepare(
+        "SELECT * FROM dynasite_local_records WHERE workspace_id = ? AND record_type = ? AND business_id = ? ORDER BY updated_at DESC"
+      ).all(this.workspace.workspaceId, type, filterId);
+    } else if (filterId && SITE_SCOPED_TYPES.has(type)) {
+      rows = this.db.prepare(
+        "SELECT * FROM dynasite_local_records WHERE workspace_id = ? AND record_type = ? AND site_id = ? ORDER BY updated_at DESC"
+      ).all(this.workspace.workspaceId, type, filterId);
+    } else {
+      rows = this.db.prepare("SELECT * FROM dynasite_local_records WHERE workspace_id = ? AND record_type = ? ORDER BY updated_at DESC").all(this.workspace.workspaceId, type);
+    }
+    return rows.map(rowPayload);
+  }
+  getRecord(type, id) {
+    const row = this.db.prepare(
+      "SELECT * FROM dynasite_local_records WHERE workspace_id = ? AND record_type = ? AND record_id = ? LIMIT 1"
+    ).get(this.workspace.workspaceId, type, id);
+    return row ? rowPayload(row) : null;
+  }
+  upsertRecord(type, input) {
+    const id = readRecordId(input, type);
+    const existing = this.getRecord(type, id) ?? void 0;
+    const record = normalizePayloadRecord(input, type, this.workspace.workspaceId, existing);
+    this.db.prepare(
+      `INSERT INTO dynasite_local_records (
+          record_type, record_id, workspace_id, business_id, site_id, payload_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, record_type, record_id) DO UPDATE SET
+          business_id = excluded.business_id,
+          site_id = excluded.site_id,
+          payload_json = excluded.payload_json,
+          updated_at = excluded.updated_at`
+    ).run(
+      type,
+      record.id,
+      this.workspace.workspaceId,
+      record.businessId,
+      record.siteId,
+      JSON.stringify(record.payload),
+      record.createdAt,
+      record.updatedAt
+    );
+    return record.payload;
+  }
+  getSiteProjection(projectionId) {
+    const row = this.db.prepare("SELECT published_at, revoked_at FROM dynasite_local_projections WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, projectionId);
+    return row ?? null;
+  }
+  buildSiteProjectionEnvelope(input) {
+    const site = this.getRecord("sites", input.siteId);
+    if (!site) throw new Error(`Local Dynasite site archive record not found: ${input.siteId}`);
+    const businessId = readOptionalString(site.businessId ?? site.business_id);
+    const projectionId = stableSiteProjectionId({
+      workspaceId: this.workspace.workspaceId,
+      siteId: input.siteId
+    });
+    const existing = this.getSiteProjection(projectionId);
+    const now = isoNow3();
+    const publishedAt = existing?.published_at ?? now;
+    const revokedAt = input.action === "revoke" ? now : null;
+    const business = businessId ? this.getRecord("businesses", businessId) : null;
+    return {
+      version: 1,
+      appId: DYNASITE_APP_ID,
+      event: {
+        type: input.action === "publish" ? "dynasite.site.projection.upserted" : "dynasite.site.projection.revoked",
+        workspaceId: this.workspace.workspaceId,
+        projection: {
+          id: projectionId,
+          scope: "site-summary",
+          siteId: input.siteId,
+          publishedByUserId: input.publishedByUserId,
+          publishedByEmail: input.publishedByEmail,
+          publishedAt,
+          revokedAt
+        },
+        site: {
+          id: input.siteId,
+          status: optionalPayloadString(site, "status"),
+          publishStatus: optionalPayloadString(site, "publishStatus") ?? optionalPayloadString(site, "publish_status"),
+          createdOn: dateOnly(site.createdAt ?? site.created_at),
+          updatedOn: dateOnly(site.updatedAt ?? site.updated_at)
+        },
+        summary: {
+          workspaceId: this.workspace.workspaceId,
+          siteId: input.siteId,
+          hasBusinessRecord: Boolean(business),
+          intelPackageCount: businessId ? this.listRecords("intelPackages", businessId).length : 0,
+          sourceSiteCount: businessId ? this.listRecords("sourceSites", businessId).length : 0,
+          cmsDraftCount: this.listRecords("cmsDrafts", input.siteId).length,
+          revisionCount: this.listRecords("revisions", input.siteId).length,
+          publicationCount: this.listRecords("publications", input.siteId).length,
+          mediaItemCount: this.listRecords("media", input.siteId).length,
+          staticBundleCount: this.listRecords("staticBundles", input.siteId).length,
+          leadCount: this.listRecords("leads", input.siteId).length,
+          outreachCount: businessId ? this.listRecords("outreach", businessId).length : 0
+        },
+        exclusions: [
+          "business names and prospect contact details",
+          "business URLs, addresses, phone numbers, and email addresses",
+          "research notes and intel package bodies",
+          "source-site URLs and scraped/source text",
+          "generated CMS copy and structured page content",
+          "site slugs, preview URLs, live URLs, and public route paths",
+          "media URLs, media metadata, and media bytes",
+          "static bundle paths, file names, byte payloads, and hashes",
+          "lead names, email addresses, messages, and exact submission times",
+          "outreach message bodies and delivery state details",
+          "Emdash provisioning state and Cloudflare resource identifiers",
+          "ZeroSMB bridge payloads and callback tokens",
+          "raw local archive rows",
+          "transfer bundle payloads"
+        ]
+      }
+    };
+  }
+  recordSiteProjection(envelope) {
+    const now = isoNow3();
+    this.db.prepare(
+      `INSERT INTO dynasite_local_projections (
+          id, workspace_id, scope, site_id, published_at, revoked_at, payload_json, last_projected_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          scope = excluded.scope,
+          site_id = excluded.site_id,
+          published_at = excluded.published_at,
+          revoked_at = excluded.revoked_at,
+          payload_json = excluded.payload_json,
+          last_projected_at = excluded.last_projected_at,
+          updated_at = excluded.updated_at`
+    ).run(
+      envelope.event.projection.id,
+      this.workspace.workspaceId,
+      envelope.event.projection.scope,
+      envelope.event.projection.siteId,
+      envelope.event.projection.publishedAt,
+      envelope.event.projection.revokedAt,
+      JSON.stringify(envelope),
+      now,
+      now
+    );
+  }
+  exportPayload() {
+    return {
+      kind: DYNASITE_ARCHIVE_SCHEMA,
+      version: 1,
+      businesses: this.listRecords("businesses"),
+      sites: this.listRecords("sites"),
+      intelPackages: this.listRecords("intelPackages"),
+      sourceSites: this.listRecords("sourceSites"),
+      cmsDrafts: this.listRecords("cmsDrafts"),
+      revisions: this.listRecords("revisions"),
+      publications: this.listRecords("publications"),
+      media: this.listRecords("media"),
+      staticBundles: this.listRecords("staticBundles"),
+      leads: this.listRecords("leads"),
+      outreach: this.listRecords("outreach")
+    };
+  }
+  exportBundle() {
+    const payload = this.exportPayload();
+    const bundle = createPlaneTransferBundle({
+      appId: DYNASITE_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      plane: this.config,
+      payloadSchema: DYNASITE_ARCHIVE_SCHEMA,
+      payload
+    });
+    recordPlaneTransfer(this.db, {
+      appId: DYNASITE_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      direction: "export",
+      source: { data: this.config.data, ai: this.config.ai },
+      payloadSchema: DYNASITE_ARCHIVE_SCHEMA,
+      payloadSha256: bundle.payloadSha256
+    });
+    return bundle;
+  }
+  importPlan(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: DYNASITE_APP_ID,
+      payloadSchema: DYNASITE_ARCHIVE_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    return createPlaneTransferImportPlan({
+      appId: bundle?.appId ?? DYNASITE_APP_ID,
+      workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+      payloadSchema: bundle?.payloadSchema ?? DYNASITE_ARCHIVE_SCHEMA,
+      payload: normalized,
+      bundle,
+      destination: { data: this.config.data, ai: this.config.ai }
+    });
+  }
+  importValue(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: DYNASITE_APP_ID,
+      payloadSchema: DYNASITE_ARCHIVE_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    this.db.exec("BEGIN");
+    try {
+      for (const type of RECORD_TYPES) {
+        for (const record of normalized[type]) this.upsertRecord(type, record);
+      }
+      const source = bundle?.source;
+      const transferId = recordPlaneTransfer(this.db, {
+        appId: DYNASITE_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        direction: "import",
+        source,
+        destination: { data: this.config.data, ai: this.config.ai },
+        payloadSchema: bundle?.payloadSchema ?? DYNASITE_ARCHIVE_SCHEMA,
+        payloadSha256: bundle?.payloadSha256 ?? hashPlanePayload(normalized)
+      });
+      this.db.exec("COMMIT");
+      return {
+        ok: true,
+        dataPlane: "local",
+        workspaceId: this.workspace.workspaceId,
+        ...this.counts(),
+        transferId,
+        researchJobsLocal: false,
+        generationLocal: false,
+        previewHostingLocal: false,
+        publishingLocal: false
+      };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+};
+
+// cli/local-plane.ts
+var HOSTED_BOUNDARY = "Dynasite research jobs, source crawling, OpenRouter/Dunes generation, Emdash provisioning, preview hosting, public publishing, static bundle bytes, lead forwarding, ZeroSMB bridge delivery, and the Business projection receiver remain Cloudflare-owned.";
+function asString(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.at(-1);
+  return void 0;
+}
+function asBoolean(value) {
+  return value === true;
+}
+function trimOption(value) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : void 0;
+}
+function parseJsonText(text, label) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid ${label}: ${message}`, { cause: error });
+  }
+}
+function readObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+  return value;
+}
+function resolveDynasitePlaneConfig(options, io) {
+  return resolvePlaneConfigInspection({
+    appId: DYNASITE_APP_ID,
+    env: io.env,
+    data: asString(options.store),
+    ai: asString(options.ai),
+    localDbPath: asString(options["local-db"])
+  });
+}
+function isLocalDataRoute(options, io) {
+  return resolveDynasitePlaneConfig(options, io).data === "local";
+}
+function hostedDynasiteBoundary() {
+  return HOSTED_BOUNDARY;
+}
+function localWorkspace(options, io) {
+  const workspaceId = trimOption(asString(options.workspace)) ?? trimOption(io.env.MERE_DYNASITE_WORKSPACE_ID) ?? trimOption(io.env.DYNASITE_WORKSPACE_ID) ?? trimOption(io.env.MERE_WORKSPACE_ID) ?? trimOption(io.env.MERE_WORKSPACE) ?? "personal";
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: workspaceId === "personal" ? "Personal Dynasite Archive" : workspaceId
+  };
+}
+function projectionActor(options, io) {
+  return {
+    publishedByUserId: trimOption(asString(options["published-by-user-id"])) ?? trimOption(io.env.MERE_DYNASITE_USER_ID) ?? trimOption(io.env.DYNASITE_USER_ID) ?? trimOption(io.env.USER) ?? "local-user",
+    publishedByEmail: trimOption(asString(options["published-by-email"])) ?? trimOption(io.env.MERE_DYNASITE_USER_EMAIL) ?? trimOption(io.env.DYNASITE_USER_EMAIL) ?? trimOption(io.env.EMAIL) ?? null
+  };
+}
+async function openLocalStore(options, io) {
+  const config = resolveDynasitePlaneConfig(options, io);
+  if (config.data !== "local") {
+    throw new Error("This command requires --store local so Dynasite local data stays explicit.");
+  }
+  return LocalDynasiteStore.open({
+    config,
+    workspace: localWorkspace(options, io)
+  });
+}
+async function withLocalStore(options, io, handler) {
+  const store = await openLocalStore(options, io);
+  try {
+    return await handler(store);
+  } finally {
+    store.close();
+  }
+}
+function readRequired(options, key) {
+  const value = trimOption(asString(options[key]));
+  if (!value) throw new Error(`Missing required --${key}.`);
+  return value;
+}
+async function readJsonData(options) {
+  const file = trimOption(asString(options["data-file"]));
+  const inline = asString(options.data);
+  if (file && inline !== void 0) {
+    throw new Error("Use only one of --data or --data-file.");
+  }
+  const raw = file ? await readFile(file, "utf8") : inline ?? "{}";
+  return readObject(parseJsonText(raw, file ? `--data-file ${file}` : "--data"), file ? "--data-file" : "--data");
+}
+function archiveCounts(payload) {
+  return Object.fromEntries(
+    [
+      ["businesses", "businessCount"],
+      ["sites", "siteCount"],
+      ["intelPackages", "intelPackageCount"],
+      ["sourceSites", "sourceSiteCount"],
+      ["cmsDrafts", "cmsDraftCount"],
+      ["revisions", "revisionCount"],
+      ["publications", "publicationCount"],
+      ["media", "mediaCount"],
+      ["staticBundles", "staticBundleCount"],
+      ["leads", "leadCount"],
+      ["outreach", "outreachCount"]
+    ].map(([key, label]) => [label, Array.isArray(payload[key]) ? payload[key].length : 0])
+  );
+}
+async function handleLocalStoreInfo(options, io) {
+  const config = resolveDynasitePlaneConfig(options, io);
+  if (config.data === "local") {
+    return withLocalStore(options, io, (store) => ({
+      ok: true,
+      app: DYNASITE_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      ...store.info(),
+      projectionPublisherLocal: true,
+      localAiSupported: false,
+      sources: config.sources
+    }));
+  }
+  if (asBoolean(options.json)) {
+    return {
+      ok: true,
+      app: DYNASITE_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      dbPath: config.localDbPath,
+      localArchive: "available",
+      researchJobsLocal: false,
+      sourceCrawlingLocal: false,
+      generationLocal: false,
+      previewHostingLocal: false,
+      publishingLocal: false,
+      staticBundleBytesLocal: false,
+      emdashProvisioningLocal: false,
+      leadForwardingLocal: false,
+      bridgeDeliveryLocal: false,
+      projectionPublisherLocal: true,
+      localAiSupported: false,
+      sources: config.sources
+    };
+  }
+  io.stdout(
+    formatPlaneConfigReport({
+      kind: "mere.local-plane.config",
+      configs: [config]
+    })
+  );
+  io.stdout(
+    `Dynasite archives can be stored locally with --store local. Prospect records, generated-site metadata, CMS drafts, static bundle metadata, leads, and outreach records are portable. ${HOSTED_BOUNDARY}
+`
+  );
+  return "";
+}
+async function handleLocalExport(options, io) {
+  return withLocalStore(options, io, async (store) => {
+    const bundle = store.exportBundle();
+    const output = trimOption(asString(options.output));
+    if (!output) return bundle;
+    const target = resolvePath(output);
+    await mkdir2(dirname(target), { recursive: true });
+    await writeFile(target, JSON.stringify(bundle, null, 2));
+    return {
+      ok: true,
+      path: target,
+      appId: bundle.appId,
+      workspaceId: bundle.workspaceId,
+      payloadSchema: bundle.payloadSchema,
+      payloadSha256: bundle.payloadSha256,
+      ...archiveCounts(bundle.payload)
+    };
+  });
+}
+async function handleLocalImport(options, io) {
+  return withLocalStore(options, io, async (store) => {
+    const value = parseJsonText(await readFile(readRequired(options, "file"), "utf8"), "local Dynasite archive transfer bundle");
+    return asBoolean(options["dry-run"]) ? store.importPlan(value) : store.importValue(value);
+  });
+}
+async function handleLocalRecordGroup(type, action, args, options, io) {
+  return withLocalStore(options, io, async (store) => {
+    const normalizedAction = action ?? "list";
+    if (normalizedAction === "list") return { ok: true, records: store.listRecords(type, args[0]) };
+    if (normalizedAction === "get" || normalizedAction === "show") {
+      const id = args[0];
+      if (!id) throw new Error(`${type} ${normalizedAction} requires <id>.`);
+      return { ok: true, record: store.getRecord(type, id) };
+    }
+    if (normalizedAction === "upsert") return store.upsertRecord(type, await readJsonData(options));
+    if (type === "sites" && (normalizedAction === "publish" || normalizedAction === "revoke")) {
+      const siteId = trimOption(args[0]) ?? trimOption(asString(options["site-id"]));
+      if (!siteId) throw new Error(`sites ${normalizedAction} requires <site-id> or --site-id <id>.`);
+      const envelope = store.buildSiteProjectionEnvelope({
+        action: normalizedAction,
+        siteId,
+        ...projectionActor(options, io)
+      });
+      if (asBoolean(options["dry-run"])) {
+        let receiverUrl;
+        try {
+          receiverUrl = resolveCloudProjectionTarget({
+            appId: DYNASITE_APP_ID,
+            env: io.env,
+            receiverUrl: trimOption(asString(options["projection-url"])),
+            bearerToken: trimOption(asString(options["projection-token"]))
+          }).receiverUrl;
+        } catch {
+          receiverUrl = void 0;
+        }
+        return {
+          ok: true,
+          dryRun: true,
+          store: "local",
+          projection: "cloudflare",
+          action: normalizedAction,
+          projectionId: envelope.event.projection.id,
+          receiverUrl,
+          event: envelope
+        };
+      }
+      const delivery = await deliverCloudProjectionEvent({
+        appId: DYNASITE_APP_ID,
+        env: io.env,
+        receiverUrl: trimOption(asString(options["projection-url"])),
+        bearerToken: trimOption(asString(options["projection-token"])),
+        event: envelope,
+        fetchImpl: async (input, init) => (io.fetchImpl ?? fetch)(input, init)
+      });
+      store.recordSiteProjection(envelope);
+      return {
+        ok: true,
+        store: "local",
+        projection: "cloudflare",
+        action: normalizedAction,
+        projectionId: envelope.event.projection.id,
+        receiverUrl: delivery.receiverUrl,
+        status: delivery.status,
+        receiver: delivery.responseJson,
+        summary: envelope.event.summary
+      };
+    }
+    throw new Error(`--store local supports ${type} list/get/show/upsert${type === "sites" ? "/publish/revoke" : ""} only. ${HOSTED_BOUNDARY}`);
+  });
+}
+
 // cli/mere-dynasite.ts
 var DEFAULT_BASE_URL = "https://sites.merekit.com";
-var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["discover", "e2e", "help", "json", "version"]);
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["discover", "dry-run", "e2e", "help", "json", "version", "yes"]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "action",
   "alt",
+  "ai",
   "base-url",
   "bundle-id",
+  "confirm",
   "cookie",
+  "data",
+  "data-file",
   "e2e-token",
   "edit-json",
   "entry-path",
@@ -16,11 +1487,18 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "file",
   "item-json",
   "limit",
+  "local-db",
+  "output",
+  "projection-token",
+  "projection-url",
+  "published-by-email",
+  "published-by-user-id",
   "role",
   "site-id",
   "source",
   "source-dir",
   "status",
+  "store",
   "target-index",
   "title",
   "token",
@@ -29,7 +1507,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
 ]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
-  ["v", "version"]
+  ["v", "version"],
+  ["y", "yes"]
 ]);
 var CliError = class extends Error {
   constructor(message, exitCode2 = 1) {
@@ -45,10 +1524,10 @@ var HttpError = class extends CliError {
     this.name = "HttpError";
   }
 };
-function manifestCommand(path, summary, options = {}) {
+function manifestCommand(path3, summary, options = {}) {
   return {
-    id: path.join("."),
-    path,
+    id: path3.join("."),
+    path: path3,
     summary,
     auth: options.auth ?? "session",
     risk: options.risk ?? "read",
@@ -62,6 +1541,9 @@ function manifestCommand(path, summary, options = {}) {
   };
 }
 var AUTH_FLAGS = ["base-url", "workspace", "json", "token", "cookie", "e2e-token", "e2e"];
+var PLANE_FLAGS = ["workspace", "store", "ai", "local-db", "json"];
+var PLANE_DATA_FLAGS = [...PLANE_FLAGS, "data", "data-file"];
+var PROJECTION_FLAGS = ["projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"];
 var COMMAND_MANIFEST = {
   schemaVersion: 1,
   app: "mere-dynasite",
@@ -70,7 +1552,26 @@ var COMMAND_MANIFEST = {
   auth: { kind: "mixed" },
   baseUrlEnv: ["DYNASITE_BASE_URL", "MERE_DYNASITE_BASE_URL"],
   sessionPath: null,
-  globalFlags: ["base-url", "workspace", "json", "token", "cookie", "e2e-token", "e2e"],
+  globalFlags: [
+    "base-url",
+    "workspace",
+    "json",
+    "token",
+    "cookie",
+    "e2e-token",
+    "e2e",
+    "store",
+    "ai",
+    "local-db",
+    "data",
+    "data-file",
+    "output",
+    "projection-url",
+    "projection-token",
+    "published-by-user-id",
+    "published-by-email",
+    "dry-run"
+  ],
   commands: [
     manifestCommand(["commands"], "Print the machine-readable Dynasite command manifest.", {
       auth: "none",
@@ -90,6 +1591,57 @@ var COMMAND_MANIFEST = {
       auth: "none",
       flags: AUTH_FLAGS,
       auditDefault: true
+    }),
+    manifestCommand(["store", "info"], "Inspect Dynasite local/cloud data and AI plane selection.", {
+      auth: "none",
+      flags: PLANE_FLAGS,
+      auditDefault: true
+    }),
+    manifestCommand(["export"], "Export local Dynasite archive records as a portable transfer bundle.", {
+      auth: "workspace",
+      risk: "read",
+      flags: [...PLANE_FLAGS, "output"]
+    }),
+    manifestCommand(["import"], "Import a local Dynasite archive transfer bundle.", {
+      auth: "workspace",
+      risk: "write",
+      flags: [...PLANE_FLAGS, "file", "dry-run"]
+    }),
+    manifestCommand(["businesses", "upsert"], "Upsert a local business research record.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
+    }),
+    manifestCommand(["sites", "upsert"], "Upsert a local generated-site record.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
+    }),
+    manifestCommand(["source-sites", "upsert"], "Upsert a local source-site snapshot record.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
+    }),
+    manifestCommand(["cms", "upsert"], "Upsert a local CMS draft record.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
+    }),
+    manifestCommand(["bundles", "upsert"], "Upsert local static bundle metadata.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
+    }),
+    manifestCommand(["leads", "upsert"], "Upsert a local lead or inquiry record.", {
+      auth: "workspace",
+      risk: "write",
+      supportsData: true,
+      flags: PLANE_DATA_FLAGS
     }),
     manifestCommand(["auth", "whoami"], "Show the current Dynasite session user.", {
       flags: AUTH_FLAGS
@@ -138,10 +1690,16 @@ var COMMAND_MANIFEST = {
       flags: [...AUTH_FLAGS, "site-id"],
       positionals: ["revisionId"]
     }),
-    manifestCommand(["sites", "publish"], "Publish a site preview or live URL.", {
+    manifestCommand(["sites", "publish"], "Publish a hosted site URL, or with --store local project a selected site summary to Business.", {
       risk: "external",
       requiresYes: true,
-      flags: [...AUTH_FLAGS, "site-id", "environment"]
+      flags: [...AUTH_FLAGS, "site-id", "environment", ...PROJECTION_FLAGS]
+    }),
+    manifestCommand(["sites", "revoke"], "Revoke a selected local Dynasite site summary from Business.", {
+      auth: "workspace",
+      risk: "external",
+      flags: [...PLANE_FLAGS, "site-id", ...PROJECTION_FLAGS],
+      positionals: ["siteId"]
     }),
     manifestCommand(["sites", "bundle", "upload"], "Upload a static site bundle from a directory or zip.", {
       risk: "write",
@@ -167,8 +1725,8 @@ var COMMAND_MANIFEST = {
   ]
 };
 async function cliVersion() {
-  const { readFile } = await import("fs/promises");
-  const raw = await readFile(new URL("../package.json", import.meta.url), "utf8");
+  const { readFile: readFile2 } = await import("fs/promises");
+  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
   const parsed = JSON.parse(raw);
   return parsed.version?.trim() || "0.0.0";
 }
@@ -272,8 +1830,8 @@ function workspace(parsed, ctx) {
 function fetchImpl(ctx) {
   return ctx.fetchImpl ?? fetch;
 }
-async function fetchJson(parsed, ctx, path, options = {}) {
-  const url = new URL(path, normalizeBaseUrl(baseUrl(parsed, ctx)));
+async function fetchJson(parsed, ctx, path3, options = {}) {
+  const url = new URL(path3, normalizeBaseUrl(baseUrl(parsed, ctx)));
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value) url.searchParams.set(key, value);
   }
@@ -319,6 +1877,9 @@ function commandKey(positionals) {
   if (positionals.length === 0) return "status";
   if (positionals[0] === "completion") return "completion";
   if (positionals[0] === "commands") return "commands";
+  if (positionals[0] === "store" && positionals[1] === "info") return "store info";
+  if (positionals[0] === "export") return "export";
+  if (positionals[0] === "import") return "import";
   if (positionals[0] === "businesses" && positionals.length === 1) return "businesses list";
   if (positionals[0] === "sites" && positionals.length === 1) return "sites list";
   if (positionals[0] === "sites" && positionals[1] === "get") return "sites get";
@@ -326,6 +1887,7 @@ function commandKey(positionals) {
   if (positionals[0] === "sites" && positionals[1] === "media") return `sites media ${positionals[2] ?? ""}`.trim();
   if (positionals[0] === "sites" && positionals[1] === "revisions") return `sites revisions ${positionals[2] ?? ""}`.trim();
   if (positionals[0] === "sites" && positionals[1] === "publish") return "sites publish";
+  if (positionals[0] === "sites" && positionals[1] === "revoke") return "sites revoke";
   if (positionals[0] === "sites" && positionals[1] === "bundle") return `sites bundle ${positionals[2] ?? ""}`.trim();
   if (positionals[0] === "outreach" && positionals.length === 1) return "outreach list";
   return positionals.slice(0, 2).join(" ");
@@ -412,14 +1974,14 @@ function safeBundlePath(pathname) {
 }
 async function packStaticBundle(parsed) {
   const { join, relative, resolve } = await import("path");
-  const { readdir, readFile, stat } = await import("fs/promises");
+  const { readdir, readFile: readFile2, stat } = await import("fs/promises");
   const title = flag(parsed, "title") ?? null;
   const entryPath = flag(parsed, "entry-path") ?? "index.html";
   const zip = flag(parsed, "zip");
   const sourceDir = flag(parsed, "source-dir");
   if (zip && sourceDir) throw new CliError("Use either --source-dir or --zip, not both.", 2);
   if (zip) {
-    const data = await readFile(zip);
+    const data = await readFile2(zip);
     return {
       title,
       entryPath,
@@ -443,11 +2005,11 @@ async function packStaticBundle(parsed) {
       }
       if (!entry.isFile()) continue;
       const absolute = join(dir, entry.name);
-      const path = safeBundlePath(relative(root, absolute));
-      const data = await readFile(absolute);
+      const path3 = safeBundlePath(relative(root, absolute));
+      const data = await readFile2(absolute);
       files.push({
-        path,
-        contentType: inferContentType(path),
+        path: path3,
+        contentType: inferContentType(path3),
         dataBase64: data.toString("base64"),
         sizeBytes: data.byteLength
       });
@@ -461,8 +2023,8 @@ async function packStaticBundle(parsed) {
     files
   };
 }
-async function postFormJson(parsed, ctx, path, formData, options = {}) {
-  const url = new URL(path, normalizeBaseUrl(baseUrl(parsed, ctx)));
+async function postFormJson(parsed, ctx, path3, formData, options = {}) {
+  const url = new URL(path3, normalizeBaseUrl(baseUrl(parsed, ctx)));
   const headers = { accept: "application/json" };
   const token = authToken(parsed, ctx);
   const cookie = cookieHeader(parsed, ctx);
@@ -525,17 +2087,35 @@ function printHelp(ctx) {
     sites cms get/edit/assist Manage editable CMS drafts
     sites media import/upload Import URLs or upload local media
     sites revisions list/revert
-    sites publish             Publish preview or live
+    sites publish             Publish preview/live, or local site summary projection
+    sites revoke              Revoke local site summary projection from Business
     sites bundle upload       Upload static HTML/CSS/JS/assets from R2-backed bundle
     sites bundle status|publish|rollback
     outreach list            List outreach records
+    store info               Inspect local/cloud data and AI plane selection
+    export --output FILE      Export local Dynasite archive transfer bundle
+    import --file FILE        Import local Dynasite archive transfer bundle
+    businesses/sites/... upsert --data JSON
+                             Upsert local archive records with --store local
     commands --json          Print command manifest JSON
     completion [bash|zsh|fish]
 
   Flags:
     --base-url <url>         Override API base
     --workspace <id>         Forward workspace context as x-mere-workspace
+    --store local|cloud      Choose supported local/cloud data-plane commands
+    --ai local|cloud         Choose AI plane for local-plane inspection
+    --local-db <path>        Override shared Mere local-plane SQLite path
     --json                   Machine-readable JSON output
+    --data <json>            JSON payload for local archive upsert
+    --data-file <file>       Read JSON payload for local archive upsert
+    --output <file>          Write local archive export bundle
+    --projection-url <url>    Business projection receiver for local publish/revoke
+    --projection-token <tok>  Business projection bearer token
+    --published-by-user-id <id>
+                             Publisher id for local projection audit envelopes
+    --published-by-email <email>
+                             Publisher email for local projection audit envelopes
     --token <token>          App session bearer token
     --cookie <cookie>        Cookie header from an authenticated browser session
     --e2e-token <token>      Local/E2E access token for loopback dev
@@ -553,6 +2133,14 @@ function printHelp(ctx) {
     DYNASITE_SESSION_TOKEN, MERE_DYNASITE_SESSION_TOKEN
     DYNASITE_COOKIE, MERE_DYNASITE_COOKIE
     DYNASITE_E2E_ACCESS_TOKEN
+
+  Local plane:
+    --store local currently supports archive metadata commands:
+    businesses/sites/intel/source-sites/cms/revisions/publications/media/
+    bundles/leads/outreach list|get|show|upsert, sites publish/revoke,
+    plus store info, export, and import. Research jobs, source crawling, generation, Emdash
+    provisioning, preview hosting, public publishing, static bundle bytes,
+    lead forwarding, bridge delivery, and Business projection receiving remain hosted.
 
 `);
   return 0;
@@ -793,8 +2381,8 @@ async function cmdSiteMediaUpload(parsed, ctx) {
   const file = flag(parsed, "file")?.trim();
   if (!file) throw new CliError("--file is required.", 2);
   const { basename } = await import("path");
-  const { readFile } = await import("fs/promises");
-  const data = await readFile(file);
+  const { readFile: readFile2 } = await import("fs/promises");
+  const data = await readFile2(file);
   const form = new FormData();
   form.set("file", new Blob([data], { type: inferContentType(file) }), basename(file));
   form.set("alt", flag(parsed, "alt") ?? basename(file));
@@ -932,6 +2520,96 @@ async function cmdOutreach(parsed, ctx) {
     { key: "created_at", label: "created", width: 22 }
   ]);
 }
+function localPlaneIo(ctx) {
+  return {
+    env: ctx.env,
+    fetchImpl: ctx.fetchImpl,
+    stdout: (text) => {
+      ctx.stdout(text);
+    }
+  };
+}
+function writeLocalResult(ctx, parsed, result) {
+  if (result === "" || result === void 0) return;
+  if (boolFlag(parsed, "json")) {
+    ctx.stdout(JSON.stringify(result, null, 2) + "\n");
+    return;
+  }
+  if (typeof result === "string") {
+    ctx.stdout(result);
+    return;
+  }
+  ctx.stdout(JSON.stringify(result, null, 2) + "\n");
+}
+function localRecordType(group) {
+  switch (group) {
+    case "business":
+    case "businesses":
+      return "businesses";
+    case "site":
+    case "sites":
+      return "sites";
+    case "intel":
+    case "intel-packages":
+      return "intelPackages";
+    case "source-site":
+    case "source-sites":
+      return "sourceSites";
+    case "cms":
+    case "draft":
+    case "drafts":
+      return "cmsDrafts";
+    case "revision":
+    case "revisions":
+      return "revisions";
+    case "publication":
+    case "publications":
+      return "publications";
+    case "media":
+      return "media";
+    case "bundle":
+    case "bundles":
+    case "static-bundle":
+    case "static-bundles":
+      return "staticBundles";
+    case "lead":
+    case "leads":
+    case "inquiry":
+    case "inquiries":
+      return "leads";
+    case "outreach":
+      return "outreach";
+    default:
+      return null;
+  }
+}
+async function handleLocalDataCommand(parsed, ctx) {
+  const [group, command, ...rest] = parsed.positionals;
+  const io = localPlaneIo(ctx);
+  const localData = isLocalDataRoute(parsed.flags, io);
+  let result;
+  if (group === "store") {
+    if (command !== "info") throw new CliError("Unknown store command: expected info.", 2);
+    result = await handleLocalStoreInfo(parsed.flags, io);
+  } else if (group === "export") {
+    result = await handleLocalExport(parsed.flags, io);
+  } else if (group === "import") {
+    result = await handleLocalImport(parsed.flags, io);
+  } else if (localData) {
+    const type = localRecordType(group);
+    if (!type) {
+      throw new CliError(
+        `--store local is not supported for ${group ?? "(missing)"}. Supported local commands are store info, businesses, sites list/get/show/upsert/publish/revoke, intel, source-sites, cms, revisions, publications, media, bundles, leads, outreach, export, and import. ${hostedDynasiteBoundary()}`,
+        1
+      );
+    }
+    result = await handleLocalRecordGroup(type, command ?? "list", rest, parsed.flags, io);
+  } else {
+    return false;
+  }
+  writeLocalResult(ctx, parsed, result);
+  return true;
+}
 async function runCli(rawArgs, ctx) {
   let parsed;
   try {
@@ -962,6 +2640,7 @@ async function runCli(rawArgs, ctx) {
     return printHelp(ctx);
   }
   try {
+    if (await handleLocalDataCommand(parsed, ctx)) return 0;
     switch (key) {
       case "about":
         return printAbout(parsed, ctx);
