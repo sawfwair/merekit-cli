@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.4.1 - 2026-05-27
+
+- Fixed adapter generation to prefer `mere-*` app repositories when both legacy and prefixed checkouts exist, so the bundled Network adapter includes its local-plane command surface.
+
 ## 0.4.0 - 2026-05-27
 
 - Regenerated all bundled app adapters from the current Mere workspace, expanding the command surface for local-plane aware apps.

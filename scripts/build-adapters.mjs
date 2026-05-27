@@ -11,6 +11,10 @@ const adaptersDir = path.join(packageRoot, 'adapters');
 const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
 
 function repo(name) {
+	if (name !== 'business') {
+		const prefixed = path.join(mereRoot, `mere-${name}`);
+		if (existsSync(prefixed)) return prefixed;
+	}
 	const direct = path.join(mereRoot, name);
 	if (existsSync(direct)) return direct;
 	const prefixed = path.join(mereRoot, `mere-${name}`);
