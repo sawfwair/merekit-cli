@@ -21,6 +21,11 @@ export const PRODUCT_APP_KEYS = [
 ];
 export const APP_KEYS = [...PRODUCT_APP_KEYS];
 function repo(mereRoot, name) {
+    if (name !== 'business') {
+        const prefixed = path.join(mereRoot, `mere-${name}`);
+        if (existsSync(prefixed))
+            return prefixed;
+    }
     const direct = path.join(mereRoot, name);
     if (existsSync(direct))
         return direct;
