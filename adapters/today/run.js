@@ -5013,8 +5013,8 @@ function manifestCommand(path5, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -5044,68 +5044,191 @@ function commandManifest() {
       "local-db",
       "projection-url",
       "projection-token",
-      "published-by-user-id",
-      "published-by-email",
       "persist-to"
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
-      manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none", risk: "write" }),
-      manifestCommand(["db", "migrate"], "Run local migrations.", { auth: "none", risk: "write" }),
+      manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none", risk: "write", flags: ["sql"] }),
+      manifestCommand(["db", "migrate"], "Run local migrations.", { auth: "none", risk: "write", flags: ["file", "dir"] }),
       manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
-      manifestCommand(["export"], "Export local mere.today time transfer bundle.", { auth: "none", risk: "read" }),
-      manifestCommand(["import"], "Import local mere.today time transfer bundle.", { auth: "none", risk: "write" }),
+      manifestCommand(["export"], "Export local mere.today time transfer bundle.", { auth: "none", risk: "read", flags: ["output"] }),
+      manifestCommand(["import"], "Import local mere.today time transfer bundle.", { auth: "none", risk: "write", flags: ["file", "dry-run"] }),
       manifestCommand(["tenant", "resolve"], "Resolve workspace to tenant.", { auditDefault: true }),
       manifestCommand(["tenant", "list"], "List tenants."),
       manifestCommand(["tenant", "get"], "Get tenant."),
-      manifestCommand(["tenant", "create"], "Create tenant.", { risk: "write", supportsData: true }),
-      manifestCommand(["tenant", "update"], "Update tenant.", { risk: "write", supportsData: true }),
-      manifestCommand(["membership", "list"], "List memberships."),
-      manifestCommand(["membership", "add"], "Add membership.", { risk: "write", supportsData: true }),
-      manifestCommand(["membership", "remove"], "Remove membership.", { risk: "destructive", requiresYes: true }),
-      ...["service", "time-project", "time-entry"].flatMap((resource) => [
-        manifestCommand([resource, "list"], `List ${resource} records.`),
-        manifestCommand([resource, "get"], `Get a ${resource} record.`),
-        manifestCommand([resource, "create"], `Create a ${resource} record.`, { risk: "write", supportsData: true }),
-        manifestCommand([resource, "update"], `Update a ${resource} record.`, { risk: "write", supportsData: true })
-      ]),
+      manifestCommand(["tenant", "create"], "Create tenant.", {
+        risk: "write",
+        supportsData: true,
+        flags: [
+          "name",
+          "slug",
+          "id",
+          "organization-id",
+          "organization-slug",
+          "brand-initials",
+          "event-title",
+          "description",
+          "cover-item",
+          "duration",
+          "meeting-type",
+          "timezone",
+          "accent-color",
+          "logo-url",
+          "notify-email",
+          "from-email",
+          "webhook-url",
+          "zerosmb-tenant-id",
+          "status",
+          "owner-user",
+          "owner-role"
+        ]
+      }),
+      manifestCommand(["tenant", "update"], "Update tenant.", {
+        risk: "write",
+        supportsData: true,
+        flags: [
+          "slug",
+          "name",
+          "organization-id",
+          "organization-slug",
+          "brand-initials",
+          "event-title",
+          "description",
+          "cover-item",
+          "duration",
+          "meeting-type",
+          "timezone",
+          "accent-color",
+          "logo-url",
+          "notify-email",
+          "from-email",
+          "webhook-url"
+        ]
+      }),
+      manifestCommand(["membership", "list"], "List memberships.", { flags: ["user"] }),
+      manifestCommand(["membership", "add"], "Add membership.", { risk: "write", supportsData: true, flags: ["user", "role"] }),
+      manifestCommand(["membership", "remove"], "Remove membership.", { risk: "destructive", requiresYes: true, flags: ["user"] }),
+      manifestCommand(["service", "list"], "List service records.", { flags: ["active-only"] }),
+      manifestCommand(["service", "get"], "Get a service record.", { flags: ["service"] }),
+      manifestCommand(["service", "create"], "Create a service record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["name", "description", "duration", "meeting-type", "color", "inactive", "sort"]
+      }),
+      manifestCommand(["service", "update"], "Update a service record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["service", "name", "description", "duration", "meeting-type", "color", "inactive", "active", "sort", "slug"]
+      }),
       manifestCommand(["availability", "list"], "List availability."),
-      manifestCommand(["availability", "add"], "Add availability.", { risk: "write", supportsData: true }),
-      manifestCommand(["availability", "update"], "Update availability.", { risk: "write", supportsData: true }),
-      manifestCommand(["availability", "slots"], "List available slots."),
-      manifestCommand(["calendar", "list"], "List calendar events."),
-      manifestCommand(["calendar", "create"], "Create calendar event.", { risk: "write", supportsData: true }),
-      manifestCommand(["calendar", "update-event"], "Update calendar event.", { risk: "write", supportsData: true }),
-      manifestCommand(["calendar", "update-series"], "Update calendar series.", { risk: "write", supportsData: true }),
-      manifestCommand(["calendar", "override-occurrence"], "Override calendar occurrence.", { risk: "write", supportsData: true }),
-      manifestCommand(["calendar", "cancel-occurrence"], "Cancel calendar occurrence.", { risk: "destructive", requiresYes: true }),
-      manifestCommand(["booking", "list"], "List bookings."),
-      manifestCommand(["booking", "get"], "Get booking."),
-      manifestCommand(["booking", "create"], "Create booking.", { risk: "write", supportsData: true }),
-      manifestCommand(["booking", "confirm"], "Confirm booking.", { risk: "write" }),
-      manifestCommand(["booking", "cancel"], "Cancel booking.", { risk: "destructive", requiresYes: true }),
-      manifestCommand(["booking", "reschedule"], "Reschedule booking.", { risk: "write", supportsData: true }),
+      manifestCommand(["availability", "add"], "Add availability.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["type", "start", "end", "day", "date", "priority", "label", "available", "unavailable"]
+      }),
+      manifestCommand(["availability", "update"], "Update availability.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["rule", "type", "start", "end", "day", "date", "priority", "label", "available", "unavailable"]
+      }),
+      manifestCommand(["availability", "slots"], "List available slots.", { flags: ["service", "duration", "date", "from", "to"] }),
+      manifestCommand(["calendar", "list"], "List calendar events.", { flags: ["from", "to"] }),
+      manifestCommand(["calendar", "create"], "Create calendar event.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["title", "description", "start", "end", "timezone", "all-day", "color", "service", "user", "frequency", "interval", "weekday", "until", "count"]
+      }),
+      manifestCommand(["calendar", "update-event"], "Update calendar event.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["event", "title", "description", "start", "end", "timezone", "all-day", "color", "service", "clear-service"]
+      }),
+      manifestCommand(["calendar", "update-series"], "Update calendar series.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["series", "title", "description", "start", "end", "timezone", "all-day", "color", "service", "clear-service", "frequency", "interval", "weekday", "until", "count"]
+      }),
+      manifestCommand(["calendar", "override-occurrence"], "Override calendar occurrence.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["series", "date", "title", "description", "start", "end", "all-day", "color"]
+      }),
+      manifestCommand(["calendar", "cancel-occurrence"], "Cancel calendar occurrence.", {
+        risk: "destructive",
+        requiresYes: true,
+        flags: ["series", "date"]
+      }),
+      manifestCommand(["booking", "list"], "List bookings.", { flags: ["status", "limit", "offset"] }),
+      manifestCommand(["booking", "get"], "Get booking.", { flags: ["booking"] }),
+      manifestCommand(["booking", "create"], "Create booking.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["service", "name", "email", "phone", "company", "date", "time", "timezone", "details", "source"]
+      }),
+      manifestCommand(["booking", "confirm"], "Confirm booking.", { risk: "write", flags: ["booking"] }),
+      manifestCommand(["booking", "cancel"], "Cancel booking.", { risk: "destructive", requiresYes: true, flags: ["booking", "reason"] }),
+      manifestCommand(["booking", "reschedule"], "Reschedule booking.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["booking", "service", "date", "time"]
+      }),
       manifestCommand(["google", "status"], "Show Google status."),
-      manifestCommand(["google", "connect-url"], "Create Google connect URL.", { risk: "write" }),
-      manifestCommand(["google", "refresh"], "Refresh Google connection.", { risk: "external", requiresYes: true }),
+      manifestCommand(["google", "connect-url"], "Create Google connect URL.", { risk: "write", flags: ["origin", "user"] }),
+      manifestCommand(["google", "refresh"], "Refresh Google connection.", { risk: "external", requiresYes: true, flags: ["force"] }),
+      manifestCommand(["time-project", "list"], "List time-project records.", { flags: ["include-archived"] }),
+      manifestCommand(["time-project", "get"], "Get a time-project record.", { flags: ["project"] }),
+      manifestCommand(["time-project", "create"], "Create a time-project record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["name", "color", "sort"]
+      }),
+      manifestCommand(["time-project", "update"], "Update a time-project record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["project", "name", "color", "archive", "unarchive", "sort"]
+      }),
       manifestCommand(["time-entry", "current"], "Show current time entry."),
-      manifestCommand(["time-entry", "start"], "Start timer.", { risk: "write", supportsData: true }),
-      manifestCommand(["time-entry", "stop"], "Stop timer.", { risk: "write" }),
-      manifestCommand(["time-report", "summary"], "Summarize time."),
-      manifestCommand(["time-report", "publish"], "Publish selected local time-report totals to Business.", { auth: "none", risk: "external", auditDefault: true }),
-      manifestCommand(["time-report", "revoke"], "Revoke selected local time-report projection from Business.", { auth: "none", risk: "external", auditDefault: true }),
-      manifestCommand(["time-report", "export-csv"], "Export time CSV."),
-      ...[
-        ["service", "delete"],
-        ["availability", "delete"],
-        ["calendar", "delete-event"],
-        ["calendar", "delete-series"],
-        ["google", "disconnect"],
-        ["time-project", "delete"],
-        ["time-entry", "delete"]
-      ].map((path5) => manifestCommand(path5, `${path5.join(" ")}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })),
+      manifestCommand(["time-entry", "list"], "List time-entry records.", { flags: ["from", "to", "project", "limit", "offset"] }),
+      manifestCommand(["time-entry", "get"], "Get a time-entry record.", { flags: ["entry"] }),
+      manifestCommand(["time-entry", "start"], "Start timer.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["description", "project", "timezone", "user"]
+      }),
+      manifestCommand(["time-entry", "stop"], "Stop timer.", { risk: "write", flags: ["entry"] }),
+      manifestCommand(["time-entry", "create"], "Create a time-entry record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["start", "end", "description", "project", "timezone", "user"]
+      }),
+      manifestCommand(["time-entry", "update"], "Update a time-entry record.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["entry", "description", "start", "end", "clear-end", "project", "clear-project", "timezone"]
+      }),
+      manifestCommand(["time-report", "summary"], "Summarize time.", { flags: ["from", "to"] }),
+      manifestCommand(["time-report", "publish"], "Publish selected local time-report totals to Business.", {
+        auth: "none",
+        risk: "external",
+        auditDefault: true,
+        flags: ["from", "to", "project", "dry-run", "published-by-user-id", "published-by-email"]
+      }),
+      manifestCommand(["time-report", "revoke"], "Revoke selected local time-report projection from Business.", {
+        auth: "none",
+        risk: "external",
+        auditDefault: true,
+        flags: ["from", "to", "project", "dry-run", "published-by-user-id", "published-by-email"]
+      }),
+      manifestCommand(["time-report", "export-csv"], "Export time CSV.", { flags: ["from", "to"] }),
+      manifestCommand(["service", "delete"], "service delete.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["service"] }),
+      manifestCommand(["availability", "delete"], "availability delete.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["rule"] }),
+      manifestCommand(["calendar", "delete-event"], "calendar delete-event.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["event"] }),
+      manifestCommand(["calendar", "delete-series"], "calendar delete-series.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["series"] }),
+      manifestCommand(["google", "disconnect"], "google disconnect.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["time-project", "delete"], "time-project delete.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["project"] }),
+      manifestCommand(["time-entry", "delete"], "time-entry delete.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["entry"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

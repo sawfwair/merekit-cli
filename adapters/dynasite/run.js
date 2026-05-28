@@ -1540,10 +1540,8 @@ function manifestCommand(path3, summary, options = {}) {
     ...options.auditDefault === void 0 ? {} : { auditDefault: options.auditDefault }
   };
 }
-var AUTH_FLAGS = ["base-url", "workspace", "json", "token", "cookie", "e2e-token", "e2e"];
 var PLANE_FLAGS = ["workspace", "store", "ai", "local-db", "json"];
 var PLANE_DATA_FLAGS = [...PLANE_FLAGS, "data", "data-file"];
-var PROJECTION_FLAGS = ["projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"];
 var COMMAND_MANIFEST = {
   schemaVersion: 1,
   app: "mere-dynasite",
@@ -1562,20 +1560,12 @@ var COMMAND_MANIFEST = {
     "e2e",
     "store",
     "ai",
-    "local-db",
-    "data",
-    "data-file",
-    "output",
-    "projection-url",
-    "projection-token",
-    "published-by-user-id",
-    "published-by-email",
-    "dry-run"
+    "local-db"
   ],
   commands: [
     manifestCommand(["commands"], "Print the machine-readable Dynasite command manifest.", {
       auth: "none",
-      flags: ["json"]
+      flags: []
     }),
     manifestCommand(["completion"], "Print shell completion for mere-dynasite.", {
       auth: "none",
@@ -1584,142 +1574,142 @@ var COMMAND_MANIFEST = {
     }),
     manifestCommand(["about"], "Show Dynasite CLI and service metadata.", {
       auth: "none",
-      flags: ["base-url", "json", "workspace"],
+      flags: [],
       auditDefault: true
     }),
     manifestCommand(["status"], "Show Dynasite app and session status.", {
       auth: "none",
-      flags: AUTH_FLAGS,
+      flags: [],
       auditDefault: true
     }),
     manifestCommand(["store", "info"], "Inspect Dynasite local/cloud data and AI plane selection.", {
       auth: "none",
-      flags: PLANE_FLAGS,
+      flags: [],
       auditDefault: true
     }),
     manifestCommand(["export"], "Export local Dynasite archive records as a portable transfer bundle.", {
       auth: "workspace",
       risk: "read",
-      flags: [...PLANE_FLAGS, "output"]
+      flags: ["output"]
     }),
     manifestCommand(["import"], "Import a local Dynasite archive transfer bundle.", {
       auth: "workspace",
       risk: "write",
-      flags: [...PLANE_FLAGS, "file", "dry-run"]
+      flags: ["file", "dry-run"]
     }),
     manifestCommand(["businesses", "upsert"], "Upsert a local business research record.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["sites", "upsert"], "Upsert a local generated-site record.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["source-sites", "upsert"], "Upsert a local source-site snapshot record.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["cms", "upsert"], "Upsert a local CMS draft record.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["bundles", "upsert"], "Upsert local static bundle metadata.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["leads", "upsert"], "Upsert a local lead or inquiry record.", {
       auth: "workspace",
       risk: "write",
       supportsData: true,
-      flags: PLANE_DATA_FLAGS
+      flags: []
     }),
     manifestCommand(["auth", "whoami"], "Show the current Dynasite session user.", {
-      flags: AUTH_FLAGS
+      flags: []
     }),
     manifestCommand(["businesses", "list"], "List researched business requests.", {
-      flags: [...AUTH_FLAGS, "status", "limit"],
+      flags: ["status", "limit"],
       auditDefault: false
     }),
     manifestCommand(["sites", "list"], "List generated Dynasite sites.", {
-      flags: [...AUTH_FLAGS, "status", "limit"],
+      flags: ["status", "limit"],
       auditDefault: false
     }),
     manifestCommand(["sites", "get"], "Show one generated Dynasite site.", {
-      flags: [...AUTH_FLAGS, "site-id"],
+      flags: ["site-id"],
       positionals: ["siteId"],
       auditDefault: false
     }),
     manifestCommand(["sites", "cms", "get"], "Show one site CMS draft and generation payload.", {
-      flags: [...AUTH_FLAGS, "site-id"],
+      flags: ["site-id"],
       positionals: ["siteId"],
       auditDefault: false
     }),
     manifestCommand(["sites", "cms", "edit"], "Apply a JSON CMS edit to a site draft.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id", "edit-json", "source"],
-      supportsData: true
+      flags: ["site-id", "edit-json", "source"],
+      supportsData: false
     }),
     manifestCommand(["sites", "cms", "assist"], "Ask Dynasite for a CMS assist patch.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id", "action", "target-index"]
+      flags: ["site-id", "action", "target-index"]
     }),
     manifestCommand(["sites", "media", "import"], "Import source-site or explicit media URLs.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id", "discover", "item-json"],
-      supportsData: true
+      flags: ["site-id", "discover", "item-json"],
+      supportsData: false
     }),
     manifestCommand(["sites", "media", "upload"], "Upload one local image or video to a site draft.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id", "file", "alt", "role"]
+      flags: ["site-id", "file", "alt", "role"]
     }),
     manifestCommand(["sites", "revisions", "list"], "List site CMS revisions.", {
-      flags: [...AUTH_FLAGS, "site-id"]
+      flags: ["site-id"]
     }),
     manifestCommand(["sites", "revisions", "revert"], "Revert a site CMS revision.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id"],
+      flags: ["site-id"],
       positionals: ["revisionId"]
     }),
     manifestCommand(["sites", "publish"], "Publish a hosted site URL, or with --store local project a selected site summary to Business.", {
       risk: "external",
       requiresYes: true,
-      flags: [...AUTH_FLAGS, "site-id", "environment", ...PROJECTION_FLAGS]
+      flags: ["site-id", "environment", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"]
     }),
     manifestCommand(["sites", "revoke"], "Revoke a selected local Dynasite site summary from Business.", {
       auth: "workspace",
       risk: "external",
-      flags: [...PLANE_FLAGS, "site-id", ...PROJECTION_FLAGS],
+      flags: ["site-id", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"],
       positionals: ["siteId"]
     }),
     manifestCommand(["sites", "bundle", "upload"], "Upload a static site bundle from a directory or zip.", {
       risk: "write",
-      flags: [...AUTH_FLAGS, "site-id", "source-dir", "zip", "title", "entry-path"]
+      flags: ["site-id", "source-dir", "zip", "title", "entry-path"]
     }),
     manifestCommand(["sites", "bundle", "status"], "List static site bundles for a site.", {
-      flags: [...AUTH_FLAGS, "site-id"]
+      flags: ["site-id"]
     }),
     manifestCommand(["sites", "bundle", "publish"], "Publish a static site bundle to preview or live.", {
       risk: "external",
       requiresYes: true,
-      flags: [...AUTH_FLAGS, "site-id", "bundle-id", "environment"]
+      flags: ["site-id", "bundle-id", "environment"]
     }),
     manifestCommand(["sites", "bundle", "rollback"], "Roll back to a previous static site bundle.", {
       risk: "external",
       requiresYes: true,
-      flags: [...AUTH_FLAGS, "site-id", "bundle-id", "environment"]
+      flags: ["site-id", "bundle-id", "environment"]
     }),
     manifestCommand(["outreach", "list"], "List outreach records.", {
-      flags: [...AUTH_FLAGS, "status", "limit"],
+      flags: ["status", "limit"],
       auditDefault: false
     })
   ]

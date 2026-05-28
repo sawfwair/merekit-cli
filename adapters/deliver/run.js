@@ -109,6 +109,7 @@ function command(pathParts, summary, options = {}) {
 
 const API_FLAGS = ['base-url', 'token', 'json'];
 const PLANE_FLAGS = ['workspace', 'store', 'ai', 'local-db', 'json'];
+const LOCAL_QUERY_FLAGS = [...PLANE_FLAGS];
 const LOCAL_DATA_FLAGS = [...PLANE_FLAGS, 'data', 'data-file'];
 const PROJECTION_FLAGS = ['projection-url', 'projection-token', 'published-by-user-id', 'published-by-email', 'dry-run'];
 const MANIFEST_COMMANDS = [
@@ -116,7 +117,7 @@ const MANIFEST_COMMANDS = [
 	command(['completion'], 'Print shell completion for mere-deliver.', { auth: 'none', supportsJson: false, positionals: ['shell'] }),
 	command(['db', 'info'], 'Show the hosted Deliver API target and local auth state.', { auth: 'none', flags: ['base-url', 'json'], auditDefault: true }),
 	command(['store', 'info'], 'Inspect local/cloud data and AI plane selection.', { auth: 'none', flags: PLANE_FLAGS, auditDefault: true }),
-	command(['export'], 'Export local Deliver archive records as a portable transfer bundle.', { auth: 'none', risk: 'read', flags: [...PLANE_FLAGS, 'output'] }),
+	command(['export'], 'Export local Deliver records as a portable transfer bundle.', { auth: 'none', risk: 'read', flags: [...PLANE_FLAGS, 'output'] }),
 	command(['import'], 'Import a local Deliver archive transfer bundle.', { auth: 'none', risk: 'write', flags: [...PLANE_FLAGS, 'file', 'dry-run'] }),
 	command(['auth', 'login'], 'Store a Deliver API token for hosted package administration.', { auth: 'none', risk: 'external', flags: API_FLAGS }),
 	command(['auth', 'whoami'], 'Show the hosted Deliver API identity for the active token.', { flags: API_FLAGS, auditDefault: true }),
@@ -176,11 +177,26 @@ const MANIFEST_COMMANDS = [
 		flags: [...API_FLAGS, 'yes', 'confirm'],
 		positionals: ['slug']
 	}),
-	command(['files', 'upsert'], 'Upsert a local file-reference archive record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
-	command(['recipients', 'upsert'], 'Upsert a local recipient archive record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
-	command(['access-grants', 'upsert'], 'Upsert a local access-grant archive record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
-	command(['login-attempts', 'upsert'], 'Upsert a local login-attempt archive record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
-	command(['audit-events', 'upsert'], 'Upsert a local audit-event archive record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['files', 'list'], 'List local file-reference records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['files', 'get'], 'Show one local file-reference record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['files', 'show'], 'Show one local file-reference record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['files', 'upsert'], 'Upsert a local file-reference record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['recipients', 'list'], 'List local recipient records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['recipients', 'get'], 'Show one local recipient record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['recipients', 'show'], 'Show one local recipient record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['recipients', 'upsert'], 'Upsert a local recipient record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['access-grants', 'list'], 'List local access-grant records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['access-grants', 'get'], 'Show one local access-grant record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['access-grants', 'show'], 'Show one local access-grant record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['access-grants', 'upsert'], 'Upsert a local access-grant record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['login-attempts', 'list'], 'List local login-attempt records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['login-attempts', 'get'], 'Show one local login-attempt record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['login-attempts', 'show'], 'Show one local login-attempt record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['login-attempts', 'upsert'], 'Upsert a local login-attempt record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['audit-events', 'list'], 'List local audit-event records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['audit-events', 'get'], 'Show one local audit-event record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['audit-events', 'show'], 'Show one local audit-event record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['audit-events', 'upsert'], 'Upsert a local audit-event record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
 	command(['url'], 'Print the share URL for one delivery package slug.', { auth: 'none', flags: ['base-url', 'json'], positionals: ['slug'] })
 ];
 
@@ -195,7 +211,7 @@ function manifest() {
 		baseUrlEnv: ['MERE_DELIVER_BASE_URL'],
 		tokenEnv: ['MERE_DELIVER_API_TOKEN'],
 		sessionPath: SESSION_PATH,
-		globalFlags: [...API_FLAGS, 'workspace', 'store', 'ai', 'local-db', 'data', 'data-file', 'output', 'file', ...PROJECTION_FLAGS],
+		globalFlags: [...API_FLAGS, 'workspace', 'store', 'ai', 'local-db', 'yes', 'confirm'],
 		commands: MANIFEST_COMMANDS
 	};
 }

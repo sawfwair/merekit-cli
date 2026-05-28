@@ -451,6 +451,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {
@@ -710,6 +736,125 @@ var init_json = __esm({
   }
 });
 
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/curator.ts
+function estimateTokens(text) {
+  if (!text) return 0;
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+function stripQuotedReplies(text) {
+  if (!text) return text;
+  let out = text;
+  const onWroteRe = /^[ \t]*On[ \t][^\n]{0,400}\bwrote:\s*$/m;
+  const onWrote = onWroteRe.exec(out);
+  if (onWrote) out = out.slice(0, onWrote.index).trimEnd();
+  const origRe = /^[-=]{3,}\s*(Original Message|Forwarded message)\s*[-=]{3,}\s*$/im;
+  const orig = origRe.exec(out);
+  if (orig) out = out.slice(0, orig.index).trimEnd();
+  const sigRe = /^-- ?\s*$/m;
+  const sig = sigRe.exec(out);
+  if (sig) out = out.slice(0, sig.index).trimEnd();
+  const kept = out.split("\n").filter((line) => !/^\s*>/.test(line));
+  return kept.join("\n").trim();
+}
+function stripImageReferences(text) {
+  if (!text) return text;
+  return text.replace(/\[image:[^\]]*\]/gi, "").replace(/\[cid:[^\]]*\]/gi, "").replace(/\[Inline image[^\]]*\]/gi, "");
+}
+function stripUrlBoilerplate(text) {
+  if (!text) return text;
+  return text.replace(/\s+<(?:https?|ftp):\/\/?[^>\s]*>/gi, "").replace(/\s+<mailto:[^>\s]*>/gi, "");
+}
+function normalizeWhitespace(text) {
+  if (!text) return "";
+  return text.split("\n").map((line) => line.replace(/[ \t]+$/g, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function clipToTokens(text, maxTokens) {
+  if (!text) return "";
+  if (maxTokens <= 0) return "";
+  if (estimateTokens(text) <= maxTokens) return text;
+  const targetChars = Math.max(20, maxTokens * 4);
+  if (text.length <= targetChars) return text;
+  let cut = text.lastIndexOf(" ", targetChars);
+  if (cut < targetChars / 2) cut = targetChars;
+  return `${text.slice(0, cut).trimEnd()} \u2026`;
+}
+function curateText(text, options = {}) {
+  if (!text) return "";
+  const stripQuoted = options.stripQuoted ?? true;
+  const stripImages = options.stripImages ?? true;
+  const stripUrls = options.stripUrls ?? true;
+  const normalizeWs = options.normalizeWs ?? true;
+  let out = text;
+  if (stripImages) out = stripImageReferences(out);
+  if (stripQuoted) out = stripQuotedReplies(out);
+  if (stripUrls) out = stripUrlBoilerplate(out);
+  if (normalizeWs) out = normalizeWhitespace(out);
+  if (options.maxTokens != null) out = clipToTokens(out, options.maxTokens);
+  return out;
+}
+function curateEmailThread(thread, options = {}) {
+  const maxMessages = options.maxMessages ?? 12;
+  const maxTokens = options.maxTokens ?? 1500;
+  const perMessageCap = options.perMessageMaxTokens ?? Math.max(120, Math.floor(maxTokens / 3));
+  const headerStyle = options.headerStyle ?? "minimal";
+  const stripOpts = {
+    stripQuoted: options.stripQuoted,
+    stripImages: options.stripImages,
+    stripUrls: options.stripUrls,
+    normalizeWs: options.normalizeWs
+  };
+  const subjectLine = thread.subject ? `Subject: ${thread.subject}` : "Subject: (no subject)";
+  const headerOverhead = estimateTokens(subjectLine) + 6;
+  let remaining = Math.max(0, maxTokens - headerOverhead);
+  const candidates = thread.messages.slice(-maxMessages);
+  let truncated = candidates.length < thread.messages.length;
+  const segments = [];
+  let fitted = 0;
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    const message = candidates[i];
+    if (!message) continue;
+    const cleanedBody = curateText(message.bodyText ?? "", {
+      ...stripOpts,
+      maxTokens: perMessageCap
+    });
+    const head = headerStyle === "full" ? [
+      `[${(message.direction ?? "").toUpperCase()}] ${message.sentAt ?? ""}`,
+      `From: ${formatFrom2(message)}`,
+      `To: ${(message.toAddresses ?? []).join(", ")}`,
+      message.subject ? `Subject: ${message.subject}` : null
+    ].filter(Boolean).join("\n") : `[${(message.direction ?? "").toUpperCase()}] ${message.sentAt ?? ""} \u2014 ${formatFrom2(message)}`;
+    const block = cleanedBody ? `${head}
+${cleanedBody}` : head;
+    const blockTokens = estimateTokens(block);
+    if (blockTokens > remaining && segments.length > 0) {
+      truncated = true;
+      break;
+    }
+    segments.unshift(block);
+    remaining -= blockTokens;
+    fitted += 1;
+  }
+  const prompt = [subjectLine, "", segments.join("\n\n---\n\n")].join("\n");
+  return {
+    prompt,
+    fittedMessages: fitted,
+    estimatedTokens: estimateTokens(prompt),
+    truncated
+  };
+}
+function formatFrom2(message) {
+  if (message.fromName && message.fromAddress) {
+    return `${message.fromName} <${message.fromAddress}>`;
+  }
+  return message.fromAddress ?? message.fromName ?? "(unknown sender)";
+}
+var init_curator = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/curator.ts"() {
+  }
+});
+
 // cli/local-store.ts
 var local_store_exports = {};
 __export(local_store_exports, {
@@ -825,23 +970,27 @@ function mapPublication(row) {
   };
 }
 function buildSummaryPrompt(state) {
-  const messages = state.messages.slice(-12).map(
-    (message) => [
-      `${message.direction.toUpperCase()} ${message.sentAt}`,
-      `From: ${message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress}`,
-      `To: ${message.toAddresses.join(", ")}`,
-      `Subject: ${message.subject}`,
-      compactSnippet(message.bodyText, 1200)
-    ].join("\n")
-  ).join("\n\n---\n\n");
+  const curated = curateEmailThread(
+    {
+      subject: state.thread.subject,
+      messages: state.messages.map((message) => ({
+        direction: message.direction,
+        sentAt: message.sentAt,
+        fromName: message.fromName,
+        fromAddress: message.fromAddress,
+        toAddresses: message.toAddresses,
+        subject: message.subject,
+        bodyText: message.bodyText
+      }))
+    },
+    { maxTokens: 1500, maxMessages: 12, headerStyle: "minimal" }
+  );
   return [
     "Summarize this email thread for the mailbox owner.",
     "Use concise bullets. Include open questions, promised follow-ups, deadlines, and who owes the next action.",
     "Do not invent facts that are not present in the messages.",
     "",
-    `Thread subject: ${state.thread.subject || "(no subject)"}`,
-    "",
-    messages
+    curated.prompt
   ].join("\n");
 }
 var EMAIL_WORKSPACE_PAYLOAD_SCHEMA, LocalEmailStore;
@@ -849,6 +998,7 @@ var init_local_store = __esm({
   "cli/local-store.ts"() {
     "use strict";
     init_src();
+    init_curator();
     init_email_product();
     init_json();
     EMAIL_WORKSPACE_PAYLOAD_SCHEMA = "mere.email.workspace-import.v1";
@@ -7037,6 +7187,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -7088,6 +7240,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -7417,8 +7581,8 @@ function manifestCommand(path4, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -7431,7 +7595,7 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_EMAIL_BASE_URL"],
     sessionPath: "~/.local/state/mere-email/session.json",
-    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm", "data", "data-file"],
+    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["store", "info"], "Show local/cloud plane selection.", { auth: "none", auditDefault: true }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
@@ -7440,19 +7604,19 @@ function commandManifest() {
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
-      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "write", supportsData: true }),
+      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace.", { risk: "write" }),
+      manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", flags: ["slug", "base-domain", "mailbox-address", "name", "organization-id", "callback-url", "callback-bearer-token", "lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
+      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "write", flags: ["lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
       manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "write" }),
+      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "write", flags: ["limit", "mailbox-id", "include-archived"] }),
       manifestCommand(["mailboxes", "list"], "List mailboxes.", { auditDefault: true }),
-      manifestCommand(["threads", "list"], "List threads with pagination."),
-      manifestCommand(["threads", "latest"], "Show latest threads."),
-      manifestCommand(["threads", "search"], "Search threads."),
+      manifestCommand(["threads", "list"], "List threads with pagination.", { flags: ["limit", "offset", "mailbox-id", "include-archived"] }),
+      manifestCommand(["threads", "latest"], "Show latest threads.", { flags: ["limit", "mailbox-id", "include-archived"] }),
+      manifestCommand(["threads", "search"], "Search threads.", { flags: ["limit"] }),
       manifestCommand(["threads", "show"], "Show thread."),
-      manifestCommand(["threads", "summarize"], "Summarize a local thread with mere.run.", { risk: "write" }),
-      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external" }),
-      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external" }),
+      manifestCommand(["threads", "summarize"], "Summarize a local thread with mere.run.", { risk: "write", flags: ["model"] }),
+      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
       manifestCommand(["threads", "read"], "Mark thread read.", { risk: "write" }),
       manifestCommand(["threads", "star"], "Star thread.", { risk: "write" }),
       manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", requiresYes: true }),
@@ -7460,15 +7624,15 @@ function commandManifest() {
       manifestCommand(["drafts", "show"], "Show draft."),
       manifestCommand(["drafts", "discard"], "Discard draft.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["attachments", "list"], "List attachments."),
-      manifestCommand(["attachments", "download"], "Download attachment."),
+      manifestCommand(["attachments", "download"], "Download attachment.", { flags: ["output"] }),
       manifestCommand(["domains", "search"], "Search domains."),
-      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, requiresYes: true }),
+      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, requiresYes: true, flags: ["domain", "organization-id", "period"] }),
       manifestCommand(["domains", "show"], "Show domain registration."),
-      manifestCommand(["send"], "Send email.", { risk: "external", supportsData: true, requiresYes: true }),
+      manifestCommand(["send"], "Send email.", { risk: "external", requiresYes: true, flags: ["to", "cc", "bcc", "attach", "mailbox-id", "from-name", "reply-thread-id", "subject", "body"] }),
       manifestCommand(["export"], "Export workspace data as a local-plane transfer bundle."),
-      manifestCommand(["import"], "Import workspace data from a transfer bundle or raw payload; pass --dry-run to plan only.", { risk: "write", supportsData: true }),
-      manifestCommand(["import", "status"], "Show import status."),
-      manifestCommand(["inbound"], "Simulate inbound mail.", { risk: "write", supportsData: true }),
+      manifestCommand(["import"], "Import workspace data from a transfer bundle or raw payload file via --file; pass --dry-run to plan only.", { risk: "write", flags: ["file", "dry-run"] }),
+      manifestCommand(["import", "status"], "Show import status.", { flags: ["run-id"] }),
+      manifestCommand(["inbound"], "Simulate inbound mail ingress from --file.", { risk: "write", flags: ["file"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

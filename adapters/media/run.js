@@ -2189,7 +2189,7 @@ function commandManifest(env) {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_MEDIA_BASE_URL"],
     sessionPath: sessionFilePath(env),
-    globalFlags: ["base-url", "store", "ai", "local-db", "workspace", "token", "json", "dry-run"],
+    globalFlags: ["base-url", "store", "ai", "local-db", "workspace", "token", "json"],
     commands: MANIFEST_COMMANDS
   };
 }
