@@ -57,7 +57,7 @@
   "pnpm": {
     "overrides": {
       "@vitejs/plugin-vue": "6.0.6",
-      "esbuild": "0.27.7",
+      "esbuild": "0.28.0",
       "qs": "6.15.2",
       "vite": "6.4.2"
     }
@@ -96,7 +96,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "25.9.1",
     "c8": "11.0.0",
-    "esbuild": "0.27.7",
+    "esbuild": "0.28.0",
     "eslint": "10.3.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.59.2",

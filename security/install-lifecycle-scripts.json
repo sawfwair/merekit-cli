@@ -3,7 +3,7 @@
   "installLifecycleScripts": [
     {
       "package": "esbuild",
-      "version": "0.27.7",
+      "version": "0.28.0",
       "scripts": {
         "postinstall": "node install.js"
       },
