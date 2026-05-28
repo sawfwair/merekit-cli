@@ -26,7 +26,7 @@ if (args[0] === 'commands') {
     auth: { kind: 'browser' },
     baseUrlEnv: ['PROJECTS_BASE_URL'],
     sessionPath: null,
-    globalFlags: ['workspace', 'json', 'yes', 'confirm'],
+    globalFlags: ['workspace', 'json', 'yes', 'confirm', 'ai', 'projection-url'],
     commands: [
       { id: 'project.list', path: ['project', 'list'], summary: 'List projects.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
       { id: 'project.create', path: ['project', 'create'], summary: 'Create project.', auth: 'workspace', risk: 'write', supportsJson: true, supportsData: true, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] },
@@ -667,6 +667,35 @@ test('delegates supported pass-through flags only', async () => {
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(payload.args, ['project', 'list', '--json', '--workspace', 'ws_1']);
+});
+
+test('passes --ai and --projection-url through to apps that declare them as global', async () => {
+  const root = await fakeMereRoot();
+  // projects fake CLI declares globalFlags including base-url, workspace, store, ai, local-db, etc.
+  // via its manifest writeFakeProjectsCli. --ai must end up in forwarded args.
+  const result = await run(['projects', 'project', 'list', '--ai', 'local', '--workspace', 'ws_1', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.ok(payload.args.includes('--ai'), `expected --ai in forwarded args, got ${JSON.stringify(payload.args)}`);
+  assert.ok(payload.args.includes('local'));
+});
+
+test('passes --help through to a delegated app instead of showing root help', async () => {
+  const root = await fakeMereRoot();
+  const result = await run(['projects', 'project', 'list', '--help'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.deepEqual(payload.args, ['project', 'list', '--help']);
+  // Root --help (no app to delegate to) still renders root help.
+  const rootHelp = await run(['--help']);
+  assert.equal(rootHelp.code, 0);
+  assert.match(rootHelp.stdout, /Human first run:/);
 });
 
 test('retries manifest global flags in leading position when adapters require it', async () => {

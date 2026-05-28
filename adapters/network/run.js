@@ -827,6 +827,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {
@@ -1990,8 +2016,8 @@ function manifestCommand(path4, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -2013,13 +2039,8 @@ function commandManifest() {
       "json",
       "yes",
       "confirm",
-      "data",
-      "data-file",
       "projection-url",
-      "projection-token",
-      "published-by-user-id",
-      "published-by-email",
-      "dry-run"
+      "projection-token"
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
@@ -2029,30 +2050,49 @@ function commandManifest() {
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
       manifestCommand(["store", "info"], "Inspect local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
-      manifestCommand(["export"], "Export local network archive records as a portable transfer bundle.", { risk: "read" }),
-      manifestCommand(["import"], "Import a local network archive transfer bundle.", { risk: "write" }),
+      manifestCommand(["export"], "Export local network archive records as a portable transfer bundle.", { risk: "read", flags: ["output"] }),
+      manifestCommand(["import"], "Import a local network archive transfer bundle.", { risk: "write", flags: ["file", "dry-run"] }),
       manifestCommand(["customers", "list"], "List customers.", { auditDefault: true }),
-      manifestCommand(["customers", "upsert"], "Upsert a local customer archive record.", { risk: "write", supportsData: true }),
-      manifestCommand(["customers", "create"], "Create customer.", { risk: "write", supportsData: true }),
-      manifestCommand(["customers", "update"], "Update customer.", { risk: "write", supportsData: true }),
+      manifestCommand(["customers", "upsert"], "Upsert a local customer archive record.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["customers", "create"], "Create customer.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["customers", "update"], "Update customer.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
       manifestCommand(["customers", "archive"], "Archive customer.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["customers", "redeploy"], "Redeploy customer.", { risk: "external", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["customers", "redeploy-all"], "Redeploy customers.", { risk: "external", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["deployments", "run"], "Run deployment.", { risk: "external", requiresYes: true }),
+      manifestCommand(["customers", "redeploy-all"], "Redeploy customers.", { risk: "external", requiresYes: true, requiresConfirm: true, flags: ["scope"] }),
+      manifestCommand(["deployments", "run"], "Run deployment.", { risk: "external", requiresYes: true, flags: ["customer"] }),
       ...["calls", "interactions", "sms", "conversations"].flatMap((resource) => [
-        manifestCommand([resource, "list"], `List ${resource}.`, { auditDefault: resource === "calls" }),
+        manifestCommand([resource, "list"], `List ${resource}.`, {
+          auditDefault: resource === "calls",
+          flags: resource === "calls" || resource === "interactions" || resource === "sms" || resource === "conversations" ? ["query"] : []
+        }),
         manifestCommand([resource, "show"], `Show ${resource}.`),
         ...resource === "calls" ? [
           manifestCommand([resource, "publish"], "Publish selected local call summary to Business.", {
-            risk: "external"
+            risk: "external",
+            flags: ["published-by-user-id", "published-by-email", "dry-run"]
           }),
           manifestCommand([resource, "revoke"], "Revoke selected local call summary from Business.", {
-            risk: "external"
+            risk: "external",
+            flags: ["published-by-user-id", "published-by-email", "dry-run"]
           })
         ] : [],
         manifestCommand([resource, "close"], `Close ${resource}.`, { risk: "write" }),
-        manifestCommand([resource, "archive"], `Archive ${resource}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })
+        manifestCommand([resource, "archive"], `Archive ${resource}.`, {
+          risk: "destructive",
+          requiresYes: true,
+          requiresConfirm: true,
+          ...resource === "calls" ? { supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] } : {}
+        })
       ]),
+      manifestCommand(["calls", "sync"], "Sync calls.", { flags: ["query"] }),
+      manifestCommand(["calls", "analysis"], "Run call analysis.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["calls", "export"], "Export call data."),
+      manifestCommand(["calls", "audio"], "Download call audio."),
+      manifestCommand(["interactions", "sync"], "Sync interactions.", { flags: ["query"] }),
+      manifestCommand(["interactions", "read"], "Mark interaction read.", { risk: "write" }),
+      manifestCommand(["sms", "sync"], "Sync SMS interactions.", { flags: ["query"] }),
+      manifestCommand(["sms", "read"], "Mark SMS interaction read.", { risk: "write" }),
+      manifestCommand(["conversations", "read"], "Mark conversation read.", { risk: "write" }),
       manifestCommand(["recordings", "audio"], "Download call audio."),
       manifestCommand(["transcripts", "turns"], "List transcript turns."),
       manifestCommand(["transcripts", "export"], "Export transcript."),
@@ -2060,7 +2100,8 @@ function commandManifest() {
         risk: "external",
         supportsData: true,
         requiresYes: true,
-        requiresConfirm: true
+        requiresConfirm: true,
+        flags: ["data", "data-file", "json-file", "json-input"]
       }),
       manifestCommand(["diagnostics", "metrics"], "Show diagnostics metrics.", { auditDefault: true }),
       manifestCommand(["diagnostics", "delivery-log"], "Show delivery log."),
@@ -2071,35 +2112,38 @@ function commandManifest() {
         manifestCommand(
           [resource, "create"],
           resource === "scripts" ? "Create script. Add phases with `scripts stages create <script-id>`." : `Create ${resource}.`,
-          { risk: "write", supportsData: true }
+          { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }
         ),
-        manifestCommand([resource, "update"], `Update ${resource}.`, { risk: "write", supportsData: true }),
+        manifestCommand([resource, "update"], `Update ${resource}.`, { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
         manifestCommand([resource, "delete"], `Delete ${resource}.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })
       ]),
+      manifestCommand(["numbers", "search"], "Search numbers.", { flags: ["query"] }),
       manifestCommand(["locations", "pool", "list"], "List scripts in a location pool."),
-      manifestCommand(["locations", "pool", "add"], "Add or update a script in a location pool.", { risk: "write", supportsData: true }),
-      manifestCommand(["locations", "pool", "update"], "Update a script pool entry.", { risk: "write", supportsData: true }),
+      manifestCommand(["locations", "pool", "add"], "Add or update a script in a location pool.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["locations", "pool", "update"], "Update a script pool entry.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
       manifestCommand(["locations", "pool", "remove"], "Remove a script from a location pool.", {
         risk: "destructive",
         requiresYes: true,
         requiresConfirm: true,
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file", "json-file", "json-input"]
       }),
       manifestCommand(["scripts", "stages", "list"], "List stages for a script."),
-      manifestCommand(["scripts", "stages", "create"], "Add a stage to a script.", { risk: "write", supportsData: true }),
-      manifestCommand(["scripts", "stages", "update"], "Update a stage on a script.", { risk: "write", supportsData: true }),
-      manifestCommand(["scripts", "stages", "reorder"], "Reorder stages on a script.", { risk: "write", supportsData: true }),
+      manifestCommand(["scripts", "stages", "create"], "Add a stage to a script.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["scripts", "stages", "update"], "Update a stage on a script.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["scripts", "stages", "reorder"], "Reorder stages on a script.", { risk: "write", supportsData: true, flags: ["data", "data-file", "json-file", "json-input"] }),
       manifestCommand(["scripts", "stages", "delete"], "Delete a stage from a script.", {
         risk: "destructive",
         requiresYes: true,
         requiresConfirm: true,
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file", "json-file", "json-input"]
       }),
       manifestCommand(["numbers", "pause"], "Pause number.", { risk: "external", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["numbers", "resume"], "Resume number.", { risk: "external", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["numbers", "route"], "Route number.", { risk: "external", supportsData: true, requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["routing", "default-location"], "Set default location.", { risk: "external", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["routing", "number"], "Set number route.", { risk: "external", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["numbers", "route"], "Route number.", { risk: "external", supportsData: true, requiresYes: true, requiresConfirm: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["routing", "default-location"], "Set default location.", { risk: "external", supportsData: true, requiresYes: true, requiresConfirm: true, flags: ["data", "data-file", "json-file", "json-input"] }),
+      manifestCommand(["routing", "number"], "Set number route.", { risk: "external", supportsData: true, requiresYes: true, requiresConfirm: true, flags: ["data", "data-file", "json-file", "json-input"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

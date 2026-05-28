@@ -10612,9 +10612,7 @@ function commandManifest() {
       "projection-url",
       "projection-token",
       "workspace",
-      "json",
-      "yes",
-      "confirm"
+      "json"
     ],
     commands: [
       manifestCommand(["auth", "login"], "Configure token auth.", { auth: "none", risk: "write", flags: ["workspace"] }),
@@ -10625,68 +10623,53 @@ function commandManifest() {
       ),
       manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", {
         auth: "none",
-        flags: ["store", "ai", "local-db", "workspace", "json"],
         auditDefault: true
       }),
       manifestCommand(["export"], "Export local finance ledger transfer bundle.", {
         auth: "none",
         risk: "read",
-        flags: ["store", "ai", "local-db", "workspace", "output", "json"]
+        flags: ["output"]
       }),
       manifestCommand(["import"], "Import local finance ledger transfer bundle.", {
         auth: "none",
         risk: "write",
-        flags: ["store", "ai", "local-db", "workspace", "file", "dry-run", "json"]
+        flags: ["file", "dry-run"]
       }),
       manifestCommand(["ledger", "publish"], "Publish selected local ledger summary to Business.", {
         auth: "none",
         risk: "external",
         flags: [
-          "store",
-          "ai",
-          "local-db",
-          "workspace",
           "from",
           "to",
           "dry-run",
-          "projection-url",
-          "projection-token",
           "published-by-user-id",
-          "published-by-email",
-          "json"
+          "published-by-email"
         ]
       }),
       manifestCommand(["ledger", "revoke"], "Revoke selected local ledger summary projection from Business.", {
         auth: "none",
         risk: "external",
         flags: [
-          "store",
-          "ai",
-          "local-db",
-          "workspace",
           "from",
           "to",
           "dry-run",
-          "projection-url",
-          "projection-token",
           "published-by-user-id",
-          "published-by-email",
-          "json"
+          "published-by-email"
         ]
       }),
-      manifestCommand(["accounts", "create"], "Create account.", { risk: "write", supportsData: true }),
-      manifestCommand(["accounts", "update"], "Update account.", { risk: "write", supportsData: true }),
-      manifestCommand(["accounts", "delete"], "Delete account.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["transactions", "create"], "Create transaction.", { risk: "write", supportsData: true }),
-      manifestCommand(["transactions", "update"], "Update transaction.", { risk: "write", supportsData: true }),
-      manifestCommand(["transactions", "delete"], "Delete transaction.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["bank", "accounts", "delete"], "Delete bank account.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["tokens", "revoke"], "Revoke API token.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["accounts", "create"], "Create account.", { risk: "write", flags: ["code", "name", "type"] }),
+      manifestCommand(["accounts", "update"], "Update account.", { risk: "write", flags: ["id", "code", "name", "type"] }),
+      manifestCommand(["accounts", "delete"], "Delete account.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["transactions", "create"], "Create transaction.", { risk: "write", flags: ["date", "memo", "split", "auto-tax", "tax-rate", "tax-account"] }),
+      manifestCommand(["transactions", "update"], "Update transaction.", { risk: "write", flags: ["id", "date", "memo", "split"] }),
+      manifestCommand(["transactions", "delete"], "Delete transaction.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["bank", "accounts", "delete"], "Delete bank account.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["tokens", "revoke"], "Revoke API token.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
       manifestCommand(["reports", "trial-balance"], "Trial balance report.", { auditDefault: true }),
       manifestCommand(["reports", "income-statement"], "Income statement report."),
       manifestCommand(["reports", "balance-sheet"], "Balance sheet report."),
-      manifestCommand(["plaintext", "export"], "Export plaintext ledger."),
-      manifestCommand(["plaintext", "import"], "Import plaintext ledger.", { risk: "write" }),
+      manifestCommand(["plaintext", "export"], "Export plaintext ledger.", { flags: ["start-date", "end-date", "include-accounts", "include-opening-balances", "out"] }),
+      manifestCommand(["plaintext", "import"], "Import plaintext ledger.", { risk: "write", flags: ["file"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]

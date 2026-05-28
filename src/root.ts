@@ -2042,7 +2042,13 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 			writeText(io, await maybeReadVersion());
 			return 0;
 		}
-		if (argv.length === 0 || readBooleanFlag(parsed.flags, 'help')) {
+		if (argv.length === 0) {
+			writeText(io, helpText());
+			return 0;
+		}
+		// `--help` shows root help only when there is no bundled app to delegate to.
+		// `mere <app> <cmd> --help` passes through so the app renders its own command help.
+		if (readBooleanFlag(parsed.flags, 'help') && !findEntry(registry, rest[0])) {
 			writeText(io, helpText());
 			return 0;
 		}

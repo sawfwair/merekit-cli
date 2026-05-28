@@ -2153,10 +2153,7 @@ function commandManifest() {
       "projection-token",
       "published-by-user-id",
       "published-by-email",
-      "dry-run",
-      "data",
-      "data-file",
-      "store"
+      "dry-run"
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
@@ -2170,18 +2167,18 @@ function commandManifest() {
         positionals: ["workspace"]
       }),
       manifestCommand(["plane", "info"], "Show local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
-      manifestCommand(["export"], "Export local catalog transfer bundle.", { auth: "none", risk: "read" }),
-      manifestCommand(["import"], "Import local catalog transfer bundle.", { auth: "none", risk: "write" }),
+      manifestCommand(["export"], "Export local catalog transfer bundle.", { auth: "none", risk: "read", flags: ["workspace", "output"] }),
+      manifestCommand(["import"], "Import local catalog transfer bundle.", { auth: "none", risk: "write", flags: ["workspace", "file", "dry-run"] }),
       manifestCommand(["catalog", "publish"], "Publish selected local catalog summary to the Business projection receiver.", {
         auth: "none",
         risk: "external",
-        flags: ["store", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"],
+        flags: ["store"],
         auditDefault: true
       }),
       manifestCommand(["catalog", "revoke"], "Revoke selected local catalog summary from the Business projection receiver.", {
         auth: "none",
         risk: "external",
-        flags: ["store", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"],
+        flags: ["store"],
         auditDefault: true
       }),
       manifestCommand(["store", "list"], "List stores.", { auditDefault: true }),
@@ -2197,31 +2194,27 @@ function commandManifest() {
       manifestCommand(["collections", "list"], "List collections.", { flags: ["store"] }),
       manifestCommand(["settings", "update"], "Update store settings.", {
         risk: "write",
-        supportsData: true,
-        flags: ["store", "name", "description", "accent-color", "support-email", "stripe-account-id", "data", "data-file"]
+        flags: ["store", "name", "description", "accent-color", "support-email", "stripe-account-id"]
       }),
       manifestCommand(["inventory", "adjust"], "Adjust inventory.", {
         risk: "external",
-        supportsData: true,
         requiresYes: true,
-        flags: ["store", "variant", "quantity-delta", "note", "yes", "data", "data-file"]
+        flags: ["store", "variant", "quantity-delta", "note"]
       }),
       manifestCommand(["orders", "list"], "List orders.", { flags: ["store"] }),
       manifestCommand(["orders", "show"], "Show an order.", { positionals: ["orderNumber"], flags: ["store"] }),
       manifestCommand(["order", "fulfill"], "Fulfill an order.", {
         risk: "external",
-        supportsData: true,
         requiresYes: true,
         positionals: ["orderId"],
-        flags: ["tracking-number", "tracking-url", "yes", "data", "data-file"]
+        flags: ["tracking-number", "tracking-url"]
       }),
       manifestCommand(["order", "refund"], "Refund an order.", {
         risk: "destructive",
-        supportsData: true,
         requiresYes: true,
         requiresConfirm: true,
         positionals: ["orderId"],
-        flags: ["order-item", "restock", "yes", "confirm", "data", "data-file"]
+        flags: ["order-item", "restock"]
       }),
       manifestCommand(["customers", "list"], "List customers.", { flags: ["store"] }),
       manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true, flags: ["store"] }),
@@ -2229,34 +2222,31 @@ function commandManifest() {
       manifestCommand(["workspace", "provision"], "Provision workspace connection.", {
         auth: "token",
         risk: "write",
-        supportsData: true,
-        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token"]
       }),
       manifestCommand(["workspace", "sync"], "Sync workspace connection.", {
         auth: "token",
         risk: "write",
-        supportsData: true,
-        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token"]
       }),
       manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace connection.", {
         auth: "token",
         risk: "write",
-        supportsData: true,
-        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token", "data", "data-file"]
+        flags: ["workspace", "slug", "name", "webhook-url", "webhook-bearer-token"]
       }),
       manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", {
         auth: "token",
         risk: "destructive",
         requiresYes: true,
         requiresConfirm: true,
-        flags: ["workspace", "yes", "confirm"]
+        flags: ["workspace"]
       }),
       manifestCommand(["workspace", "command"], "Run workspace command.", {
         auth: "token",
         risk: "external",
         supportsData: true,
         positionals: ["command"],
-        flags: ["workspace", "yes", "data", "data-file"]
+        flags: ["workspace", "data", "data-file"]
       }),
       manifestCommand(["workspace", "order"], "Lookup workspace order.", {
         auth: "token",

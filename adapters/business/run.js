@@ -7,7 +7,7 @@ var __export = (target, all) => {
 
 // src/index.ts
 import { readFileSync } from "node:fs";
-import path2 from "node:path";
+import path3 from "node:path";
 import { stdout as output2, stderr } from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -1033,6 +1033,493 @@ import { readdir, readFile as readFile2, stat as stat2 } from "node:fs/promises"
 import { basename as basename2, join as join2, relative, resolve as resolvePath2 } from "node:path";
 import { parseArgs } from "node:util";
 
+// ../local-plane/src/index.ts
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir as mkdir3 } from "node:fs/promises";
+import os2 from "node:os";
+import path2 from "node:path";
+function stateHome2(env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  return env.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path2.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function defaultLocalPlaneDbPath(env = process.env) {
+  return path2.join(stateHome2(env), "mere", "local-plane.db");
+}
+function resolveLocalPlaneDbPath(input2 = {}) {
+  const env = input2.env ?? process.env;
+  const prefix = input2.appId ? envPrefix(input2.appId) : "";
+  const configured = input2.localDbPath ?? (prefix ? env[`${prefix}_LOCAL_DB`] : void 0) ?? (prefix ? env[`${prefix}_LOCAL_PLANE_DB`] : void 0) ?? env.MERE_LOCAL_DB ?? env.MERE_LOCAL_PLANE_DB;
+  return path2.resolve(configured?.trim() ? expandHome(configured, env) : defaultLocalPlaneDbPath(env));
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function json(value) {
+  return JSON.stringify(value ?? {});
+}
+function makePlaneId(prefix) {
+  return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir3(path2.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function upsertPlaneWorkspace(db, appId, input2) {
+  const now = isoNow();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input2.workspaceId, input2.slug, input2.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input2.workspaceId, input2.dataPlane, input2.aiPlane, now, now, now);
+}
+function isRecord4(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function stringField(record, key) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function nestedRecord(record, key) {
+  const value = record[key];
+  return isRecord4(value) ? value : null;
+}
+function hashJson(value) {
+  const text = JSON.stringify(value);
+  if (text === void 0) {
+    throw new Error("Projection envelope must be JSON serializable.");
+  }
+  return createHash("sha256").update(text).digest("hex");
+}
+function defaultAppIdForProjection(product, eventType) {
+  if (product?.trim()) return product.trim();
+  if (eventType.startsWith("mail.")) return "mere-email";
+  if (eventType.startsWith("network.")) return "mere-network";
+  if (eventType.startsWith("project.") || eventType.startsWith("proposal.") || eventType.startsWith("file.") || eventType.startsWith("profile.")) {
+    return "mere-projects";
+  }
+  return "mere-business";
+}
+function inferExternalObject(event) {
+  const projection = nestedRecord(event, "projection");
+  const publication = nestedRecord(event, "publication");
+  const thread = nestedRecord(event, "thread");
+  const call = nestedRecord(event, "call");
+  if (projection && stringField(projection, "callId")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(projection, "callId") };
+  }
+  if (publication && stringField(publication, "id")) {
+    return { externalObjectType: "mail_publication", externalObjectId: stringField(publication, "id") };
+  }
+  if (thread && stringField(thread, "id")) {
+    return { externalObjectType: "mail_thread", externalObjectId: stringField(thread, "id") };
+  }
+  if (call && stringField(call, "id")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(call, "id") };
+  }
+  return { externalObjectType: null, externalObjectId: null };
+}
+function normalizeProjectionEnvelope(input2) {
+  if (!isRecord4(input2.envelope)) {
+    throw new Error("Projection envelope must be a JSON object.");
+  }
+  const receivedAt = input2.receivedAt ?? isoNow();
+  const envelope = input2.envelope;
+  const event = nestedRecord(envelope, "event") ?? envelope;
+  const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
+  if (!eventType) throw new Error("Projection envelope eventType is required.");
+  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
+  const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
+  const appId = input2.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
+  const sourceEventId = stringField(envelope, "eventId") ?? stringField(event, "eventId") ?? stringField(event, "id") ?? stringField(envelope, "dedupeKey") ?? `sha256:${hashJson(input2.envelope).slice(0, 32)}`;
+  const inferredExternal = inferExternalObject(event);
+  const externalObjectType = stringField(envelope, "externalObjectType") ?? stringField(event, "externalObjectType") ?? inferredExternal.externalObjectType;
+  const externalObjectId = stringField(envelope, "externalObjectId") ?? stringField(event, "externalObjectId") ?? inferredExternal.externalObjectId;
+  const occurredAt = stringField(envelope, "occurredAt") ?? stringField(event, "occurredAt") ?? stringField(event, "updatedAt") ?? stringField(nestedRecord(event, "publication") ?? {}, "publishedAt") ?? stringField(nestedRecord(event, "projection") ?? {}, "publishedAt") ?? receivedAt;
+  const envelopeJson = json(input2.envelope);
+  return {
+    appId,
+    workspaceId,
+    product,
+    sourceEventId,
+    eventType,
+    externalObjectType,
+    externalObjectId,
+    occurredAt,
+    canonicalUrl: stringField(envelope, "canonicalUrl") ?? stringField(event, "canonicalUrl"),
+    dedupeKey: stringField(envelope, "dedupeKey"),
+    source: input2.source ?? "manual",
+    receivedAt,
+    envelopeSha256: createHash("sha256").update(envelopeJson).digest("hex"),
+    envelopeJson
+  };
+}
+function toLocalProjectionEvent(row) {
+  return {
+    id: row.id,
+    appId: row.app_id,
+    workspaceId: row.workspace_id,
+    product: row.product,
+    sourceEventId: row.source_event_id,
+    eventType: row.event_type,
+    externalObjectType: row.external_object_type,
+    externalObjectId: row.external_object_id,
+    occurredAt: row.occurred_at,
+    canonicalUrl: row.canonical_url,
+    dedupeKey: row.dedupe_key,
+    source: row.source,
+    envelopeSha256: row.envelope_sha256,
+    envelope: JSON.parse(row.envelope_json),
+    receivedAt: row.received_at,
+    createdAt: row.created_at
+  };
+}
+function recordLocalProjectionEnvelope(db, input2) {
+  ensureLocalPlaneSchema(db);
+  const normalized = normalizeProjectionEnvelope(input2);
+  registerPlaneApp(db, normalized.appId);
+  upsertPlaneWorkspace(db, normalized.appId, {
+    workspaceId: normalized.workspaceId,
+    slug: normalized.workspaceId,
+    name: null,
+    dataPlane: "local",
+    aiPlane: "cloud"
+  });
+  const existing = db.prepare(
+    `SELECT id
+       FROM mere_plane_projection_events
+       WHERE app_id = ? AND workspace_id = ? AND source_event_id = ?
+       LIMIT 1`
+  ).get(normalized.appId, normalized.workspaceId, normalized.sourceEventId);
+  const id = existing?.id ?? makePlaneId("lpe");
+  const createdAt = existing ? null : normalized.receivedAt;
+  db.prepare(
+    `INSERT INTO mere_plane_projection_events (
+         id, app_id, workspace_id, product, source_event_id, event_type,
+         external_object_type, external_object_id, occurred_at, canonical_url,
+         dedupe_key, source, envelope_sha256, envelope_json, received_at, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id, source_event_id) DO UPDATE SET
+         product = excluded.product,
+         event_type = excluded.event_type,
+         external_object_type = excluded.external_object_type,
+         external_object_id = excluded.external_object_id,
+         occurred_at = excluded.occurred_at,
+         canonical_url = excluded.canonical_url,
+         dedupe_key = excluded.dedupe_key,
+         source = excluded.source,
+         envelope_sha256 = excluded.envelope_sha256,
+         envelope_json = excluded.envelope_json,
+         received_at = excluded.received_at`
+  ).run(
+    id,
+    normalized.appId,
+    normalized.workspaceId,
+    normalized.product,
+    normalized.sourceEventId,
+    normalized.eventType,
+    normalized.externalObjectType,
+    normalized.externalObjectId,
+    normalized.occurredAt,
+    normalized.canonicalUrl,
+    normalized.dedupeKey,
+    normalized.source,
+    normalized.envelopeSha256,
+    normalized.envelopeJson,
+    normalized.receivedAt,
+    createdAt ?? normalized.receivedAt
+  );
+  const event = getLocalProjectionEvent(db, id);
+  if (!event) throw new Error(`Local projection event ${id} was not recorded.`);
+  return { inserted: !existing, event };
+}
+function projectionFilterClause(options, alias = "e") {
+  const filters = [];
+  const params = [];
+  if (options.appId?.trim()) {
+    filters.push(`${alias}.app_id = ?`);
+    params.push(options.appId.trim());
+  }
+  if (options.workspaceId?.trim()) {
+    filters.push(`${alias}.workspace_id = ?`);
+    params.push(options.workspaceId.trim());
+  }
+  if (options.product?.trim()) {
+    filters.push(`${alias}.product = ?`);
+    params.push(options.product.trim());
+  }
+  if (options.eventType?.trim()) {
+    filters.push(`${alias}.event_type = ?`);
+    params.push(options.eventType.trim());
+  }
+  return {
+    sql: filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : "",
+    params
+  };
+}
+function listLocalProjectionEvents(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const limit = Math.max(1, Math.min(options.limit ?? 25, 200));
+  const filter = projectionFilterClause(options);
+  const rows = db.prepare(
+    `SELECT *
+       FROM mere_plane_projection_events AS e
+       ${filter.sql}
+       ORDER BY e.received_at DESC, e.id DESC
+       LIMIT ?`
+  ).all(...filter.params, limit);
+  return rows.map(toLocalProjectionEvent);
+}
+function getLocalProjectionEvent(db, idOrSourceEventId) {
+  ensureLocalPlaneSchema(db);
+  const row = db.prepare(
+    `SELECT *
+       FROM mere_plane_projection_events
+       WHERE id = ? OR source_event_id = ? OR dedupe_key = ?
+       ORDER BY received_at DESC
+       LIMIT 1`
+  ).get(idOrSourceEventId, idOrSourceEventId, idOrSourceEventId);
+  return row ? toLocalProjectionEvent(row) : null;
+}
+function getLocalBusinessProjectionDashboard(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const filter = projectionFilterClause(options);
+  const countRow = db.prepare(
+    `SELECT
+         COUNT(*) AS events,
+         COUNT(DISTINCT workspace_id) AS workspaces,
+         COUNT(DISTINCT app_id) AS apps,
+         COUNT(DISTINCT product) AS products,
+         COUNT(DISTINCT event_type) AS event_types
+       FROM mere_plane_projection_events AS e
+       ${filter.sql}`
+  ).get(...filter.params);
+  const workspaces = db.prepare(
+    `SELECT
+         e.workspace_id,
+         COUNT(*) AS event_count,
+         COUNT(DISTINCT e.app_id) AS app_count,
+         COUNT(DISTINCT e.product) AS product_count,
+         MAX(e.received_at) AS last_received_at
+       FROM mere_plane_projection_events AS e
+       ${filter.sql}
+       GROUP BY e.workspace_id
+       ORDER BY last_received_at DESC
+       LIMIT 25`
+  ).all(...filter.params);
+  const products = db.prepare(
+    `SELECT
+         e.app_id,
+         e.product,
+         COUNT(*) AS event_count,
+         MAX(e.received_at) AS last_received_at
+       FROM mere_plane_projection_events AS e
+       ${filter.sql}
+       GROUP BY e.app_id, e.product
+       ORDER BY last_received_at DESC
+       LIMIT 25`
+  ).all(...filter.params);
+  const eventTypes = db.prepare(
+    `SELECT
+         e.event_type,
+         COUNT(*) AS event_count,
+         MAX(e.received_at) AS last_received_at
+       FROM mere_plane_projection_events AS e
+       ${filter.sql}
+       GROUP BY e.event_type
+       ORDER BY last_received_at DESC
+       LIMIT 25`
+  ).all(...filter.params);
+  return {
+    kind: "mere.business.local-dashboard",
+    generatedAt: isoNow(),
+    counts: {
+      events: Number(countRow.events),
+      workspaces: Number(countRow.workspaces),
+      apps: Number(countRow.apps),
+      products: Number(countRow.products),
+      eventTypes: Number(countRow.event_types)
+    },
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      eventCount: Number(workspace.event_count),
+      appCount: Number(workspace.app_count),
+      productCount: Number(workspace.product_count),
+      lastReceivedAt: workspace.last_received_at
+    })),
+    products: products.map((product) => ({
+      appId: product.app_id,
+      product: product.product,
+      eventCount: Number(product.event_count),
+      lastReceivedAt: product.last_received_at
+    })),
+    eventTypes: eventTypes.map((eventType) => ({
+      eventType: eventType.event_type,
+      eventCount: Number(eventType.event_count),
+      lastReceivedAt: eventType.last_received_at
+    })),
+    recentEvents: listLocalProjectionEvents(db, { ...options, limit: options.limit ?? 10 })
+  };
+}
+
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -1299,8 +1786,8 @@ var ZodIssueCode = util2.arrayToEnum([
   "not_finite"
 ]);
 var quotelessJson = (obj) => {
-  const json = JSON.stringify(obj, null, 2);
-  return json.replace(/"([^"]+)":/g, "$1:");
+  const json2 = JSON.stringify(obj, null, 2);
+  return json2.replace(/"([^"]+)":/g, "$1:");
 };
 var ZodError = class _ZodError extends Error {
   get errors() {
@@ -1511,8 +1998,8 @@ function getErrorMap() {
 
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -1628,11 +2115,11 @@ var errorUtil;
 
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -5084,6 +5571,7 @@ var optionalPositiveNumber = external_exports.preprocess(
   (value) => value === void 0 ? void 0 : Number(value),
   external_exports.number().positive().optional()
 );
+var localProjectionSourceSchema = external_exports.enum(["local-publish", "cloud-delivery", "file-import", "dry-run", "manual"]).optional();
 function stringOption(name, key, summary, options = {}) {
   return {
     name,
@@ -5274,11 +5762,11 @@ var WRITE_COMMAND_SEGMENTS = /* @__PURE__ */ new Set([
   "update",
   "use"
 ]);
-function commandKey(path3) {
-  return path3.join(".").replaceAll("-", ".");
+function commandKey(path4) {
+  return path4.join(".").replaceAll("-", ".");
 }
-function commandPathSegments(path3) {
-  return path3.flatMap((part) => part.toLowerCase().split(/[^a-z0-9]+/u)).filter(Boolean);
+function commandPathSegments(path4) {
+  return path4.flatMap((part) => part.toLowerCase().split(/[^a-z0-9]+/u)).filter(Boolean);
 }
 function commandRisk(command) {
   if (command.destructive) return "destructive";
@@ -5391,11 +5879,11 @@ async function staticBundlePayload(input2) {
         continue;
       }
       if (!entry.isFile()) continue;
-      const path3 = safeBundlePath(relative(root, absolute));
+      const path4 = safeBundlePath(relative(root, absolute));
       const data = await readFile2(absolute);
       files.push({
-        path: path3,
-        contentType: inferContentType(path3),
+        path: path4,
+        contentType: inferContentType(path4),
         dataBase64: data.toString("base64"),
         sizeBytes: data.byteLength
       });
@@ -5471,6 +5959,71 @@ ${detail}`;
     return payload.error;
   }
   return `Onboarding state: ${payload.state ?? "unknown"}`;
+}
+function localDbOption() {
+  return stringOption("local-db", "localDbPath", "Override the centralized local Mere SQLite database.");
+}
+function localProjectionFilterOptions() {
+  return [
+    localDbOption(),
+    stringOption("app-id", "appId", "Filter by source app id."),
+    stringOption("workspace-id", "workspaceId", "Filter by workspace id."),
+    stringOption("product", "product", "Filter by Business product key."),
+    stringOption("event-type", "eventType", "Filter by projection event type."),
+    stringOption("limit", "limit", "Maximum events to return.")
+  ];
+}
+async function withLocalBusinessPlane(localDbPath, handler) {
+  const dbPath = resolveLocalPlaneDbPath({ appId: "mere-business", localDbPath });
+  const plane = await openLocalPlaneDatabase({ localDbPath: dbPath });
+  try {
+    return await handler({ dbPath: plane.dbPath, db: plane.db });
+  } finally {
+    plane.close();
+  }
+}
+function localProjectionFilters(input2) {
+  return {
+    appId: input2.appId,
+    workspaceId: input2.workspaceId,
+    product: input2.product,
+    eventType: input2.eventType,
+    limit: input2.limit
+  };
+}
+function localDashboardFormat(data) {
+  const dashboard = data;
+  const lines = [
+    `Local Business dashboard (${dashboard.dbPath ?? "local-plane.db"})`,
+    `events: ${dashboard.counts.events}  workspaces: ${dashboard.counts.workspaces}  apps: ${dashboard.counts.apps}  event types: ${dashboard.counts.eventTypes}`
+  ];
+  if (dashboard.products.length > 0) {
+    lines.push(
+      "products:",
+      ...dashboard.products.map(
+        (product) => `  ${product.appId}/${product.product}: ${product.eventCount} event${product.eventCount === 1 ? "" : "s"}`
+      )
+    );
+  }
+  if (dashboard.recentEvents.length > 0) {
+    lines.push(
+      "recent:",
+      ...dashboard.recentEvents.map(
+        (event) => `  ${event.receivedAt} ${event.appId} ${event.eventType} ${event.sourceEventId}`
+      )
+    );
+  }
+  return lines.join("\n");
+}
+function localProjectionListFormat(data) {
+  const payload = data;
+  if (payload.events.length === 0) return `No local projection events in ${payload.dbPath}.`;
+  return payload.events.map((event) => `${event.receivedAt} ${event.appId} ${event.workspaceId} ${event.eventType} ${event.sourceEventId}`).join("\n");
+}
+function localProjectionGetFormat(data) {
+  const payload = data;
+  if (!payload.event) return "Local projection event not found.";
+  return JSON.stringify(payload.event, null, 2);
 }
 var commands = [
   {
@@ -5719,6 +6272,118 @@ next: ${payload.nextUrl}` : ""}`;
       input: parseJsonText(input2.inputJson, "input-json") ?? {}
     })
   }),
+  {
+    path: ["local", "dashboard"],
+    summary: "Show the offline Business projection dashboard from the local-plane database.",
+    options: localProjectionFilterOptions(),
+    schema: external_exports.object({
+      localDbPath: optionalString,
+      appId: optionalString,
+      workspaceId: optionalString,
+      product: optionalString,
+      eventType: optionalString,
+      limit: optionalPositiveNumber
+    }),
+    auth: "none",
+    risk: "read",
+    execute: (_runtime, input2) => {
+      const localInput = input2;
+      return withLocalBusinessPlane(localInput.localDbPath, ({ dbPath, db }) => ({
+        ...getLocalBusinessProjectionDashboard(db, localProjectionFilters(localInput)),
+        dbPath
+      }));
+    },
+    format: localDashboardFormat
+  },
+  {
+    path: ["local", "projections", "list"],
+    summary: "List approved projection envelopes stored for offline Business ops.",
+    options: localProjectionFilterOptions(),
+    schema: external_exports.object({
+      localDbPath: optionalString,
+      appId: optionalString,
+      workspaceId: optionalString,
+      product: optionalString,
+      eventType: optionalString,
+      limit: optionalPositiveNumber
+    }),
+    auth: "none",
+    risk: "read",
+    execute: (_runtime, input2) => {
+      const localInput = input2;
+      return withLocalBusinessPlane(localInput.localDbPath, ({ dbPath, db }) => ({
+        ok: true,
+        dbPath,
+        events: listLocalProjectionEvents(db, localProjectionFilters(localInput))
+      }));
+    },
+    format: localProjectionListFormat
+  },
+  {
+    path: ["local", "projections", "get"],
+    summary: "Show one local projection envelope by local id, source event id, or dedupe key.",
+    positionals: ["eventId"],
+    options: [localDbOption()],
+    schema: external_exports.object({
+      eventId: requiredString,
+      localDbPath: optionalString
+    }),
+    auth: "none",
+    risk: "read",
+    execute: (_runtime, input2) => {
+      const localInput = input2;
+      return withLocalBusinessPlane(localInput.localDbPath, ({ dbPath, db }) => ({
+        ok: true,
+        dbPath,
+        event: getLocalProjectionEvent(db, localInput.eventId)
+      }));
+    },
+    format: localProjectionGetFormat
+  },
+  {
+    path: ["local", "projections", "import"],
+    summary: "Import an approved projection envelope into the offline Business read-model ledger.",
+    options: [
+      localDbOption(),
+      stringOption("file", "file", "Projection envelope JSON file."),
+      stringOption("event-json", "eventJson", "Projection envelope JSON object."),
+      stringOption("app-id", "appId", "Source app id when the envelope cannot infer it."),
+      stringOption("source", "source", "Projection source: local-publish, cloud-delivery, file-import, dry-run, or manual.")
+    ],
+    schema: external_exports.object({
+      localDbPath: optionalString,
+      file: optionalString,
+      eventJson: optionalString,
+      appId: optionalString,
+      source: localProjectionSourceSchema
+    }),
+    auth: "none",
+    risk: "write",
+    execute: async (_runtime, input2) => {
+      const localInput = input2;
+      if (localInput.file && localInput.eventJson) {
+        throw usageError("Use either --file or --event-json, not both.");
+      }
+      if (!localInput.file && !localInput.eventJson) {
+        throw usageError("Pass --file or --event-json.");
+      }
+      const raw = localInput.file ? await readFile2(localInput.file, "utf8") : localInput.eventJson ?? "";
+      const envelope = parseJsonText(raw, localInput.file ? `file ${localInput.file}` : "event-json");
+      return withLocalBusinessPlane(localInput.localDbPath, ({ dbPath, db }) => {
+        const result = recordLocalProjectionEnvelope(db, {
+          appId: localInput.appId,
+          source: localInput.source ?? (localInput.file ? "file-import" : "manual"),
+          envelope
+        });
+        return {
+          ok: true,
+          dbPath,
+          inserted: result.inserted,
+          event: result.event
+        };
+      });
+    }
+  },
   rpcCommand({
     path: ["ops", "list"],
     summary: "List ops items.",
@@ -7744,8 +8409,8 @@ next: ${payload.nextUrl}` : ""}`;
   })
 ];
 var sortedCommands = [...commands].sort((left, right) => right.path.length - left.path.length);
-function startsWithPath(argv, path3) {
-  return path3.every((segment, index) => argv[index] === segment);
+function startsWithPath(argv, path4) {
+  return path4.every((segment, index) => argv[index] === segment);
 }
 function findCommand(argv) {
   return sortedCommands.find((command) => startsWithPath(argv, command.path)) ?? null;
@@ -7811,8 +8476,8 @@ function parseCommand(argv) {
     input: parsedInput.data
   };
 }
-function renderHelp(path3 = []) {
-  if (path3.length === 0) {
+function renderHelp(path4 = []) {
+  if (path4.length === 0) {
     const groups = [.../* @__PURE__ */ new Set([...commands.map((command) => command.path[0]), "completion"])].sort();
     return [
       "Usage: mere-business <group> <command> [options]",
@@ -7824,14 +8489,14 @@ function renderHelp(path3 = []) {
       "Run `mere-business help <group>` for group commands."
     ].join("\n");
   }
-  if (path3.length === 1 && path3[0] === "completion") {
+  if (path4.length === 1 && path4[0] === "completion") {
     return [
       "Generate shell completion.",
       "",
       "Usage: mere-business completion [bash|zsh|fish]"
     ].join("\n");
   }
-  const exact = commands.find((command) => command.path.join(" ") === path3.join(" "));
+  const exact = commands.find((command) => command.path.join(" ") === path4.join(" "));
   if (exact) {
     const usage = ["mere-business", ...exact.path, ...(exact.positionals ?? []).map((item) => `<${item}>`)].join(" ");
     const optionLines = [...globalOptions, ...exact.options ?? []].map(
@@ -7839,14 +8504,14 @@ function renderHelp(path3 = []) {
     );
     return [exact.summary, "", `Usage: ${usage}`, "", "Options:", ...optionLines].join("\n");
   }
-  const subgroup = commands.filter((command) => startsWithPath(command.path, path3));
+  const subgroup = commands.filter((command) => startsWithPath(command.path, path4));
   if (subgroup.length === 0) {
-    throw usageError(`Unknown help topic: ${path3.join(" ")}`);
+    throw usageError(`Unknown help topic: ${path4.join(" ")}`);
   }
   return [
-    `Commands under ${path3.join(" ")}:`,
+    `Commands under ${path4.join(" ")}:`,
     "",
-    ...subgroup.map((command) => `  ${command.path.slice(path3.length).join(" ")}  ${command.summary}`)
+    ...subgroup.map((command) => `  ${command.path.slice(path4.length).join(" ")}  ${command.summary}`)
   ].join("\n");
 }
 function renderCompletion(shell) {
@@ -7891,12 +8556,12 @@ function renderCommandManifest() {
           auth: command.auth ?? "workspace",
           risk: commandRisk(command),
           supportsJson: true,
-          supportsData: Boolean(command.options?.some((option) => option.name.includes("json"))),
+          supportsData: false,
           requiresYes: command.destructive || commandRisk(command) === "external",
           requiresConfirm: Boolean(command.confirmationTarget),
           interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
           positionals: command.positionals ?? [],
-          flags: [...globalOptions, ...command.options ?? []].map((option) => option.name),
+          flags: (command.options ?? []).map((option) => option.name),
           requiredFlags: (command.options ?? []).filter((option) => option.required).map((option) => option.name),
           ...command.path.join(".") === "auth.whoami" || command.path.join(".") === "workspace.current" ? { auditDefault: true } : {}
         })),
@@ -7939,8 +8604,8 @@ function renderCommandManifest() {
 
 // src/index.ts
 function readPackageVersion() {
-  const packageJsonPath = path2.resolve(
-    path2.dirname(fileURLToPath(import.meta.url)),
+  const packageJsonPath = path3.resolve(
+    path3.dirname(fileURLToPath(import.meta.url)),
     "../package.json"
   );
   const raw = readFileSync(packageJsonPath, "utf8");
@@ -8294,7 +8959,7 @@ async function run(argv) {
 `);
     return 0;
   }
-  if (argv[0] === "help") {
+  if (argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
     output2.write(`${renderHelp(argv.slice(1))}
 `);
     return 0;

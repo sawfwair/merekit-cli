@@ -1917,38 +1917,35 @@ function commandManifest() {
       "json",
       "yes",
       "confirm",
-      "projection-url",
-      "projection-token",
-      "published-by-user-id",
-      "published-by-email",
-      "data",
-      "data-file",
-      "token",
-      "output",
-      "file",
-      "dry-run"
+      "token"
     ],
     commands: [
-      command(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      command(["auth", "login"], "Start browser login.", { auth: "none", risk: "write", flags: ["workspace"] }),
       command(["auth", "whoami"], "Show current user and workspace."),
       command(["auth", "logout"], "Clear the local session.", { risk: "write" }),
       command(["workspace", "list"], "List available workspaces."),
       command(["workspace", "current"], "Show active workspace."),
-      command(["workspace", "use"], "Select a default workspace.", { risk: "write" }),
+      command(["workspace", "use"], "Select a default workspace.", {
+        risk: "write",
+        positionals: ["selector"]
+      }),
       command(["workspace", "provision"], "Provision Works for a Mere workspace.", {
         auth: "token",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
       command(["workspace", "bootstrap"], "Bootstrap Works for a Mere workspace.", {
         auth: "token",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
       command(["workspace", "sync"], "Sync Works connection state.", {
         auth: "token",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
       command(["workspace", "disconnect"], "Disconnect Works from a Mere workspace.", {
         auth: "token",
@@ -1959,19 +1956,27 @@ function commandManifest() {
       command(["workspace", "command"], "Run an internal Works workspace command.", {
         auth: "token",
         risk: "external",
-        supportsData: true
+        supportsData: true,
+        positionals: ["command"],
+        flags: ["data", "data-file", "prompt", "user-context", "actor-user", "actor-label", "actor-role", "work", "work-id", "release", "release-id", "name", "notes", "note", "environment", "kind"]
       }),
       command(["store", "info"], "Show local/cloud data and AI plane selection.", { auth: "none" }),
-      command(["export"], "Export local work archive transfer bundle.", { auth: "none" }),
+      command(["export"], "Export local work archive transfer bundle.", { auth: "none", flags: ["output"] }),
       command(["import"], "Import local work archive transfer bundle or emit a dry-run plan.", {
         auth: "none",
-        risk: "write"
+        risk: "write",
+        flags: ["file", "dry-run"]
       }),
-      ...["list", "get"].map((action) => command(["work", action], `${action} works.`)),
+      command(["work", "list"], "List works."),
+      command(["work", "get"], "Get a work.", {
+        positionals: ["workId"],
+        flags: ["slug"]
+      }),
       command(["work", "upsert"], "Upsert local work archive metadata.", {
         auth: "none",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
       command(["work", "publish"], "Publish selected local work summary to Business.", {
         auth: "none",
@@ -1985,61 +1990,141 @@ function commandManifest() {
         positionals: ["workId"],
         flags: ["projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"]
       }),
-      command(["work", "create"], "Create a work from JSON.", { risk: "write", supportsData: true }),
-      command(["work", "update"], "Update work metadata/code/schema.", { risk: "write", supportsData: true }),
+      command(["work", "create"], "Create a work from JSON.", {
+        risk: "write",
+        supportsData: true,
+        flags: ["data", "data-file"]
+      }),
+      command(["work", "update"], "Update work metadata/code/schema.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["slug", "data", "data-file"]
+      }),
       command(["work", "delete"], "Delete a work.", {
         risk: "destructive",
         requiresYes: true,
-        requiresConfirm: true
+        requiresConfirm: true,
+        positionals: ["workId"],
+        flags: ["slug"]
       }),
-      command(["work", "open"], "Open Works in the browser.", { auth: "none" }),
-      ...["get", "update", "initialize", "append"].map(
-        (action) => command(["data", action], `${action} work data.`, {
-          risk: action === "get" ? "read" : "write",
-          supportsData: action !== "get"
-        })
-      ),
+      command(["work", "open"], "Open Works in the browser.", {
+        auth: "none",
+        positionals: ["slug"],
+        flags: ["slug"]
+      }),
+      command(["data", "get"], "Get work data.", {
+        positionals: ["workId"]
+      }),
+      command(["data", "update"], "Update work data.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["data", "data-file"]
+      }),
+      command(["data", "initialize"], "Initialize work data schema.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["data", "data-file"]
+      }),
+      command(["data", "append"], "Append item to a work collection.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["collection", "data", "data-file"]
+      }),
       command(["data", "upsert"], "Upsert local work data snapshot.", {
         auth: "none",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
       command(["collection", "upsert"], "Upsert local work collection item.", {
         auth: "none",
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        flags: ["data", "data-file"]
       }),
-      ...["list", "create"].map(
-        (action) => command(["release", action], `${action} releases.`, {
-          risk: action === "create" ? "write" : "read",
-          supportsData: action === "create"
-        })
-      ),
-      command(["release", "approval"], "Request, approve, or reject a release.", { risk: "write" }),
-      command(["release", "publish"], "Promote a release to an environment.", { risk: "write" }),
-      command(["release", "unpublish"], "Unpublish an environment.", { risk: "write" }),
-      command(["release", "rollback"], "Roll back an environment.", { risk: "write" }),
-      command(["share", "list"], "List share links."),
-      command(["share", "create"], "Create a share link.", { risk: "write" }),
+      command(["release", "list"], "List releases.", {
+        positionals: ["workId"]
+      }),
+      command(["release", "create"], "Create a release.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["name", "notes", "source-version", "data", "data-file"]
+      }),
+      command(["release", "approval"], "Request, approve, or reject a release.", {
+        risk: "write",
+        positionals: ["workId", "releaseId", "action"],
+        flags: ["note"]
+      }),
+      command(["release", "publish"], "Promote a release to an environment.", {
+        risk: "write",
+        positionals: ["workId", "releaseId"],
+        flags: ["environment"]
+      }),
+      command(["release", "unpublish"], "Unpublish an environment.", {
+        risk: "write",
+        positionals: ["workId"],
+        flags: ["environment"]
+      }),
+      command(["release", "rollback"], "Roll back an environment.", {
+        risk: "write",
+        positionals: ["workId"],
+        flags: ["environment"]
+      }),
+      command(["share", "list"], "List share links.", {
+        positionals: ["workId"]
+      }),
+      command(["share", "create"], "Create a share link.", {
+        risk: "write",
+        positionals: ["workId"],
+        flags: ["release", "release-id", "kind", "access-mode"]
+      }),
       command(["share", "revoke"], "Revoke a share link.", {
         risk: "destructive",
         requiresYes: true,
-        requiresConfirm: true
+        requiresConfirm: true,
+        positionals: ["workId", "linkId"]
       }),
-      command(["capability", "list"], "List requested and approved capabilities."),
+      command(["capability", "list"], "List requested and approved capabilities.", {
+        positionals: ["workId"]
+      }),
       command(["capability", "grant"], "Approve a capability grant.", {
         risk: "write",
-        supportsData: true
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["capability", "data", "data-file"]
       }),
       command(["capability", "revoke"], "Revoke a capability grant.", {
         risk: "destructive",
-        requiresYes: true
+        requiresYes: true,
+        positionals: ["workId"],
+        flags: ["capability"]
       }),
-      command(["surface", "get"], "Get release surface settings."),
-      command(["surface", "set"], "Update release surface settings.", { risk: "write", supportsData: true }),
-      command(["version", "list"], "List work versions."),
-      command(["version", "restore"], "Restore a version.", { risk: "write" }),
-      command(["version", "compare"], "Compare versions."),
+      command(["surface", "get"], "Get release surface settings.", {
+        positionals: ["workId"],
+        flags: ["release", "release-id"]
+      }),
+      command(["surface", "set"], "Update release surface settings.", {
+        risk: "write",
+        supportsData: true,
+        positionals: ["workId"],
+        flags: ["release", "release-id", "data", "data-file"]
+      }),
+      command(["version", "list"], "List work versions.", {
+        positionals: ["workId"]
+      }),
+      command(["version", "restore"], "Restore a version.", {
+        risk: "write",
+        positionals: ["workId", "versionId"]
+      }),
+      command(["version", "compare"], "Compare versions.", {
+        positionals: ["workId"],
+        flags: ["base", "target"]
+      }),
       command(["commands"], "Print command manifest.", { auth: "none" }),
       command(["completion"], "Generate shell completion.", { auth: "none" })
     ]

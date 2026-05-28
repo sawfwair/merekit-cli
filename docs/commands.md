@@ -208,21 +208,21 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 155 | 2 | 57 read, 67 write, 15 destructive, 16 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
-| `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json`, `yes`, `confirm` |
-| `dynasite` | 31 | 3 | 14 read, 13 write, 4 external | `base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db`, `data`, `data-file`, `output`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
-| `projects` | 75 | 5 | 30 read, 28 write, 9 destructive, 8 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `store`, `ai`, `local-db`, `output`, `file`, `dry-run`, `projection-url`, `projection-token`, `canonical-url` |
-| `agent` | 32 | 7 | 12 read, 13 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `data-plane`, `ai`, `ai-plane`, `local-db`, `model`, `timeout-ms`, `projection-url`, `projection-token`, `json`, `yes`, `confirm`, `data`, `data-file`, `output`, `file`, `dry-run` |
-| `today` | 63 | 5 | 24 read, 26 write, 10 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `persist-to` |
-| `zone` | 35 | 8 | 17 read, 11 write, 2 destructive, 5 external | `base-url`, `workspace`, `data-plane`, `plane`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run`, `data`, `data-file`, `store` |
-| `video` | 43 | 10 | 24 read, 13 write, 1 destructive, 5 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `data`, `output`, `file`, `dry-run` |
-| `network` | 78 | 7 | 32 read, 24 write, 11 destructive, 11 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `data`, `data-file`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
-| `email` | 38 | 5 | 18 read, 13 write, 3 destructive, 4 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm`, `data`, `data-file` |
-| `gives` | 45 | 9 | 24 read, 14 write, 5 destructive, 2 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
-| `works` | 48 | 0 | 17 read, 24 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `data`, `data-file`, `token`, `output`, `file`, `dry-run` |
-| `media` | 17 | 3 | 9 read, 8 write | `base-url`, `store`, `ai`, `local-db`, `workspace`, `token`, `json`, `dry-run` |
-| `deliver` | 27 | 4 | 11 read, 11 write, 2 destructive, 3 external | `base-url`, `token`, `json`, `workspace`, `store`, `ai`, `local-db`, `data`, `data-file`, `output`, `file`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
-| `link` | 21 | 0 | 16 read, 4 write, 1 external | `config`, `workspace`, `snapshot-file`, `output`, `name`, `role`, `date-start`, `json`, `yes`, `apply`, `mere-bin`, `executor-base-url`, `executor-token-env`, `executor-scope`, `data`, `capability`, `operator`, `operator-provider`, `operator-client`, `operator-type`, `operator-account-class`, `operator-account-id`, `operator-trust-tier`, `operator-environment`, `override` |
+| `business` | 159 | 2 | 60 read, 68 write, 15 destructive, 16 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
+| `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json` |
+| `dynasite` | 31 | 3 | 14 read, 13 write, 4 external | `base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db` |
+| `projects` | 75 | 5 | 30 read, 28 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
+| `agent` | 32 | 7 | 12 read, 13 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `data-plane`, `ai`, `ai-plane`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
+| `today` | 63 | 5 | 24 read, 26 write, 10 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `persist-to` |
+| `zone` | 35 | 8 | 17 read, 11 write, 2 destructive, 5 external | `base-url`, `workspace`, `data-plane`, `plane`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
+| `video` | 43 | 10 | 24 read, 13 write, 1 destructive, 5 external | `base-url`, `workspace`, `token`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token` |
+| `network` | 88 | 7 | 38 read, 28 write, 11 destructive, 11 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token` |
+| `email` | 38 | 5 | 18 read, 13 write, 3 destructive, 4 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
+| `gives` | 45 | 9 | 24 read, 14 write, 5 destructive, 2 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
+| `works` | 48 | 0 | 17 read, 24 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `token` |
+| `media` | 17 | 3 | 9 read, 8 write | `base-url`, `store`, `ai`, `local-db`, `workspace`, `token`, `json` |
+| `deliver` | 42 | 4 | 26 read, 11 write, 2 destructive, 3 external | `base-url`, `token`, `json`, `workspace`, `store`, `ai`, `local-db`, `yes`, `confirm` |
+| `link` | 21 | 0 | 16 read, 4 write, 1 external | `config`, `workspace`, `json`, `yes` |
 
 ## Output And Exit Codes
 
