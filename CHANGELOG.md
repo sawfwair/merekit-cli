@@ -6,6 +6,22 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.4.1 - 2026-05-27
+
+- Fixed adapter generation to prefer `mere-*` app repositories when both legacy and prefixed checkouts exist, so the bundled Network adapter includes its local-plane command surface.
+
+## 0.4.0 - 2026-05-27
+
+- Regenerated all bundled app adapters from the current Mere workspace, expanding the command surface for local-plane aware apps.
+- Added the updated Email adapter with local-plane sync and traversal commands, including `sync pull`, `threads list`, `threads latest`, and local search/show flows.
+- Updated root CLI delegation so manifest-declared app globals such as `--store`, `--local-db`, and adapter-specific local-plane flags are retried before the app command when adapters require leading options.
+- Updated the generated command matrix and adapter safety checks for the refreshed local/cloud adapter surface.
+
+## 0.3.0 - 2026-05-25
+
+- Added the bundled Dynasite root adapter so `mere dynasite ...` is available for direct site diagnostics, CMS/media operations, publishing, and static bundle management.
+- Regenerated the Business adapter with workspace lifecycle commands, existing-site import, CMS/media/revision operations, publishing, and static bundle upload/publish/rollback flows.
+- Expanded the root app registry and docs so Business, Dynasite, Link, Zone, and adjacent adapters match the current source manifests.
 - Hardened npm supply-chain controls by removing the Ink/React runtime renderer dependencies, exact-pinning direct dependencies, adding a published shrinkwrap, reviewing install-time lifecycle scripts, and adding scheduled audit/signature checks.
 
 ## 0.2.3 - 2026-05-15

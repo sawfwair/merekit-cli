@@ -7,7 +7,8 @@ export function starterConfig(input = {}) {
         schemaVersion: 1,
         integrations: {
             mere: { plugin: 'mere', workspace },
-            github: { plugin: 'github-cli' },
+            executor: { plugin: 'executor' },
+            github: { plugin: 'executor', namespace: 'github' },
             url: { plugin: 'url' }
         },
         entities: {

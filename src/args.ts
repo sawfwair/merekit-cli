@@ -40,7 +40,14 @@ export const ROOT_PASSTHROUGH_FLAGS = new Set([
 	'local-db',
 	'remote',
 	'db',
-	'persist-to'
+	'persist-to',
+	'ai',
+	'ai-plane',
+	'data-plane',
+	'plane',
+	'projection-url',
+	'projection-token',
+	'token'
 ]);
 
 function addFlag(flags: Record<string, FlagValue>, name: string, value: string | boolean): void {

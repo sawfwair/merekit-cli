@@ -101,6 +101,17 @@ mere projects project list --workspace WORKSPACE_ID --json
 
 Use `workspace-snapshot` for the safest broad read. Use `apps manifest` before a delegated command so you can confirm the command path, required selectors, risk level, JSON/data support, and destructive guardrails.
 
+For customer workspace and website operations, switch to the Business lifecycle surface:
+
+```sh
+mere business workspace status --workspace WORKSPACE_ID --json
+mere business site status --workspace WORKSPACE_ID --json
+mere business site import-existing --workspace WORKSPACE_ID --url https://example.com --json
+mere business site bundle status --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --json
+```
+
+See [Business Workspace And Site Lifecycle](/business-site) for existing-site import, net-new site requests, CMS/media/revision operations, publishing, static bundles, and direct `mere dynasite` recovery commands.
+
 ## Keep Going
 
 - [Onboarding overview](/onboarding/)

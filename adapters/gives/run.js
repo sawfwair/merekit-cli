@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // cli/zerodonate.ts
-import { mkdir as mkdir2, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
-import { dirname, resolve as resolvePath } from "node:path";
+import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolvePath2 } from "node:path";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -311,6 +311,1404 @@ async function logoutRemote(input = {}) {
   return true;
 }
 
+// cli/local-plane.ts
+import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname, resolve as resolvePath } from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os2 from "node:os";
+import path2 from "node:path";
+function stateHome2(env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  return env.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path2.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path2.join(stateHome2(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
+  }
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
+}
+function readLocalDbPath(input) {
+  const prefix = envPrefix(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path2.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
+  return {
+    value: path2.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
+    }
+  };
+}
+function formatPlaneConfigReport(report) {
+  const lines = ["Local plane config:"];
+  for (const config of report.configs) {
+    lines.push(
+      `  - ${config.appId}: data=${config.data}(${config.sources.data}) ai=${config.ai}(${config.sources.ai}) db=${config.localDbPath}(${config.sources.localDbPath}) projection=${config.cloudProjection}${config.blended ? " blended" : ""}`
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+var CloudProjectionDeliveryError = class extends Error {
+  constructor(message, status = null, responseText = null) {
+    super(message);
+    this.status = status;
+    this.responseText = responseText;
+    this.name = "CloudProjectionDeliveryError";
+  }
+};
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+
+// cli/local-store.ts
+import { createHash as createHash2 } from "node:crypto";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { mkdir as mkdir2 } from "node:fs/promises";
+import path3 from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+var PLANE_TRANSFER_VERSION = 1;
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir2(path3.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+
+// cli/local-store.ts
+var GIVES_APP_ID = "mere-gives";
+var GIVES_DONOR_LEDGER_SCHEMA = "mere.gives.donor-ledger.v1";
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString2(value, label, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${label} is required for local mere.gives records.`);
+  }
+  return raw.trim();
+}
+function readOptionalString(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+function readNumber(value, fallback = 0) {
+  const raw = value === void 0 || value === null || value === "" ? fallback : Number(value);
+  return Number.isFinite(raw) ? Math.trunc(raw) : fallback;
+}
+function readBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+function readTags(value) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry)).filter(Boolean);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)).filter(Boolean) : [];
+  } catch {
+    return value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  }
+}
+function readStripeRefs(input) {
+  const refs = isRecord2(input.stripeRefs) ? input.stripeRefs : input;
+  return {
+    checkoutSessionId: readOptionalString(refs.checkoutSessionId ?? refs.stripe_checkout_session_id),
+    paymentIntentId: readOptionalString(refs.paymentIntentId ?? refs.stripe_payment_intent_id),
+    subscriptionId: readOptionalString(refs.subscriptionId ?? refs.stripe_subscription_id),
+    invoiceId: readOptionalString(refs.invoiceId ?? refs.stripe_invoice_id),
+    chargeId: readOptionalString(refs.chargeId ?? refs.stripe_charge_id)
+  };
+}
+function normalizeDonor(input, workspaceId, existing) {
+  const now = isoNow3();
+  const email = readString2(input.email, "email", existing?.email).toLowerCase();
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? email,
+    workspaceId,
+    email,
+    firstName: readOptionalString(input.firstName ?? input.first_name, existing?.firstName),
+    lastName: readOptionalString(input.lastName ?? input.last_name, existing?.lastName),
+    phone: readOptionalString(input.phone, existing?.phone),
+    totalDonatedCents: readNumber(input.totalDonatedCents ?? input.total_donated_cents, existing?.totalDonatedCents ?? 0),
+    donationCount: readNumber(input.donationCount ?? input.donation_count, existing?.donationCount ?? 0),
+    tags: readTags(input.tags ?? input.tags_json ?? existing?.tags),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt ?? input.created_at) ?? now,
+    updatedAt: readOptionalString(input.updatedAt ?? input.updated_at) ?? now
+  };
+}
+function normalizeDonation(input, workspaceId, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? readString2(input.id, "id"),
+    workspaceId,
+    donorId: readOptionalString(input.donorId ?? input.donor_id, existing?.donorId),
+    campaignId: readOptionalString(input.campaignId ?? input.campaign_id, existing?.campaignId),
+    amountCents: readNumber(input.amountCents ?? input.amount_cents, existing?.amountCents ?? 0),
+    currency: readOptionalString(input.currency, existing?.currency)?.toUpperCase() ?? "USD",
+    donorName: readString2(input.donorName ?? input.donor_name, "donorName", existing?.donorName),
+    donorEmail: readString2(input.donorEmail ?? input.donor_email, "donorEmail", existing?.donorEmail).toLowerCase(),
+    status: readOptionalString(input.status, existing?.status) ?? "completed",
+    source: readOptionalString(input.source, existing?.source) ?? "local",
+    isRecurring: readBoolean(input.isRecurring ?? input.is_recurring, existing?.isRecurring ?? false),
+    stripeRefs: readStripeRefs(input),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt ?? input.created_at) ?? now,
+    updatedAt: readOptionalString(input.updatedAt ?? input.updated_at) ?? now
+  };
+}
+function normalizePayload(value, workspaceId) {
+  if (!isRecord2(value) || value.kind !== GIVES_DONOR_LEDGER_SCHEMA || value.version !== 1) {
+    throw new Error(`Gives transfer payload must be ${GIVES_DONOR_LEDGER_SCHEMA} version 1.`);
+  }
+  return {
+    kind: GIVES_DONOR_LEDGER_SCHEMA,
+    version: 1,
+    donors: Array.isArray(value.donors) ? value.donors.map((entry) => normalizeDonor(isRecord2(entry) ? entry : {}, workspaceId)) : [],
+    donations: Array.isArray(value.donations) ? value.donations.map((entry) => normalizeDonation(isRecord2(entry) ? entry : {}, workspaceId)) : []
+  };
+}
+function parseJson2(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+function parseJsonColumn(value, fallback) {
+  return typeof value === "string" ? parseJson2(value, fallback) : fallback;
+}
+function countBy(items, selector) {
+  const counts = {};
+  for (const item of items) {
+    const key = selector(item)?.trim();
+    if (!key) continue;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+function stableDonorLedgerProjectionId(workspaceId) {
+  const digest = createHash2("sha256").update([GIVES_APP_ID, workspaceId, "donor-ledger"].join("\n")).digest("hex").slice(0, 24);
+  return `givpr_${digest}`;
+}
+var LocalGivesStore = class _LocalGivesStore {
+  constructor(dbPath, db, config, workspace) {
+    this.dbPath = dbPath;
+    this.db = db;
+    this.config = config;
+    this.workspace = workspace;
+  }
+  static async open(input) {
+    const opened = await openLocalPlaneDatabase(input.config);
+    const db = opened.db;
+    registerPlaneApp(opened.db, GIVES_APP_ID, "Mere Gives");
+    registerPlaneTransferSchema(opened.db, GIVES_APP_ID, {
+      payloadSchema: GIVES_DONOR_LEDGER_SCHEMA,
+      displayName: "Gives donor ledger transfer",
+      description: "Portable mere.gives donor and donation archive records; payment processing stays hosted."
+    });
+    upsertPlaneWorkspace(opened.db, GIVES_APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    const store = new _LocalGivesStore(opened.dbPath, db, input.config, input.workspace);
+    store.ensureSchema();
+    return store;
+  }
+  close() {
+    this.db.close();
+  }
+  ensureSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS gives_local_donors (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT,
+        phone TEXT,
+        total_donated_cents INTEGER NOT NULL DEFAULT 0,
+        donation_count INTEGER NOT NULL DEFAULT 0,
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_gives_local_donors_email
+        ON gives_local_donors (workspace_id, email);
+
+      CREATE TABLE IF NOT EXISTS gives_local_donations (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        donor_id TEXT,
+        campaign_id TEXT,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        donor_name TEXT NOT NULL,
+        donor_email TEXT NOT NULL,
+        status TEXT NOT NULL,
+        source TEXT NOT NULL,
+        is_recurring INTEGER NOT NULL DEFAULT 0,
+        stripe_refs_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gives_local_donations_created
+        ON gives_local_donations (workspace_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS gives_local_projections (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        payload_json TEXT NOT NULL,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gives_local_projections_workspace_scope
+        ON gives_local_projections (workspace_id, scope, updated_at DESC);
+    `);
+  }
+  info() {
+    const inventory = getLocalPlaneInventory(this.db, { appId: GIVES_APP_ID });
+    const count = (table) => this.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE workspace_id = ?`).get(this.workspace.workspaceId)?.count ?? 0;
+    return {
+      dbPath: this.dbPath,
+      workspaceId: this.workspace.workspaceId,
+      donorCount: count("gives_local_donors"),
+      donationCount: count("gives_local_donations"),
+      projectionCount: count("gives_local_projections"),
+      localDonorLedger: "enabled",
+      paymentProcessingLocal: false,
+      planeAppCount: inventory.counts.apps,
+      planeWorkspaceCount: inventory.counts.workspaces,
+      transferSchemaCount: inventory.counts.transferSchemas,
+      transferCount: inventory.counts.transfers,
+      aiJobCount: inventory.counts.aiJobs
+    };
+  }
+  listDonors() {
+    return this.db.prepare("SELECT * FROM gives_local_donors WHERE workspace_id = ? ORDER BY updated_at DESC").all(this.workspace.workspaceId).map((row) => ({
+      id: String(row.id),
+      workspaceId: String(row.workspace_id),
+      email: String(row.email),
+      firstName: readOptionalString(row.first_name),
+      lastName: readOptionalString(row.last_name),
+      phone: readOptionalString(row.phone),
+      totalDonatedCents: readNumber(row.total_donated_cents),
+      donationCount: readNumber(row.donation_count),
+      tags: parseJsonColumn(row.tags_json, []),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    }));
+  }
+  getDonor(idOrEmail) {
+    return this.listDonors().find((donor) => donor.id === idOrEmail || donor.email === idOrEmail.toLowerCase()) ?? null;
+  }
+  upsertDonor(input) {
+    const idOrEmail = readOptionalString(input.id) ?? readOptionalString(input.email);
+    const donor = normalizeDonor(input, this.workspace.workspaceId, idOrEmail ? this.getDonor(idOrEmail) ?? void 0 : void 0);
+    this.db.prepare(
+      `INSERT INTO gives_local_donors (id, workspace_id, email, first_name, last_name, phone, total_donated_cents, donation_count, tags_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           email = excluded.email,
+           first_name = excluded.first_name,
+           last_name = excluded.last_name,
+           phone = excluded.phone,
+           total_donated_cents = excluded.total_donated_cents,
+           donation_count = excluded.donation_count,
+           tags_json = excluded.tags_json,
+           updated_at = excluded.updated_at`
+    ).run(
+      donor.id,
+      donor.workspaceId,
+      donor.email,
+      donor.firstName,
+      donor.lastName,
+      donor.phone,
+      donor.totalDonatedCents,
+      donor.donationCount,
+      JSON.stringify(donor.tags),
+      donor.createdAt,
+      donor.updatedAt
+    );
+    return donor;
+  }
+  listDonations(limit = 50) {
+    return this.db.prepare("SELECT * FROM gives_local_donations WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?").all(this.workspace.workspaceId, limit).map((row) => ({
+      id: String(row.id),
+      workspaceId: String(row.workspace_id),
+      donorId: readOptionalString(row.donor_id),
+      campaignId: readOptionalString(row.campaign_id),
+      amountCents: readNumber(row.amount_cents),
+      currency: String(row.currency),
+      donorName: String(row.donor_name),
+      donorEmail: String(row.donor_email),
+      status: String(row.status),
+      source: String(row.source),
+      isRecurring: readBoolean(row.is_recurring),
+      stripeRefs: parseJsonColumn(row.stripe_refs_json, {}),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    }));
+  }
+  getDonation(id) {
+    return this.listDonations(5e3).find((donation) => donation.id === id) ?? null;
+  }
+  upsertDonation(input) {
+    const id = readOptionalString(input.id);
+    const donation = normalizeDonation(input, this.workspace.workspaceId, id ? this.getDonation(id) ?? void 0 : void 0);
+    this.db.prepare(
+      `INSERT INTO gives_local_donations (id, workspace_id, donor_id, campaign_id, amount_cents, currency, donor_name, donor_email, status, source, is_recurring, stripe_refs_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           donor_id = excluded.donor_id,
+           campaign_id = excluded.campaign_id,
+           amount_cents = excluded.amount_cents,
+           currency = excluded.currency,
+           donor_name = excluded.donor_name,
+           donor_email = excluded.donor_email,
+           status = excluded.status,
+           source = excluded.source,
+           is_recurring = excluded.is_recurring,
+           stripe_refs_json = excluded.stripe_refs_json,
+           updated_at = excluded.updated_at`
+    ).run(
+      donation.id,
+      donation.workspaceId,
+      donation.donorId,
+      donation.campaignId,
+      donation.amountCents,
+      donation.currency,
+      donation.donorName,
+      donation.donorEmail,
+      donation.status,
+      donation.source,
+      donation.isRecurring ? 1 : 0,
+      JSON.stringify(donation.stripeRefs),
+      donation.createdAt,
+      donation.updatedAt
+    );
+    return donation;
+  }
+  getDonorLedgerProjection(projectionId) {
+    const row = this.db.prepare("SELECT published_at, revoked_at FROM gives_local_projections WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, projectionId);
+    return row ?? null;
+  }
+  buildDonorLedgerProjectionEnvelope(input) {
+    const donations = this.listDonations(5e3);
+    const projectionId = stableDonorLedgerProjectionId(this.workspace.workspaceId);
+    const existing = this.getDonorLedgerProjection(projectionId);
+    const now = isoNow3();
+    const publishedAt = existing?.published_at ?? now;
+    const revokedAt = input.action === "revoke" ? now : null;
+    const currencyTotals = {};
+    for (const donation of donations) {
+      const currency = donation.currency || "USD";
+      currencyTotals[currency] = (currencyTotals[currency] ?? 0) + donation.amountCents;
+    }
+    const campaignIds = new Set(donations.map((donation) => donation.campaignId).filter(Boolean));
+    return {
+      version: 1,
+      appId: GIVES_APP_ID,
+      event: {
+        type: input.action === "publish" ? "gives.donor_ledger.projection.upserted" : "gives.donor_ledger.projection.revoked",
+        workspaceId: this.workspace.workspaceId,
+        projection: {
+          id: projectionId,
+          scope: "donor-ledger",
+          publishedByUserId: input.publishedByUserId,
+          publishedByEmail: input.publishedByEmail,
+          publishedAt,
+          revokedAt
+        },
+        summary: {
+          workspaceId: this.workspace.workspaceId,
+          donorCount: this.listDonors().length,
+          donationCount: donations.length,
+          recurringDonationCount: donations.filter((donation) => donation.isRecurring).length,
+          currencyTotals,
+          statusCounts: countBy(donations, (donation) => donation.status),
+          sourceCounts: countBy(donations, (donation) => donation.source),
+          campaignCount: campaignIds.size
+        },
+        exclusions: [
+          "donor names",
+          "donor email addresses",
+          "donor phone numbers",
+          "donor tags",
+          "individual donor ids",
+          "individual donation ids",
+          "campaign ids",
+          "Stripe checkout, payment, subscription, invoice, and charge ids",
+          "receipt records",
+          "refund and dispute records",
+          "exact donation timestamps",
+          "raw local donor-ledger rows",
+          "transfer bundle payloads",
+          "hosted checkout and webhook payloads"
+        ]
+      }
+    };
+  }
+  recordDonorLedgerProjection(envelope) {
+    const now = isoNow3();
+    this.db.prepare(
+      `INSERT INTO gives_local_projections (
+          id, workspace_id, scope, published_at, revoked_at, payload_json, last_projected_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          scope = excluded.scope,
+          published_at = excluded.published_at,
+          revoked_at = excluded.revoked_at,
+          payload_json = excluded.payload_json,
+          last_projected_at = excluded.last_projected_at,
+          updated_at = excluded.updated_at`
+    ).run(
+      envelope.event.projection.id,
+      this.workspace.workspaceId,
+      envelope.event.projection.scope,
+      envelope.event.projection.publishedAt,
+      envelope.event.projection.revokedAt,
+      JSON.stringify(envelope),
+      now,
+      now
+    );
+  }
+  exportPayload() {
+    return {
+      kind: GIVES_DONOR_LEDGER_SCHEMA,
+      version: 1,
+      donors: this.listDonors(),
+      donations: this.listDonations(5e3)
+    };
+  }
+  exportBundle() {
+    const payload = this.exportPayload();
+    const bundle = createPlaneTransferBundle({
+      appId: GIVES_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      plane: this.config,
+      payloadSchema: GIVES_DONOR_LEDGER_SCHEMA,
+      payload
+    });
+    recordPlaneTransfer(this.db, {
+      appId: GIVES_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      direction: "export",
+      source: { data: this.config.data, ai: this.config.ai },
+      payloadSchema: GIVES_DONOR_LEDGER_SCHEMA,
+      payloadSha256: bundle.payloadSha256
+    });
+    return bundle;
+  }
+  importPlan(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: GIVES_APP_ID,
+      payloadSchema: GIVES_DONOR_LEDGER_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    return createPlaneTransferImportPlan({
+      appId: bundle?.appId ?? GIVES_APP_ID,
+      workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+      payloadSchema: bundle?.payloadSchema ?? GIVES_DONOR_LEDGER_SCHEMA,
+      payload: normalized,
+      bundle,
+      destination: { data: this.config.data, ai: this.config.ai }
+    });
+  }
+  importValue(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: GIVES_APP_ID,
+      payloadSchema: GIVES_DONOR_LEDGER_SCHEMA
+    });
+    const normalized = normalizePayload(payload, this.workspace.workspaceId);
+    this.db.exec("BEGIN");
+    try {
+      for (const donor of normalized.donors) this.upsertDonor({ ...donor });
+      for (const donation of normalized.donations) this.upsertDonation({ ...donation });
+      const source = bundle?.source;
+      const transferId = recordPlaneTransfer(this.db, {
+        appId: GIVES_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        direction: "import",
+        source,
+        destination: { data: this.config.data, ai: this.config.ai },
+        payloadSchema: bundle?.payloadSchema ?? GIVES_DONOR_LEDGER_SCHEMA,
+        payloadSha256: bundle?.payloadSha256 ?? hashPlanePayload(normalized)
+      });
+      this.db.exec("COMMIT");
+      return {
+        ok: true,
+        store: "local",
+        workspaceId: this.workspace.workspaceId,
+        donorCount: normalized.donors.length,
+        donationCount: normalized.donations.length,
+        transferId
+      };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+};
+
+// cli/local-plane.ts
+function asString(value) {
+  return typeof value === "string" ? value : void 0;
+}
+function asBoolean(value) {
+  return value === true;
+}
+function trimOption(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return void 0;
+  return trimmed;
+}
+function resolveGivesPlaneConfig(globalOptions, io) {
+  return resolvePlaneConfigInspection({
+    appId: GIVES_APP_ID,
+    env: io.env,
+    data: asString(globalOptions.store),
+    ai: asString(globalOptions.ai),
+    localDbPath: asString(globalOptions["local-db"])
+  });
+}
+function isLocalDataRoute(globalOptions, io) {
+  return resolveGivesPlaneConfig(globalOptions, io).data === "local";
+}
+function localWorkspace(options, io) {
+  const workspaceId = trimOption(asString(options.tenant)) ?? trimOption(asString(options.workspace)) ?? trimOption(io.env.MERE_GIVES_WORKSPACE) ?? trimOption(io.env.ZERODONATE_WORKSPACE) ?? "personal";
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: workspaceId === "personal" ? "Personal Giving" : workspaceId
+  };
+}
+function projectionActor(options, io) {
+  return {
+    publishedByUserId: trimOption(asString(options["published-by-user-id"])) ?? trimOption(io.env.MERE_GIVES_USER_ID) ?? trimOption(io.env.ZERODONATE_USER_ID) ?? trimOption(io.env.USER) ?? "local-user",
+    publishedByEmail: trimOption(asString(options["published-by-email"])) ?? trimOption(io.env.MERE_GIVES_USER_EMAIL) ?? trimOption(io.env.ZERODONATE_USER_EMAIL) ?? trimOption(io.env.EMAIL) ?? null
+  };
+}
+async function openLocalStore(globalOptions, commandOptions, io) {
+  const config = resolveGivesPlaneConfig(globalOptions, io);
+  if (config.data !== "local") {
+    throw new Error("This command requires --store local so mere.gives local data stays explicit.");
+  }
+  return LocalGivesStore.open({
+    config,
+    workspace: localWorkspace({ ...globalOptions, ...commandOptions }, io)
+  });
+}
+async function withLocalStore(globalOptions, commandOptions, io, handler) {
+  const store = await openLocalStore(globalOptions, commandOptions, io);
+  try {
+    return await handler(store);
+  } finally {
+    store.close();
+  }
+}
+function readRequired(options, key) {
+  const value = trimOption(asString(options[key]));
+  if (!value) throw new Error(`Missing required --${key}.`);
+  return value;
+}
+async function handleLocalStoreInfo(globalOptions, io) {
+  const config = resolveGivesPlaneConfig(globalOptions, io);
+  if (config.data === "local") {
+    return withLocalStore(globalOptions, {}, io, (store) => ({
+      ok: true,
+      app: GIVES_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      ...store.info(),
+      localAiSupported: false,
+      sources: config.sources
+    }));
+  }
+  if (asBoolean(globalOptions.json)) {
+    return {
+      ok: true,
+      app: GIVES_APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      dbPath: config.localDbPath,
+      localDonorLedger: "available",
+      paymentProcessingLocal: false,
+      localAiSupported: false,
+      sources: config.sources
+    };
+  }
+  io.stdout(
+    formatPlaneConfigReport({
+      kind: "mere.local-plane.config",
+      configs: [config]
+    })
+  );
+  io.stdout("Hosted checkout, refunds, Stripe webhooks, receipts, and public donation pages remain Cloudflare-owned unless --store local is selected for donor-ledger archive commands.\n");
+  return "";
+}
+async function handleLocalExport(globalOptions, options, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    const bundle = store.exportBundle();
+    const output = asString(options.output);
+    if (!output) return bundle;
+    const target = resolvePath(output);
+    await mkdir3(dirname(target), { recursive: true });
+    await writeFile2(target, JSON.stringify(bundle, null, 2));
+    return {
+      ok: true,
+      path: target,
+      appId: bundle.appId,
+      workspaceId: bundle.workspaceId,
+      payloadSchema: bundle.payloadSchema,
+      payloadSha256: bundle.payloadSha256,
+      donorCount: bundle.payload.donors.length,
+      donationCount: bundle.payload.donations.length
+    };
+  });
+}
+async function handleLocalImport(globalOptions, options, io) {
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    const value = JSON.parse(await readFile2(readRequired(options, "file"), "utf8"));
+    return asBoolean(options["dry-run"]) ? store.importPlan(value) : store.importValue(value);
+  });
+}
+async function handleLocalDonors(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, (store) => {
+    if (action === "list") return store.listDonors();
+    if (action === "show") {
+      const id = positionals[0];
+      if (!id) throw new Error("donors show requires <id>.");
+      return store.getDonor(id);
+    }
+    if (action === "update") {
+      const id = positionals[0];
+      if (!id) throw new Error("donors update requires <id>.");
+      const data = JSON.parse(String(options.data ?? "{}"));
+      return store.upsertDonor({ ...data, id });
+    }
+    throw new Error("Unknown local donors action: expected list, show, or update.");
+  });
+}
+async function handleLocalDonations(action, globalOptions, options, positionals, io) {
+  return withLocalStore(globalOptions, options, io, (store) => {
+    if (action === "list") return store.listDonations(Number(asString(options.limit) ?? "50"));
+    if (action === "export") return store.exportPayload().donations;
+    if (action === "show") {
+      const id = positionals[0];
+      if (!id) throw new Error("donations show requires <id>.");
+      return store.getDonation(id);
+    }
+    throw new Error("Unknown local donations action: expected list, export, or show.");
+  });
+}
+async function handleLocalLedgerProjection(action, globalOptions, options, io) {
+  if (action !== "publish" && action !== "revoke") {
+    throw new Error("Unknown local ledger action: expected publish or revoke.");
+  }
+  return withLocalStore(globalOptions, options, io, async (store) => {
+    const envelope = store.buildDonorLedgerProjectionEnvelope({
+      action,
+      ...projectionActor(options, io)
+    });
+    if (asBoolean(options["dry-run"])) {
+      let receiverUrl;
+      try {
+        receiverUrl = resolveCloudProjectionTarget({
+          appId: GIVES_APP_ID,
+          env: io.env,
+          receiverUrl: trimOption(asString(options["projection-url"])),
+          bearerToken: trimOption(asString(options["projection-token"]))
+        }).receiverUrl;
+      } catch {
+        receiverUrl = void 0;
+      }
+      return {
+        ok: true,
+        dryRun: true,
+        store: "local",
+        projection: "cloudflare",
+        action,
+        projectionId: envelope.event.projection.id,
+        receiverUrl,
+        event: envelope
+      };
+    }
+    const delivery = await deliverCloudProjectionEvent({
+      appId: GIVES_APP_ID,
+      env: io.env,
+      receiverUrl: trimOption(asString(options["projection-url"])),
+      bearerToken: trimOption(asString(options["projection-token"])),
+      event: envelope,
+      fetchImpl: async (input, init) => (io.fetchImpl ?? fetch)(input, init)
+    });
+    store.recordDonorLedgerProjection(envelope);
+    return {
+      ok: true,
+      store: "local",
+      projection: "cloudflare",
+      action,
+      projectionId: envelope.event.projection.id,
+      receiverUrl: delivery.receiverUrl,
+      status: delivery.status,
+      receiver: delivery.responseJson,
+      summary: envelope.event.summary
+    };
+  });
+}
+
 // cli/zerodonate.ts
 var CliError = class extends Error {
 };
@@ -319,6 +1717,9 @@ var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
   token: "string",
   workspace: "string",
+  store: "string",
+  ai: "string",
+  "local-db": "string",
   json: "boolean",
   help: "boolean",
   version: "boolean",
@@ -335,6 +1736,9 @@ Global flags:
   --base-url URL       Override MERE_GIVES_BASE_URL
   --token TOKEN        Override MERE_GIVES_TOKEN
   --workspace ID       Preferred ZeroSMB workspace during auth login
+  --store local|cloud  Choose supported local/cloud data-plane commands
+  --ai local|cloud     Choose AI plane for local-plane inspection
+  --local-db PATH      Override the shared Mere local-plane SQLite path
   --json               Write machine-readable JSON
   --version            Show the CLI version
   --no-interactive     Reserved for non-interactive automation
@@ -347,6 +1751,10 @@ Auth:
   auth login
   auth whoami
   auth logout
+  store info
+  export --tenant TENANT_ID --output ./gives-donor-ledger.bundle.json
+  import --tenant TENANT_ID --file ./gives-donor-ledger.bundle.json [--dry-run]
+  ledger publish|revoke --tenant TENANT_ID --projection-url URL --projection-token TOKEN [--dry-run]
 
 Workspace:
   workspace list
@@ -383,12 +1791,16 @@ Environment:
   MERE_GIVES_TOKEN     Bearer token override for admin/session requests
   MERE_GIVES_WORKSPACE_ID  Default ZeroSMB workspace for browser auth login
   ZERODONATE_INTERNAL_TOKEN Internal token for workspace provisioning
+
+Local plane:
+  --store local currently supports donor/donation archive commands, donor-ledger projection, store info, export, and import.
+  Hosted checkout, refunds, Stripe webhooks, receipts, public donation pages, and payouts remain Cloudflare/Stripe-owned.
 `;
 var activeSession = null;
-function manifestCommand(path2, summary, options = {}) {
+function manifestCommand(path4, summary, options = {}) {
   return {
-    id: path2.join("."),
-    path: path2,
+    id: path4.join("."),
+    path: path4,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -396,8 +1808,8 @@ function manifestCommand(path2, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -410,46 +1822,51 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_GIVES_BASE_URL"],
     sessionPath: "~/.local/state/mere-gives/session.json",
-    globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file", "tenant"],
+    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
-      manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
-      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["workspace", "provision"], "Provision workspace.", { auth: "token", risk: "write", supportsData: true }),
-      manifestCommand(["tenant", "show"], "Show tenant.", { auditDefault: true }),
-      manifestCommand(["tenant", "update"], "Update tenant.", { risk: "write", supportsData: true }),
-      manifestCommand(["campaigns", "list"], "List campaigns.", { auditDefault: true }),
-      manifestCommand(["campaigns", "show"], "Show campaign."),
-      manifestCommand(["campaigns", "create"], "Create campaign.", { risk: "write", supportsData: true }),
-      manifestCommand(["campaigns", "update"], "Update campaign.", { risk: "write", supportsData: true }),
-      manifestCommand(["campaigns", "delete"], "Delete campaign.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["donations", "list"], "List donations."),
-      manifestCommand(["donations", "export"], "Export donations."),
-      manifestCommand(["donations", "show"], "Show donation."),
-      manifestCommand(["donations", "refund"], "Refund donation.", { risk: "destructive", supportsData: true, requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["donors", "list"], "List donors."),
-      manifestCommand(["donors", "show"], "Show donor."),
-      manifestCommand(["donors", "update"], "Update donor.", { risk: "write", supportsData: true }),
-      manifestCommand(["receipts", "list"], "List receipts."),
-      manifestCommand(["receipts", "show"], "Show receipt."),
-      manifestCommand(["receipts", "download"], "Download receipt."),
-      manifestCommand(["receipts", "year-end"], "Generate year-end receipt bundle.", { risk: "write" }),
-      manifestCommand(["widget", "snippet"], "Print widget snippet."),
-      manifestCommand(["settings", "get"], "Show settings."),
-      manifestCommand(["settings", "update"], "Update settings.", { risk: "write", supportsData: true }),
-      manifestCommand(["events", "list"], "List events."),
-      manifestCommand(["events", "show"], "Show event."),
-      manifestCommand(["events", "create"], "Create event.", { risk: "write", supportsData: true }),
-      manifestCommand(["events", "update"], "Update event.", { risk: "write", supportsData: true }),
-      manifestCommand(["events", "delete"], "Delete event.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true }),
-      manifestCommand(["team", "list"], "List team."),
-      manifestCommand(["team", "add"], "Add team member.", { risk: "write", supportsData: true }),
-      manifestCommand(["team", "remove"], "Remove team member.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write", positionals: ["id|slug|host"] }),
+      manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["tenant", "yes", "confirm"] }),
+      manifestCommand(["workspace", "provision"], "Provision workspace.", { auth: "token", risk: "write", flags: ["workspace-id", "slug", "name", "webhook-url", "callback-bearer-token"] }),
+      manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", { auth: "none", auditDefault: true }),
+      manifestCommand(["export"], "Export local donor-ledger transfer bundle.", { auth: "none", risk: "read", flags: ["tenant", "output"] }),
+      manifestCommand(["import"], "Import local donor-ledger transfer bundle.", { auth: "none", risk: "write", flags: ["tenant", "file", "dry-run"] }),
+      manifestCommand(["ledger", "publish"], "Publish selected local donor-ledger summary projection to Business.", { auth: "none", risk: "external", auditDefault: true, flags: ["tenant", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"] }),
+      manifestCommand(["ledger", "revoke"], "Revoke selected local donor-ledger summary projection from Business.", { auth: "none", risk: "external", auditDefault: true, flags: ["tenant", "projection-url", "projection-token", "published-by-user-id", "published-by-email", "dry-run"] }),
+      manifestCommand(["tenant", "show"], "Show tenant.", { auditDefault: true, flags: ["tenant"] }),
+      manifestCommand(["tenant", "update"], "Update tenant.", { risk: "write", flags: ["tenant", "name", "description", "accent-color", "notify-emails", "donor-covers-fees-default", "platform-fee-percent"] }),
+      manifestCommand(["campaigns", "list"], "List campaigns.", { auditDefault: true, flags: ["tenant"] }),
+      manifestCommand(["campaigns", "show"], "Show campaign.", { flags: ["tenant"], positionals: ["id"] }),
+      manifestCommand(["campaigns", "create"], "Create campaign.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"] }),
+      manifestCommand(["campaigns", "update"], "Update campaign.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"], positionals: ["id"] }),
+      manifestCommand(["campaigns", "delete"], "Delete campaign.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["tenant", "yes", "confirm"], positionals: ["id"] }),
+      manifestCommand(["donations", "list"], "List donations.", { flags: ["tenant", "limit"] }),
+      manifestCommand(["donations", "export"], "Export donations.", { flags: ["tenant"] }),
+      manifestCommand(["donations", "show"], "Show donation.", { flags: ["tenant"], positionals: ["id"] }),
+      manifestCommand(["donations", "refund"], "Refund donation.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["tenant", "full", "amount-cents", "reason", "yes", "confirm"], positionals: ["id"] }),
+      manifestCommand(["donors", "list"], "List donors.", { flags: ["tenant"] }),
+      manifestCommand(["donors", "show"], "Show donor.", { flags: ["tenant"], positionals: ["id"] }),
+      manifestCommand(["donors", "update"], "Update donor.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"], positionals: ["id"] }),
+      manifestCommand(["receipts", "list"], "List receipts.", { flags: ["tenant"] }),
+      manifestCommand(["receipts", "show"], "Show receipt.", { flags: ["tenant"], positionals: ["id"] }),
+      manifestCommand(["receipts", "download"], "Download receipt.", { flags: ["tenant", "output"], positionals: ["id"] }),
+      manifestCommand(["receipts", "year-end"], "Generate year-end receipt bundle.", { risk: "write", flags: ["tenant", "tax-year"] }),
+      manifestCommand(["widget", "snippet"], "Print widget snippet.", { flags: ["tenant"] }),
+      manifestCommand(["settings", "get"], "Show settings.", { flags: ["tenant"] }),
+      manifestCommand(["settings", "update"], "Update settings.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"] }),
+      manifestCommand(["events", "list"], "List events.", { flags: ["tenant"] }),
+      manifestCommand(["events", "show"], "Show event.", { flags: ["tenant"], positionals: ["id"] }),
+      manifestCommand(["events", "create"], "Create event.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"] }),
+      manifestCommand(["events", "update"], "Update event.", { risk: "write", supportsData: true, flags: ["tenant", "data", "data-file"], positionals: ["id"] }),
+      manifestCommand(["events", "delete"], "Delete event.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["tenant", "yes", "confirm"], positionals: ["id"] }),
+      manifestCommand(["stripe", "status"], "Show Stripe status.", { auditDefault: true, flags: ["tenant"] }),
+      manifestCommand(["team", "list"], "List team.", { flags: ["tenant"] }),
+      manifestCommand(["team", "add"], "Add team member.", { risk: "write", flags: ["tenant", "user", "role"] }),
+      manifestCommand(["team", "remove"], "Remove team member.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["tenant", "membership", "yes", "confirm"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -463,13 +1880,13 @@ function writeText(io, value) {
   io.stdout(`${value}
 `);
 }
-function asString(value) {
+function asString2(value) {
   return typeof value === "string" ? value : void 0;
 }
-function asBoolean(value) {
+function asBoolean2(value) {
   return value === true;
 }
-function trimOption(value) {
+function trimOption2(value) {
   const trimmed = value?.trim();
   if (trimmed === void 0 || trimmed === "") {
     return void 0;
@@ -560,14 +1977,14 @@ function splitGlobalFlags(argv) {
   };
 }
 function readRequiredStringOption(options, name, label = `--${name}`) {
-  const value = trimOption(asString(options[name]));
+  const value = trimOption2(asString2(options[name]));
   if (!value) {
     throw new CliError(`Missing required ${label}.`);
   }
   return value;
 }
 function readOptionalStringOption(options, name) {
-  return trimOption(asString(options[name]));
+  return trimOption2(asString2(options[name]));
 }
 function readOptionalBooleanOption(options, name) {
   const value = readOptionalStringOption(options, name);
@@ -603,7 +2020,7 @@ async function readJsonBody(options) {
   if (inline !== void 0) {
     text = inline;
   } else if (file !== void 0) {
-    text = await readFile2(file, "utf8");
+    text = await readFile3(file, "utf8");
   } else {
     return {};
   }
@@ -624,7 +2041,7 @@ function queryString(params) {
   return text ? `?${text}` : "";
 }
 function requireDestructiveConfirmation(globalOptions, options, label, target) {
-  if (!asBoolean(options.yes) && !asBoolean(globalOptions.yes)) {
+  if (!asBoolean2(options.yes) && !asBoolean2(globalOptions.yes)) {
     throw new CliError(`Refusing to ${label} ${target} without --yes.`);
   }
   const confirm = readOptionalStringOption(options, "confirm") ?? readOptionalStringOption(globalOptions, "confirm");
@@ -633,7 +2050,7 @@ function requireDestructiveConfirmation(globalOptions, options, label, target) {
   }
 }
 async function cliVersion() {
-  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const raw = await readFile3(new URL("../package.json", import.meta.url), "utf8");
   const parsed = JSON.parse(raw);
   return parsed.version ?? "0.0.0";
 }
@@ -644,8 +2061,12 @@ var COMPLETION_WORDS = [
   "donations",
   "donors",
   "events",
+  "export",
+  "import",
+  "ledger",
   "receipts",
   "settings",
+  "store",
   "stripe",
   "team",
   "tenant",
@@ -684,13 +2105,13 @@ function completionScript(shell) {
   throw new CliError("Unknown shell. Expected bash, zsh, or fish.");
 }
 function resolveBaseUrl(options, env) {
-  return trimOption(asString(options["base-url"])) ?? trimOption(env.MERE_GIVES_BASE_URL) ?? activeSession?.baseUrl ?? DEFAULT_BASE_URL;
+  return trimOption2(asString2(options["base-url"])) ?? trimOption2(env.MERE_GIVES_BASE_URL) ?? activeSession?.baseUrl ?? DEFAULT_BASE_URL;
 }
 function resolveRequestedWorkspace(options, env) {
-  return trimOption(asString(options.workspace)) ?? trimOption(env.MERE_GIVES_WORKSPACE_ID);
+  return trimOption2(asString2(options.workspace)) ?? trimOption2(env.MERE_GIVES_WORKSPACE_ID);
 }
 function resolveTokenOverride(options, env) {
-  return trimOption(asString(options.token)) ?? trimOption(env.MERE_GIVES_TOKEN) ?? trimOption(env.ZERODONATE_INTERNAL_TOKEN);
+  return trimOption2(asString2(options.token)) ?? trimOption2(env.MERE_GIVES_TOKEN) ?? trimOption2(env.ZERODONATE_INTERNAL_TOKEN);
 }
 function renderSessionSummary(session) {
   const selectedWorkspace = session.workspace ?? session.workspaces.find((workspace) => workspace.id === session.defaultWorkspaceId) ?? null;
@@ -734,7 +2155,7 @@ function extractErrorMessage(payload, status) {
   return `Request failed (${status.toString()}).`;
 }
 async function resolveSessionToken(io, globalOptions) {
-  const tokenOverride = trimOption(asString(globalOptions.token)) ?? trimOption(io.env.MERE_GIVES_TOKEN);
+  const tokenOverride = trimOption2(asString2(globalOptions.token)) ?? trimOption2(io.env.MERE_GIVES_TOKEN);
   if (tokenOverride) {
     return tokenOverride;
   }
@@ -798,9 +2219,9 @@ async function requestText(io, globalOptions, input) {
   return { text, contentType: response.headers.get("content-type") };
 }
 async function writeTextFile(outputPath, text) {
-  const target = resolvePath(outputPath);
-  await mkdir2(dirname(target), { recursive: true });
-  await writeFile2(target, text, "utf8");
+  const target = resolvePath2(outputPath);
+  await mkdir4(dirname2(target), { recursive: true });
+  await writeFile3(target, text, "utf8");
   return target;
 }
 async function handleAuthCommand(positionals, globalOptions, io, wantsJson) {
@@ -1062,7 +2483,7 @@ async function handleDonationsCommand(argv, globalOptions, io) {
       path: `/api/admin/donations/${encodeURIComponent(id)}/refund`,
       body: {
         tenantId,
-        full: asBoolean(options.full),
+        full: asBoolean2(options.full),
         amountCents: readOptionalNumberOption(options, "amount-cents"),
         reason: readOptionalStringOption(options, "reason")
       }
@@ -1134,10 +2555,10 @@ async function handleReceiptsCommand(argv, globalOptions, io) {
       auth: "session",
       path: `/api/admin/receipts/${encodeURIComponent(id)}/pdf${queryString({ tenantId })}`
     });
-    const path2 = await writeTextFile(output, receipt.text);
+    const path4 = await writeTextFile(output, receipt.text);
     return {
       receiptId: id,
-      path: path2,
+      path: path4,
       bytes: Buffer.byteLength(receipt.text),
       contentType: receipt.contentType
     };
@@ -1264,7 +2685,7 @@ async function handleStripeCommand(argv, globalOptions, io) {
 }
 async function handleWorkspaceCommand(argv, globalOptions, io) {
   const action = argv[1];
-  const wantsJson = asBoolean(globalOptions.json);
+  const wantsJson = asBoolean2(globalOptions.json);
   if (action === "list") {
     const { positionals } = parseFlags(argv.slice(2), {});
     if (positionals.length > 0) {
@@ -1357,14 +2778,10 @@ async function handleWorkspaceCommand(argv, globalOptions, io) {
 async function runCli(argv, io) {
   try {
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
-    const wantsJson = asBoolean(globalOptions.json);
-    if (asBoolean(globalOptions.version)) {
+    const wantsJson = asBoolean2(globalOptions.json);
+    if (asBoolean2(globalOptions.version) || rest[0] === "-v" || rest[0] === "version") {
       const version = await cliVersion();
-      if (wantsJson) {
-        writeJson(io, { name: "mere-gives", version });
-      } else {
-        writeText(io, version);
-      }
+      writeText(io, version);
       return 0;
     }
     if (rest[0] === "completion") {
@@ -1375,7 +2792,7 @@ async function runCli(argv, io) {
       writeJson(io, commandManifest());
       return 0;
     }
-    if (asBoolean(globalOptions.help) || rest.length === 0) {
+    if (asBoolean2(globalOptions.help) || rest.length === 0) {
       if (wantsJson) {
         writeJson(io, {
           name: "mere-gives",
@@ -1383,6 +2800,10 @@ async function runCli(argv, io) {
           commands: {
             completion: ["bash", "zsh", "fish"],
             auth: ["login", "whoami", "logout"],
+            store: ["info"],
+            export: ["--output"],
+            import: ["--file", "--dry-run"],
+            ledger: ["publish", "revoke"],
             tenant: ["show", "update"],
             campaigns: ["list", "show", "create", "update", "delete"],
             donations: ["list", "export", "show", "refund"],
@@ -1403,7 +2824,50 @@ async function runCli(argv, io) {
     }
     const [group] = rest;
     let result;
-    if (group === "auth") {
+    const localData = isLocalDataRoute(globalOptions, io);
+    if (group === "store") {
+      if (rest[1] !== "info") throw new CliError("Unknown store action: expected info.");
+      result = await handleLocalStoreInfo(globalOptions, io);
+    } else if (group === "export") {
+      const { options } = parseFlags(rest.slice(1), {
+        tenant: "string",
+        output: "string"
+      });
+      result = await handleLocalExport(globalOptions, options, io);
+    } else if (group === "import") {
+      const { options } = parseFlags(rest.slice(1), {
+        tenant: "string",
+        file: "string",
+        "dry-run": "boolean"
+      });
+      result = await handleLocalImport(globalOptions, options, io);
+    } else if (localData && group === "ledger") {
+      const { options } = parseFlags(rest.slice(2), {
+        tenant: "string",
+        "dry-run": "boolean",
+        "projection-url": "string",
+        "projection-token": "string",
+        "published-by-user-id": "string",
+        "published-by-email": "string"
+      });
+      result = await handleLocalLedgerProjection(rest[1], globalOptions, options, io);
+    } else if (localData && group === "donors") {
+      const { options, positionals } = parseFlags(rest.slice(2), {
+        tenant: "string",
+        data: "string",
+        "data-file": "string"
+      });
+      const data = await readJsonBody(options);
+      result = await handleLocalDonors(rest[1], globalOptions, { ...options, data: JSON.stringify(data) }, positionals, io);
+    } else if (localData && group === "donations") {
+      const { options, positionals } = parseFlags(rest.slice(2), {
+        tenant: "string",
+        limit: "string"
+      });
+      result = await handleLocalDonations(rest[1], globalOptions, options, positionals, io);
+    } else if (localData) {
+      throw new CliError(`--store local is not supported for ${group}. Supported local commands are donors, donations, ledger, store info, export, and import.`);
+    } else if (group === "auth") {
       result = await handleAuthCommand(rest, globalOptions, io, wantsJson);
     } else if (group === "tenant") {
       result = await handleTenantCommand(rest, globalOptions, io);

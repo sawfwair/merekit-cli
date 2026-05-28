@@ -7,6 +7,7 @@ Bundled adapters in this build:
 
 - `business`
 - `finance`
+- `dynasite`
 - `projects`
 - `agent`
 - `today`

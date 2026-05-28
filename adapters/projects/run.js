@@ -1,7 +1,2160 @@
 #!/usr/bin/env node
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+var PLANE_TRANSFER_KIND, PLANE_TRANSFER_VERSION;
+var init_migration = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts"() {
+    PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+    PLANE_TRANSFER_VERSION = 1;
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+var CloudProjectionDeliveryError;
+var init_projection = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts"() {
+    CloudProjectionDeliveryError = class extends Error {
+      constructor(message, status = null, responseText = null) {
+        super(message);
+        this.status = status;
+        this.responseText = responseText;
+        this.name = "CloudProjectionDeliveryError";
+      }
+      status;
+      responseText;
+    };
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os2 from "node:os";
+import path2 from "node:path";
+function stateHome2(env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  return env.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os2.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path2.join(home, value.slice(2));
+  return value;
+}
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path2.join(stateHome2(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
+  }
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
+}
+function readLocalDbPath(input) {
+  const prefix = envPrefix2(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path2.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path2.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
+  return {
+    value: path2.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
+    }
+  };
+}
+var init_config = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts"() {
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir2 } from "node:fs/promises";
+import path3 from "node:path";
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function json(value) {
+  return JSON.stringify(value ?? {});
+}
+function makePlaneId(prefix) {
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir2(path3.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function recordPlaneAiJob(db, input) {
+  const now = isoNow2();
+  const id = input.id?.trim() || makePlaneId("aij");
+  registerPlaneApp(db, input.appId);
+  db.prepare(
+    `INSERT INTO mere_plane_ai_jobs (
+         id, app_id, workspace_id, subject_type, subject_id, mode, model, status,
+         input_json, output_text, error, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId ?? null,
+    input.subjectType,
+    input.subjectId,
+    input.mode,
+    input.model ?? null,
+    input.status ?? "running",
+    json(input.input ?? {}),
+    input.outputText ?? null,
+    input.error ?? null,
+    now,
+    now
+  );
+  return id;
+}
+function updatePlaneAiJob(db, input) {
+  const updates = ["status = ?", "updated_at = ?"];
+  const params = [input.status, isoNow2()];
+  if ("model" in input) {
+    updates.push("model = ?");
+    params.push(input.model ?? null);
+  }
+  if ("outputText" in input) {
+    updates.push("output_text = ?");
+    params.push(input.outputText ?? null);
+  }
+  if ("error" in input) {
+    updates.push("error = ?");
+    params.push(input.error ?? null);
+  }
+  params.push(input.id);
+  db.prepare(`UPDATE mere_plane_ai_jobs SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+var init_src = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts"() {
+    init_migration();
+    init_projection();
+    init_config();
+  }
+});
+
+// cli/local-store.ts
+var local_store_exports = {};
+__export(local_store_exports, {
+  LocalProjectsStore: () => LocalProjectsStore,
+  PROJECTS_APP_ID: () => PROJECTS_APP_ID,
+  PROJECTS_PROJECTS_PAYLOAD_SCHEMA: () => PROJECTS_PROJECTS_PAYLOAD_SCHEMA
+});
+import { randomUUID as randomUUID3 } from "node:crypto";
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function makeId(prefix) {
+  return `${prefix}_${randomUUID3().replaceAll("-", "").slice(0, 16)}`;
+}
+function parseJson2(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+function jsonText(value) {
+  return JSON.stringify(value ?? null);
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString2(value, label, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${label} is required for local Projects records.`);
+  }
+  return raw.trim();
+}
+function readOptionalString(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+function readNumber(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function readBoolean(value, fallback) {
+  if (value === void 0) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+  return fallback;
+}
+function readRecord(value, fallback) {
+  return isRecord2(value) ? value : fallback;
+}
+function readStringList(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (Array.isArray(raw)) {
+    return [...new Set(raw.filter((item) => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+  }
+  if (typeof raw === "string") {
+    return [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))];
+  }
+  return fallback;
+}
+function readEnum(value, fallback, allowed, label) {
+  const raw = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  if (!allowed.has(raw)) {
+    throw new Error(`${label} must be one of ${[...allowed].join(", ")}.`);
+  }
+  return raw;
+}
+function likeValue(value) {
+  return `%${value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+}
+function rowToProject(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    kind: row.kind,
+    schemaVersion: row.schema_version,
+    attributes: parseJson2(row.attributes_json, {}),
+    title: row.title,
+    client: row.client,
+    contractVehicle: row.contract_vehicle,
+    role: row.role,
+    dateStart: row.date_start,
+    dateEnd: row.date_end,
+    isOngoing: row.is_ongoing === 1,
+    description: row.description,
+    outcomes: row.outcomes,
+    capabilities: parseJson2(row.capabilities_json, []),
+    tags: parseJson2(row.tags_json, []),
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToContact(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    name: row.name,
+    title: row.title,
+    organization: row.organization,
+    location: row.location,
+    email: row.email,
+    phone: row.phone,
+    kind: row.kind,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToKnowledgeEntry(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    entryType: row.entry_type,
+    title: row.title,
+    content: row.content,
+    tags: parseJson2(row.tags_json, []),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToLink(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    label: row.label,
+    url: row.url,
+    kind: row.kind,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToProposal(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    kind: row.kind,
+    schemaVersion: row.schema_version,
+    sourceItemId: row.source_item_id,
+    externalReference: row.external_reference,
+    attributes: parseJson2(row.attributes_json, {}),
+    title: row.title,
+    client: row.client,
+    solicitationNumber: row.solicitation_number,
+    businessDealId: row.business_deal_id,
+    dueDate: row.due_date,
+    stage: row.stage,
+    summary: row.summary,
+    winThemes: row.win_themes,
+    requirements: row.requirements,
+    linkedProfileIds: parseJson2(row.linked_profile_ids_json, []),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToFile(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    proposalId: row.proposal_id,
+    name: row.name,
+    kind: row.kind,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    artifactKey: row.artifact_key,
+    sha256: row.sha256,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToProfile(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    title: row.title,
+    client: row.client,
+    contractVehicle: row.contract_vehicle,
+    role: row.role,
+    dateStart: row.date_start,
+    dateEnd: row.date_end,
+    isOngoing: row.is_ongoing === 1,
+    summary: row.summary,
+    relevance: row.relevance,
+    differentiators: row.differentiators,
+    capabilityTags: parseJson2(row.capability_tags_json, []),
+    featuredOutcomes: parseJson2(row.featured_outcomes_json, []),
+    referenceContactId: row.reference_contact_id,
+    referenceName: row.reference_name,
+    referenceTitle: row.reference_title,
+    referenceOrganization: row.reference_organization,
+    referenceLocation: row.reference_location,
+    referenceEmail: row.reference_email,
+    referencePhone: row.reference_phone,
+    visibility: row.visibility,
+    isFeatured: row.is_featured === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function toSummary(project, counts) {
+  return {
+    ...project,
+    ...counts
+  };
+}
+function normalizeProjectInput(input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("prj")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    kind: readEnum(input.kind, existing?.kind ?? "project.default", PROJECT_KINDS, "kind"),
+    schemaVersion: readNumber(input.schemaVersion, existing?.schemaVersion ?? 1),
+    attributes: readRecord(input.attributes, existing?.attributes ?? {}),
+    title: readString2(input.title, "title", existing?.title),
+    client: readString2(input.client, "client", existing?.client),
+    contractVehicle: readOptionalString(input.contractVehicle, existing?.contractVehicle),
+    role: readEnum(input.role, existing?.role ?? "prime", PROJECT_ROLES, "role"),
+    dateStart: readString2(input.dateStart, "dateStart", existing?.dateStart),
+    dateEnd: readOptionalString(input.dateEnd, existing?.dateEnd),
+    isOngoing: readBoolean(input.isOngoing, existing?.isOngoing ?? false),
+    description: readString2(input.description, "description", existing?.description),
+    outcomes: readOptionalString(input.outcomes, existing?.outcomes) ?? "",
+    capabilities: readStringList(input.capabilities, existing?.capabilities ?? []),
+    tags: readStringList(input.tags, existing?.tags ?? []),
+    status: readEnum(input.status, existing?.status ?? "active", PROJECT_STATUSES, "status"),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeContactInput(projectId, input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("con")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    projectId: existing?.projectId ?? (typeof input.projectId === "string" && input.projectId.trim() ? input.projectId.trim() : projectId),
+    name: readString2(input.name, "name", existing?.name),
+    title: readOptionalString(input.title, existing?.title),
+    organization: readOptionalString(input.organization, existing?.organization),
+    location: readOptionalString(input.location, existing?.location),
+    email: readOptionalString(input.email, existing?.email),
+    phone: readOptionalString(input.phone, existing?.phone),
+    kind: readEnum(input.kind, existing?.kind ?? "reference", PROJECT_CONTACT_KINDS, "kind"),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeKnowledgeInput(projectId, input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("kn")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    projectId: existing?.projectId ?? (typeof input.projectId === "string" && input.projectId.trim() ? input.projectId.trim() : projectId),
+    entryType: readEnum(input.entryType, existing?.entryType ?? "note", PROJECT_KNOWLEDGE_ENTRY_TYPES, "entryType"),
+    title: readString2(input.title, "title", existing?.title),
+    content: readString2(input.content, "content", existing?.content),
+    tags: readStringList(input.tags, existing?.tags ?? []),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeLinkInput(projectId, input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("lnk")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    projectId: existing?.projectId ?? (typeof input.projectId === "string" && input.projectId.trim() ? input.projectId.trim() : projectId),
+    label: readString2(input.label, "label", existing?.label),
+    url: readString2(input.url, "url", existing?.url),
+    kind: readString2(input.kind, "kind", existing?.kind ?? "general"),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeProposalInput(input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("prop")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    kind: readString2(input.kind, "kind", existing?.kind ?? "proposal.default"),
+    schemaVersion: readNumber(input.schemaVersion, existing?.schemaVersion ?? 1),
+    sourceItemId: readOptionalString(input.sourceItemId, existing?.sourceItemId),
+    externalReference: readOptionalString(input.externalReference, existing?.externalReference),
+    attributes: readRecord(input.attributes, existing?.attributes ?? {}),
+    title: readString2(input.title, "title", existing?.title),
+    client: readString2(input.client, "client", existing?.client),
+    solicitationNumber: readOptionalString(input.solicitationNumber, existing?.solicitationNumber),
+    businessDealId: readOptionalString(input.businessDealId, existing?.businessDealId),
+    dueDate: readOptionalString(input.dueDate, existing?.dueDate),
+    stage: readEnum(input.stage, existing?.stage ?? "tracking", PROPOSAL_STAGES, "stage"),
+    summary: readOptionalString(input.summary, existing?.summary) ?? "",
+    winThemes: readOptionalString(input.winThemes, existing?.winThemes) ?? "",
+    requirements: readOptionalString(input.requirements, existing?.requirements) ?? "",
+    linkedProfileIds: readStringList(input.linkedProfileIds, existing?.linkedProfileIds ?? []),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeFileInput(input, existing) {
+  const now = isoNow3();
+  const projectId = readOptionalString(input.projectId, existing?.projectId);
+  const proposalId = readOptionalString(input.proposalId, existing?.proposalId);
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("file")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    projectId,
+    proposalId,
+    name: readString2(input.name, "name", existing?.name),
+    kind: readString2(input.kind, "kind", existing?.kind ?? "general"),
+    mimeType: readOptionalString(input.mimeType, existing?.mimeType),
+    sizeBytes: input.sizeBytes === null ? null : input.sizeBytes === void 0 ? existing?.sizeBytes ?? null : readNumber(input.sizeBytes, existing?.sizeBytes ?? 0),
+    artifactKey: readOptionalString(input.artifactKey, existing?.artifactKey),
+    sha256: readOptionalString(input.sha256, existing?.sha256),
+    notes: readOptionalString(input.notes, existing?.notes),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeProfileInput(input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? (typeof input.id === "string" && input.id.trim() ? input.id.trim() : makeId("ppf")),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    projectId: readOptionalString(input.projectId, existing?.projectId),
+    title: readString2(input.title, "title", existing?.title),
+    client: readString2(input.client, "client", existing?.client),
+    contractVehicle: readOptionalString(input.contractVehicle, existing?.contractVehicle),
+    role: readEnum(input.role, existing?.role ?? "prime", PROJECT_ROLES, "role"),
+    dateStart: readOptionalString(input.dateStart, existing?.dateStart),
+    dateEnd: readOptionalString(input.dateEnd, existing?.dateEnd),
+    isOngoing: readBoolean(input.isOngoing, existing?.isOngoing ?? false),
+    summary: readOptionalString(input.summary, existing?.summary) ?? "",
+    relevance: readOptionalString(input.relevance, existing?.relevance) ?? "",
+    differentiators: readOptionalString(input.differentiators, existing?.differentiators) ?? "",
+    capabilityTags: readStringList(input.capabilityTags, existing?.capabilityTags ?? []),
+    featuredOutcomes: readStringList(input.featuredOutcomes, existing?.featuredOutcomes ?? []),
+    referenceContactId: readOptionalString(input.referenceContactId, existing?.referenceContactId),
+    referenceName: readOptionalString(input.referenceName, existing?.referenceName),
+    referenceTitle: readOptionalString(input.referenceTitle, existing?.referenceTitle),
+    referenceOrganization: readOptionalString(input.referenceOrganization, existing?.referenceOrganization),
+    referenceLocation: readOptionalString(input.referenceLocation, existing?.referenceLocation),
+    referenceEmail: readOptionalString(input.referenceEmail, existing?.referenceEmail),
+    referencePhone: readOptionalString(input.referencePhone, existing?.referencePhone),
+    visibility: readEnum(input.visibility, existing?.visibility ?? "private", PROFILE_VISIBILITIES, "visibility"),
+    isFeatured: readBoolean(input.isFeatured, existing?.isFeatured ?? false),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeTransferPayload(value) {
+  if (!isRecord2(value) || value.kind !== PROJECTS_PROJECTS_PAYLOAD_SCHEMA || value.version !== 1) {
+    throw new Error(`Projects transfer payload must be ${PROJECTS_PROJECTS_PAYLOAD_SCHEMA} version 1.`);
+  }
+  if (!Array.isArray(value.projects)) {
+    throw new Error("Projects transfer payload projects must be an array.");
+  }
+  return {
+    kind: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+    version: 1,
+    projects: value.projects.map((entry) => normalizeProjectInput(isRecord2(entry) ? entry : {})),
+    contacts: Array.isArray(value.contacts) ? value.contacts.map((entry) => {
+      const record = isRecord2(entry) ? entry : {};
+      return normalizeContactInput(readString2(record.projectId, "projectId"), record);
+    }) : [],
+    knowledgeEntries: Array.isArray(value.knowledgeEntries) ? value.knowledgeEntries.map((entry) => {
+      const record = isRecord2(entry) ? entry : {};
+      return normalizeKnowledgeInput(readString2(record.projectId, "projectId"), record);
+    }) : [],
+    links: Array.isArray(value.links) ? value.links.map((entry) => {
+      const record = isRecord2(entry) ? entry : {};
+      return normalizeLinkInput(readString2(record.projectId, "projectId"), record);
+    }) : [],
+    proposals: Array.isArray(value.proposals) ? value.proposals.map((entry) => normalizeProposalInput(isRecord2(entry) ? entry : {})) : [],
+    files: Array.isArray(value.files) ? value.files.map((entry) => normalizeFileInput(isRecord2(entry) ? entry : {})) : [],
+    pastPerformanceProfiles: Array.isArray(value.pastPerformanceProfiles) ? value.pastPerformanceProfiles.map((entry) => normalizeProfileInput(isRecord2(entry) ? entry : {})) : []
+  };
+}
+var PROJECTS_APP_ID, PROJECTS_PROJECTS_PAYLOAD_SCHEMA, PROJECT_KINDS, PROJECT_ROLES, PROJECT_STATUSES, PROJECT_CONTACT_KINDS, PROJECT_KNOWLEDGE_ENTRY_TYPES, PROPOSAL_STAGES, PROFILE_VISIBILITIES, LocalProjectsStore;
+var init_local_store = __esm({
+  "cli/local-store.ts"() {
+    "use strict";
+    init_src();
+    PROJECTS_APP_ID = "mere-projects";
+    PROJECTS_PROJECTS_PAYLOAD_SCHEMA = "mere.projects.projects.v1";
+    PROJECT_KINDS = /* @__PURE__ */ new Set([
+      "project.default",
+      "project.client_delivery",
+      "project.gov_contract",
+      "project.internal_initiative",
+      "project.partnership",
+      "project.product_build",
+      "project.research"
+    ]);
+    PROJECT_ROLES = /* @__PURE__ */ new Set(["prime", "subcontract"]);
+    PROJECT_STATUSES = /* @__PURE__ */ new Set(["active", "completed", "archived"]);
+    PROJECT_CONTACT_KINDS = /* @__PURE__ */ new Set(["reference", "team", "partner", "client"]);
+    PROJECT_KNOWLEDGE_ENTRY_TYPES = /* @__PURE__ */ new Set([
+      "note",
+      "outcome",
+      "lesson",
+      "risk",
+      "evidence",
+      "proposal_note"
+    ]);
+    PROPOSAL_STAGES = /* @__PURE__ */ new Set(["tracking", "capture", "drafting", "submitted", "won", "lost", "archived"]);
+    PROFILE_VISIBILITIES = /* @__PURE__ */ new Set(["private", "workspace", "public"]);
+    LocalProjectsStore = class _LocalProjectsStore {
+      constructor(dbPath, db, config, workspace) {
+        this.dbPath = dbPath;
+        this.db = db;
+        this.config = config;
+        this.workspace = workspace;
+      }
+      dbPath;
+      db;
+      config;
+      workspace;
+      static async open(input) {
+        const opened = await openLocalPlaneDatabase(input.config);
+        registerPlaneApp(opened.db, PROJECTS_APP_ID, "Project Workspace");
+        registerPlaneTransferSchema(opened.db, PROJECTS_APP_ID, {
+          payloadSchema: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+          displayName: "Project record transfer",
+          description: "Portable Project Workspace project records for local/cloud migration."
+        });
+        upsertPlaneWorkspace(opened.db, PROJECTS_APP_ID, {
+          workspaceId: input.workspace.workspaceId,
+          slug: input.workspace.slug,
+          name: input.workspace.name,
+          dataPlane: input.config.data,
+          aiPlane: input.config.ai
+        });
+        const store = new _LocalProjectsStore(opened.dbPath, opened.db, input.config, input.workspace);
+        store.ensureSchema();
+        return store;
+      }
+      close() {
+        this.db.close();
+      }
+      ensureSchema() {
+        this.db.exec(`
+			CREATE TABLE IF NOT EXISTS projects_local_projects (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				schema_version INTEGER NOT NULL,
+				attributes_json TEXT NOT NULL,
+				title TEXT NOT NULL,
+				client TEXT NOT NULL,
+				contract_vehicle TEXT,
+				role TEXT NOT NULL,
+				date_start TEXT NOT NULL,
+				date_end TEXT,
+				is_ongoing INTEGER NOT NULL,
+				description TEXT NOT NULL,
+				outcomes TEXT NOT NULL,
+				capabilities_json TEXT NOT NULL,
+				tags_json TEXT NOT NULL,
+				status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_projects_workspace_updated
+				ON projects_local_projects (workspace_id, updated_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_projects_local_projects_workspace_status
+				ON projects_local_projects (workspace_id, status);
+
+			CREATE TABLE IF NOT EXISTS projects_local_contacts (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				title TEXT,
+				organization TEXT,
+				location TEXT,
+				email TEXT,
+				phone TEXT,
+				kind TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_contacts_project
+				ON projects_local_contacts (workspace_id, project_id, updated_at DESC);
+
+			CREATE TABLE IF NOT EXISTS projects_local_knowledge_entries (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				entry_type TEXT NOT NULL,
+				title TEXT NOT NULL,
+				content TEXT NOT NULL,
+				tags_json TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_knowledge_entries_project
+				ON projects_local_knowledge_entries (workspace_id, project_id, updated_at DESC);
+
+			CREATE TABLE IF NOT EXISTS projects_local_links (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				label TEXT NOT NULL,
+				url TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_links_project
+				ON projects_local_links (workspace_id, project_id, updated_at DESC);
+
+			CREATE TABLE IF NOT EXISTS projects_local_proposals (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				schema_version INTEGER NOT NULL,
+				source_item_id TEXT,
+				external_reference TEXT,
+				attributes_json TEXT NOT NULL,
+				title TEXT NOT NULL,
+				client TEXT NOT NULL,
+				solicitation_number TEXT,
+				business_deal_id TEXT,
+				due_date TEXT,
+				stage TEXT NOT NULL,
+				summary TEXT NOT NULL,
+				win_themes TEXT NOT NULL,
+				requirements TEXT NOT NULL,
+				linked_profile_ids_json TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_proposals_workspace_updated
+				ON projects_local_proposals (workspace_id, updated_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_projects_local_proposals_stage
+				ON projects_local_proposals (workspace_id, stage);
+
+			CREATE TABLE IF NOT EXISTS projects_local_files (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				project_id TEXT,
+				proposal_id TEXT,
+				name TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				mime_type TEXT,
+				size_bytes INTEGER,
+				artifact_key TEXT,
+				sha256 TEXT,
+				notes TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_files_project
+				ON projects_local_files (workspace_id, project_id, updated_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_projects_local_files_proposal
+				ON projects_local_files (workspace_id, proposal_id, updated_at DESC);
+
+			CREATE TABLE IF NOT EXISTS projects_local_profiles (
+				id TEXT NOT NULL,
+				workspace_id TEXT NOT NULL,
+				project_id TEXT,
+				title TEXT NOT NULL,
+				client TEXT NOT NULL,
+				contract_vehicle TEXT,
+				role TEXT NOT NULL,
+				date_start TEXT,
+				date_end TEXT,
+				is_ongoing INTEGER NOT NULL,
+				summary TEXT NOT NULL,
+				relevance TEXT NOT NULL,
+				differentiators TEXT NOT NULL,
+				capability_tags_json TEXT NOT NULL,
+				featured_outcomes_json TEXT NOT NULL,
+				reference_contact_id TEXT,
+				reference_name TEXT,
+				reference_title TEXT,
+				reference_organization TEXT,
+				reference_location TEXT,
+				reference_email TEXT,
+				reference_phone TEXT,
+				visibility TEXT NOT NULL,
+				is_featured INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace_id, id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_profiles_project
+				ON projects_local_profiles (workspace_id, project_id, updated_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_projects_local_profiles_visibility
+				ON projects_local_profiles (workspace_id, visibility);
+
+			CREATE TABLE IF NOT EXISTS projects_local_projections (
+				id TEXT PRIMARY KEY,
+				workspace_id TEXT NOT NULL,
+				scope TEXT NOT NULL,
+				object_type TEXT NOT NULL,
+				object_id TEXT NOT NULL,
+				published_at TEXT NOT NULL,
+				revoked_at TEXT,
+				payload_json TEXT NOT NULL,
+				last_projected_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_local_projections_workspace_scope
+				ON projects_local_projections (workspace_id, scope, updated_at DESC);
+		`);
+      }
+      info() {
+        const inventory = getLocalPlaneInventory(this.db, { appId: PROJECTS_APP_ID });
+        const projectCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_projects WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const contactCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_contacts WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const knowledgeCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_knowledge_entries WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const linkCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_links WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const proposalCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_proposals WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const fileCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_files WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const profileCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_profiles WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        const projectionCount = Number(
+          this.db.prepare("SELECT COUNT(*) AS count FROM projects_local_projections WHERE workspace_id = ?").get(this.workspace.workspaceId)?.count ?? 0
+        );
+        return {
+          dbPath: this.dbPath,
+          workspaceId: this.workspace.workspaceId,
+          projectCount,
+          contactCount,
+          knowledgeCount,
+          linkCount,
+          proposalCount,
+          fileCount,
+          profileCount,
+          projectionCount,
+          localProjectStore: "enabled",
+          localProjectPersistenceSupported: true,
+          localAiSupported: true,
+          planeAppCount: inventory.counts.apps,
+          planeWorkspaceCount: inventory.counts.workspaces,
+          transferSchemaCount: inventory.counts.transferSchemas,
+          transferCount: inventory.counts.transfers,
+          aiJobCount: inventory.counts.aiJobs
+        };
+      }
+      listProjectRecords(filters = {}) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (filters.search) {
+          const term = likeValue(filters.search);
+          clauses.push("(title LIKE ? ESCAPE '\\' OR client LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR outcomes LIKE ? ESCAPE '\\' OR capabilities_json LIKE ? ESCAPE '\\' OR tags_json LIKE ? ESCAPE '\\')");
+          params.push(term, term, term, term, term, term);
+        }
+        if (filters.role) {
+          clauses.push("role = ?");
+          params.push(filters.role);
+        }
+        if (filters.status) {
+          clauses.push("status = ?");
+          params.push(filters.status);
+        }
+        if (filters.client) {
+          clauses.push("client = ?");
+          params.push(filters.client);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_projects WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, title COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToProject);
+      }
+      projectChildCounts(projectIds) {
+        const counts = new Map(
+          projectIds.map((id) => [id, { contactCount: 0, knowledgeCount: 0, linkCount: 0, fileCount: 0, profileCount: 0 }])
+        );
+        if (projectIds.length === 0) return counts;
+        const placeholders = projectIds.map(() => "?").join(", ");
+        const params = [this.workspace.workspaceId, ...projectIds];
+        const apply = (table, key) => {
+          const rows = this.db.prepare(`SELECT project_id, COUNT(*) AS count FROM ${table} WHERE workspace_id = ? AND project_id IN (${placeholders}) GROUP BY project_id`).all(...params);
+          for (const row of rows) {
+            const entry = counts.get(row.project_id);
+            if (entry) entry[key] = Number(row.count ?? 0);
+          }
+        };
+        apply("projects_local_contacts", "contactCount");
+        apply("projects_local_knowledge_entries", "knowledgeCount");
+        apply("projects_local_links", "linkCount");
+        apply("projects_local_files", "fileCount");
+        apply("projects_local_profiles", "profileCount");
+        return counts;
+      }
+      listProjects(filters = {}) {
+        const projects = this.listProjectRecords(filters);
+        const counts = this.projectChildCounts(projects.map((project) => project.id));
+        return projects.map(
+          (project) => toSummary(project, counts.get(project.id) ?? { contactCount: 0, knowledgeCount: 0, linkCount: 0, fileCount: 0, profileCount: 0 })
+        );
+      }
+      getProject(projectId) {
+        const row = this.db.prepare("SELECT * FROM projects_local_projects WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, projectId);
+        return row ? rowToProject(row) : null;
+      }
+      requireProject(projectId) {
+        const project = this.getProject(projectId);
+        if (!project) {
+          throw new Error(`Local project not found: ${projectId}`);
+        }
+        return project;
+      }
+      contactRecords(projectId) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (projectId) {
+          clauses.push("project_id = ?");
+          params.push(projectId);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_contacts WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, name COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToContact);
+      }
+      listContacts(projectId) {
+        this.requireProject(projectId);
+        return this.contactRecords(projectId);
+      }
+      getContact(projectId, contactId) {
+        const row = this.db.prepare("SELECT * FROM projects_local_contacts WHERE workspace_id = ? AND project_id = ? AND id = ?").get(this.workspace.workspaceId, projectId, contactId);
+        return row ? rowToContact(row) : null;
+      }
+      upsertContact(projectId, input) {
+        this.requireProject(projectId);
+        const existingId = typeof input.id === "string" && input.id.trim() ? input.id.trim() : void 0;
+        const contact = {
+          ...normalizeContactInput(projectId, input, existingId ? this.getContact(projectId, existingId) ?? void 0 : void 0),
+          workspaceId: this.workspace.workspaceId,
+          projectId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_contacts (
+					id, workspace_id, project_id, name, title, organization, location, email, phone, kind, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					project_id = excluded.project_id,
+					name = excluded.name,
+					title = excluded.title,
+					organization = excluded.organization,
+					location = excluded.location,
+					email = excluded.email,
+					phone = excluded.phone,
+					kind = excluded.kind,
+					updated_at = excluded.updated_at`
+        ).run(
+          contact.id,
+          contact.workspaceId,
+          contact.projectId,
+          contact.name,
+          contact.title,
+          contact.organization,
+          contact.location,
+          contact.email,
+          contact.phone,
+          contact.kind,
+          contact.createdAt,
+          contact.updatedAt
+        );
+        return contact;
+      }
+      deleteContact(projectId, contactId) {
+        this.requireProject(projectId);
+        const result = this.db.prepare("DELETE FROM projects_local_contacts WHERE workspace_id = ? AND project_id = ? AND id = ?").run(this.workspace.workspaceId, projectId, contactId);
+        return result.changes > 0;
+      }
+      knowledgeRecords(projectId) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (projectId) {
+          clauses.push("project_id = ?");
+          params.push(projectId);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_knowledge_entries WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, title COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToKnowledgeEntry);
+      }
+      listKnowledgeEntries(projectId) {
+        this.requireProject(projectId);
+        return this.knowledgeRecords(projectId);
+      }
+      getKnowledgeEntry(projectId, entryId) {
+        const row = this.db.prepare("SELECT * FROM projects_local_knowledge_entries WHERE workspace_id = ? AND project_id = ? AND id = ?").get(this.workspace.workspaceId, projectId, entryId);
+        return row ? rowToKnowledgeEntry(row) : null;
+      }
+      upsertKnowledgeEntry(projectId, input) {
+        this.requireProject(projectId);
+        const existingId = typeof input.id === "string" && input.id.trim() ? input.id.trim() : void 0;
+        const entry = {
+          ...normalizeKnowledgeInput(projectId, input, existingId ? this.getKnowledgeEntry(projectId, existingId) ?? void 0 : void 0),
+          workspaceId: this.workspace.workspaceId,
+          projectId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_knowledge_entries (
+					id, workspace_id, project_id, entry_type, title, content, tags_json, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					project_id = excluded.project_id,
+					entry_type = excluded.entry_type,
+					title = excluded.title,
+					content = excluded.content,
+					tags_json = excluded.tags_json,
+					updated_at = excluded.updated_at`
+        ).run(
+          entry.id,
+          entry.workspaceId,
+          entry.projectId,
+          entry.entryType,
+          entry.title,
+          entry.content,
+          jsonText(entry.tags),
+          entry.createdAt,
+          entry.updatedAt
+        );
+        return entry;
+      }
+      deleteKnowledgeEntry(projectId, entryId) {
+        this.requireProject(projectId);
+        const result = this.db.prepare("DELETE FROM projects_local_knowledge_entries WHERE workspace_id = ? AND project_id = ? AND id = ?").run(this.workspace.workspaceId, projectId, entryId);
+        return result.changes > 0;
+      }
+      linkRecords(projectId) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (projectId) {
+          clauses.push("project_id = ?");
+          params.push(projectId);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_links WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, label COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToLink);
+      }
+      listLinks(projectId) {
+        this.requireProject(projectId);
+        return this.linkRecords(projectId);
+      }
+      getLink(projectId, linkId) {
+        const row = this.db.prepare("SELECT * FROM projects_local_links WHERE workspace_id = ? AND project_id = ? AND id = ?").get(this.workspace.workspaceId, projectId, linkId);
+        return row ? rowToLink(row) : null;
+      }
+      upsertLink(projectId, input) {
+        this.requireProject(projectId);
+        const existingId = typeof input.id === "string" && input.id.trim() ? input.id.trim() : void 0;
+        const link = {
+          ...normalizeLinkInput(projectId, input, existingId ? this.getLink(projectId, existingId) ?? void 0 : void 0),
+          workspaceId: this.workspace.workspaceId,
+          projectId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_links (
+					id, workspace_id, project_id, label, url, kind, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					project_id = excluded.project_id,
+					label = excluded.label,
+					url = excluded.url,
+					kind = excluded.kind,
+					updated_at = excluded.updated_at`
+        ).run(
+          link.id,
+          link.workspaceId,
+          link.projectId,
+          link.label,
+          link.url,
+          link.kind,
+          link.createdAt,
+          link.updatedAt
+        );
+        return link;
+      }
+      deleteLink(projectId, linkId) {
+        this.requireProject(projectId);
+        const result = this.db.prepare("DELETE FROM projects_local_links WHERE workspace_id = ? AND project_id = ? AND id = ?").run(this.workspace.workspaceId, projectId, linkId);
+        return result.changes > 0;
+      }
+      listProposals(filters = {}) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (filters.search) {
+          const term = likeValue(filters.search);
+          clauses.push("(title LIKE ? ESCAPE '\\' OR client LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR requirements LIKE ? ESCAPE '\\')");
+          params.push(term, term, term, term);
+        }
+        if (filters.stage) {
+          clauses.push("stage = ?");
+          params.push(filters.stage);
+        }
+        if (filters.client) {
+          clauses.push("client = ?");
+          params.push(filters.client);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_proposals WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, title COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToProposal);
+      }
+      getProposal(id) {
+        const row = this.db.prepare("SELECT * FROM projects_local_proposals WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, id);
+        return row ? rowToProposal(row) : null;
+      }
+      upsertProposal(input, existing) {
+        const proposal = {
+          ...normalizeProposalInput(input, existing),
+          workspaceId: this.workspace.workspaceId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_proposals (
+					id, workspace_id, kind, schema_version, source_item_id, external_reference, attributes_json,
+					title, client, solicitation_number, business_deal_id, due_date, stage, summary, win_themes,
+					requirements, linked_profile_ids_json, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					kind = excluded.kind,
+					schema_version = excluded.schema_version,
+					source_item_id = excluded.source_item_id,
+					external_reference = excluded.external_reference,
+					attributes_json = excluded.attributes_json,
+					title = excluded.title,
+					client = excluded.client,
+					solicitation_number = excluded.solicitation_number,
+					business_deal_id = excluded.business_deal_id,
+					due_date = excluded.due_date,
+					stage = excluded.stage,
+					summary = excluded.summary,
+					win_themes = excluded.win_themes,
+					requirements = excluded.requirements,
+					linked_profile_ids_json = excluded.linked_profile_ids_json,
+					updated_at = excluded.updated_at`
+        ).run(
+          proposal.id,
+          proposal.workspaceId,
+          proposal.kind,
+          proposal.schemaVersion,
+          proposal.sourceItemId,
+          proposal.externalReference,
+          jsonText(proposal.attributes),
+          proposal.title,
+          proposal.client,
+          proposal.solicitationNumber,
+          proposal.businessDealId,
+          proposal.dueDate,
+          proposal.stage,
+          proposal.summary,
+          proposal.winThemes,
+          proposal.requirements,
+          jsonText(proposal.linkedProfileIds),
+          proposal.createdAt,
+          proposal.updatedAt
+        );
+        return proposal;
+      }
+      updateProposal(id, input) {
+        const existing = this.getProposal(id);
+        if (!existing) return null;
+        return this.upsertProposal(input, existing);
+      }
+      deleteProposal(id) {
+        const result = this.db.prepare("DELETE FROM projects_local_proposals WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, id);
+        return result.changes > 0;
+      }
+      listFiles(filters = {}) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (filters.projectId) {
+          clauses.push("project_id = ?");
+          params.push(filters.projectId);
+        }
+        if (filters.proposalId) {
+          clauses.push("proposal_id = ?");
+          params.push(filters.proposalId);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_files WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, name COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToFile);
+      }
+      getFile(id) {
+        const row = this.db.prepare("SELECT * FROM projects_local_files WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, id);
+        return row ? rowToFile(row) : null;
+      }
+      upsertFile(input, existing) {
+        const file = {
+          ...normalizeFileInput(input, existing),
+          workspaceId: this.workspace.workspaceId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_files (
+					id, workspace_id, project_id, proposal_id, name, kind, mime_type, size_bytes, artifact_key,
+					sha256, notes, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					project_id = excluded.project_id,
+					proposal_id = excluded.proposal_id,
+					name = excluded.name,
+					kind = excluded.kind,
+					mime_type = excluded.mime_type,
+					size_bytes = excluded.size_bytes,
+					artifact_key = excluded.artifact_key,
+					sha256 = excluded.sha256,
+					notes = excluded.notes,
+					updated_at = excluded.updated_at`
+        ).run(
+          file.id,
+          file.workspaceId,
+          file.projectId,
+          file.proposalId,
+          file.name,
+          file.kind,
+          file.mimeType,
+          file.sizeBytes,
+          file.artifactKey,
+          file.sha256,
+          file.notes,
+          file.createdAt,
+          file.updatedAt
+        );
+        return file;
+      }
+      deleteFile(id) {
+        const result = this.db.prepare("DELETE FROM projects_local_files WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, id);
+        return result.changes > 0;
+      }
+      listProfiles(filters = {}) {
+        const clauses = ["workspace_id = ?"];
+        const params = [this.workspace.workspaceId];
+        if (filters.search) {
+          const term = likeValue(filters.search);
+          clauses.push("(title LIKE ? ESCAPE '\\' OR client LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR relevance LIKE ? ESCAPE '\\' OR capability_tags_json LIKE ? ESCAPE '\\')");
+          params.push(term, term, term, term, term);
+        }
+        if (filters.role) {
+          clauses.push("role = ?");
+          params.push(filters.role);
+        }
+        if (filters.client) {
+          clauses.push("client = ?");
+          params.push(filters.client);
+        }
+        if (filters.visibility) {
+          clauses.push("visibility = ?");
+          params.push(filters.visibility);
+        }
+        const rows = this.db.prepare(`SELECT * FROM projects_local_profiles WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, title COLLATE NOCASE ASC`).all(...params);
+        return rows.map(rowToProfile);
+      }
+      getProfile(id) {
+        const row = this.db.prepare("SELECT * FROM projects_local_profiles WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, id);
+        return row ? rowToProfile(row) : null;
+      }
+      upsertProfile(input, existing) {
+        const profile = {
+          ...normalizeProfileInput(input, existing),
+          workspaceId: this.workspace.workspaceId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_profiles (
+					id, workspace_id, project_id, title, client, contract_vehicle, role, date_start, date_end,
+					is_ongoing, summary, relevance, differentiators, capability_tags_json, featured_outcomes_json,
+					reference_contact_id, reference_name, reference_title, reference_organization, reference_location,
+					reference_email, reference_phone, visibility, is_featured, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					project_id = excluded.project_id,
+					title = excluded.title,
+					client = excluded.client,
+					contract_vehicle = excluded.contract_vehicle,
+					role = excluded.role,
+					date_start = excluded.date_start,
+					date_end = excluded.date_end,
+					is_ongoing = excluded.is_ongoing,
+					summary = excluded.summary,
+					relevance = excluded.relevance,
+					differentiators = excluded.differentiators,
+					capability_tags_json = excluded.capability_tags_json,
+					featured_outcomes_json = excluded.featured_outcomes_json,
+					reference_contact_id = excluded.reference_contact_id,
+					reference_name = excluded.reference_name,
+					reference_title = excluded.reference_title,
+					reference_organization = excluded.reference_organization,
+					reference_location = excluded.reference_location,
+					reference_email = excluded.reference_email,
+					reference_phone = excluded.reference_phone,
+					visibility = excluded.visibility,
+					is_featured = excluded.is_featured,
+					updated_at = excluded.updated_at`
+        ).run(
+          profile.id,
+          profile.workspaceId,
+          profile.projectId,
+          profile.title,
+          profile.client,
+          profile.contractVehicle,
+          profile.role,
+          profile.dateStart,
+          profile.dateEnd,
+          profile.isOngoing ? 1 : 0,
+          profile.summary,
+          profile.relevance,
+          profile.differentiators,
+          jsonText(profile.capabilityTags),
+          jsonText(profile.featuredOutcomes),
+          profile.referenceContactId,
+          profile.referenceName,
+          profile.referenceTitle,
+          profile.referenceOrganization,
+          profile.referenceLocation,
+          profile.referenceEmail,
+          profile.referencePhone,
+          profile.visibility,
+          profile.isFeatured ? 1 : 0,
+          profile.createdAt,
+          profile.updatedAt
+        );
+        return profile;
+      }
+      updateProfile(id, input) {
+        const existing = this.getProfile(id);
+        if (!existing) return null;
+        return this.upsertProfile(input, existing);
+      }
+      deleteProfile(id) {
+        const result = this.db.prepare("DELETE FROM projects_local_profiles WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, id);
+        return result.changes > 0;
+      }
+      recordProjection(input) {
+        const now = isoNow3();
+        const existing = this.db.prepare("SELECT published_at FROM projects_local_projections WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, input.id);
+        this.db.prepare(
+          `INSERT INTO projects_local_projections (
+					id, workspace_id, scope, object_type, object_id, published_at, revoked_at, payload_json, last_projected_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(id) DO UPDATE SET
+					workspace_id = excluded.workspace_id,
+					scope = excluded.scope,
+					object_type = excluded.object_type,
+					object_id = excluded.object_id,
+					published_at = excluded.published_at,
+					revoked_at = excluded.revoked_at,
+					payload_json = excluded.payload_json,
+					last_projected_at = excluded.last_projected_at,
+					updated_at = excluded.updated_at`
+        ).run(
+          input.id,
+          this.workspace.workspaceId,
+          input.scope,
+          input.objectType,
+          input.objectId,
+          existing?.published_at ?? now,
+          input.revoked ? now : null,
+          JSON.stringify(input.envelope),
+          now,
+          now
+        );
+      }
+      getProjectBundle(projectId) {
+        const project = this.getProject(projectId);
+        if (!project) return null;
+        return {
+          project,
+          contacts: this.contactRecords(projectId),
+          knowledgeEntries: this.knowledgeRecords(projectId),
+          links: this.linkRecords(projectId),
+          files: this.listFiles({ projectId }),
+          fileAnnotations: [],
+          pastPerformanceProfiles: this.listProfiles().filter((profile) => profile.projectId === projectId)
+        };
+      }
+      upsertProject(input, existing) {
+        const project = {
+          ...normalizeProjectInput(input, existing),
+          workspaceId: this.workspace.workspaceId
+        };
+        this.db.prepare(
+          `INSERT INTO projects_local_projects (
+					id, workspace_id, kind, schema_version, attributes_json, title, client, contract_vehicle,
+					role, date_start, date_end, is_ongoing, description, outcomes, capabilities_json, tags_json,
+					status, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(workspace_id, id) DO UPDATE SET
+					kind = excluded.kind,
+					schema_version = excluded.schema_version,
+					attributes_json = excluded.attributes_json,
+					title = excluded.title,
+					client = excluded.client,
+					contract_vehicle = excluded.contract_vehicle,
+					role = excluded.role,
+					date_start = excluded.date_start,
+					date_end = excluded.date_end,
+					is_ongoing = excluded.is_ongoing,
+					description = excluded.description,
+					outcomes = excluded.outcomes,
+					capabilities_json = excluded.capabilities_json,
+					tags_json = excluded.tags_json,
+					status = excluded.status,
+					updated_at = excluded.updated_at`
+        ).run(
+          project.id,
+          project.workspaceId,
+          project.kind,
+          project.schemaVersion,
+          jsonText(project.attributes),
+          project.title,
+          project.client,
+          project.contractVehicle,
+          project.role,
+          project.dateStart,
+          project.dateEnd,
+          project.isOngoing ? 1 : 0,
+          project.description,
+          project.outcomes,
+          jsonText(project.capabilities),
+          jsonText(project.tags),
+          project.status,
+          project.createdAt,
+          project.updatedAt
+        );
+        return project;
+      }
+      updateProject(projectId, input) {
+        const existing = this.getProject(projectId);
+        if (!existing) return null;
+        return this.upsertProject(input, existing);
+      }
+      archiveProject(projectId) {
+        return this.updateProject(projectId, { status: "archived" });
+      }
+      deleteProject(projectId) {
+        this.db.exec("BEGIN");
+        try {
+          this.db.prepare("DELETE FROM projects_local_contacts WHERE workspace_id = ? AND project_id = ?").run(this.workspace.workspaceId, projectId);
+          this.db.prepare("DELETE FROM projects_local_knowledge_entries WHERE workspace_id = ? AND project_id = ?").run(this.workspace.workspaceId, projectId);
+          this.db.prepare("DELETE FROM projects_local_links WHERE workspace_id = ? AND project_id = ?").run(this.workspace.workspaceId, projectId);
+          this.db.prepare("DELETE FROM projects_local_files WHERE workspace_id = ? AND project_id = ?").run(this.workspace.workspaceId, projectId);
+          this.db.prepare("DELETE FROM projects_local_profiles WHERE workspace_id = ? AND project_id = ?").run(this.workspace.workspaceId, projectId);
+          const result = this.db.prepare("DELETE FROM projects_local_projects WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, projectId);
+          this.db.exec("COMMIT");
+          return result.changes > 0;
+        } catch (error) {
+          this.db.exec("ROLLBACK");
+          throw error;
+        }
+      }
+      exportPayload() {
+        return {
+          kind: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+          version: 1,
+          projects: this.listProjectRecords({}),
+          contacts: this.contactRecords(),
+          knowledgeEntries: this.knowledgeRecords(),
+          links: this.linkRecords(),
+          proposals: this.listProposals(),
+          files: this.listFiles(),
+          pastPerformanceProfiles: this.listProfiles()
+        };
+      }
+      exportBundle() {
+        const payload = this.exportPayload();
+        const bundle = createPlaneTransferBundle({
+          appId: PROJECTS_APP_ID,
+          workspaceId: this.workspace.workspaceId,
+          plane: this.config,
+          payloadSchema: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+          payload
+        });
+        recordPlaneTransfer(this.db, {
+          appId: PROJECTS_APP_ID,
+          workspaceId: this.workspace.workspaceId,
+          direction: "export",
+          source: { data: this.config.data, ai: this.config.ai },
+          payloadSchema: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+          payloadSha256: bundle.payloadSha256
+        });
+        return bundle;
+      }
+      importPlan(value) {
+        const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+          appId: PROJECTS_APP_ID,
+          payloadSchema: PROJECTS_PROJECTS_PAYLOAD_SCHEMA
+        });
+        const normalized = normalizeTransferPayload(payload);
+        return createPlaneTransferImportPlan({
+          appId: bundle?.appId ?? PROJECTS_APP_ID,
+          workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+          payloadSchema: bundle?.payloadSchema ?? PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+          payload: normalized,
+          bundle,
+          destination: { data: this.config.data, ai: this.config.ai }
+        });
+      }
+      importValue(value) {
+        const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+          appId: PROJECTS_APP_ID,
+          payloadSchema: PROJECTS_PROJECTS_PAYLOAD_SCHEMA
+        });
+        const normalized = normalizeTransferPayload(payload);
+        let imported = 0;
+        let contactCount = 0;
+        let knowledgeCount = 0;
+        let linkCount = 0;
+        let proposalCount = 0;
+        let fileCount = 0;
+        let profileCount = 0;
+        this.db.exec("BEGIN");
+        try {
+          for (const project of normalized.projects) {
+            this.upsertProject(project, this.getProject(project.id) ?? void 0);
+            imported += 1;
+          }
+          for (const contact of normalized.contacts) {
+            this.upsertContact(contact.projectId, contact);
+            contactCount += 1;
+          }
+          for (const entry of normalized.knowledgeEntries) {
+            this.upsertKnowledgeEntry(entry.projectId, entry);
+            knowledgeCount += 1;
+          }
+          for (const link of normalized.links) {
+            this.upsertLink(link.projectId, link);
+            linkCount += 1;
+          }
+          for (const proposal of normalized.proposals) {
+            this.upsertProposal(proposal, this.getProposal(proposal.id) ?? void 0);
+            proposalCount += 1;
+          }
+          for (const file of normalized.files) {
+            this.upsertFile(file, this.getFile(file.id) ?? void 0);
+            fileCount += 1;
+          }
+          for (const profile of normalized.pastPerformanceProfiles) {
+            this.upsertProfile(profile, this.getProfile(profile.id) ?? void 0);
+            profileCount += 1;
+          }
+          const source = bundle?.source;
+          const payloadSha256 = bundle?.payloadSha256 ?? hashPlanePayload(normalized);
+          const transferId = recordPlaneTransfer(this.db, {
+            appId: PROJECTS_APP_ID,
+            workspaceId: this.workspace.workspaceId,
+            direction: "import",
+            source,
+            destination: { data: this.config.data, ai: this.config.ai },
+            payloadSchema: bundle?.payloadSchema ?? PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
+            payloadSha256
+          });
+          this.db.exec("COMMIT");
+          return {
+            ok: true,
+            store: "local",
+            workspaceId: this.workspace.workspaceId,
+            imported,
+            contactCount,
+            knowledgeCount,
+            linkCount,
+            proposalCount,
+            fileCount,
+            profileCount,
+            transferId
+          };
+        } catch (error) {
+          this.db.exec("ROLLBACK");
+          throw error;
+        }
+      }
+    };
+  }
+});
 
 // cli/projects.ts
-import { mkdir as mkdir2, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { createHash as createHash3 } from "node:crypto";
+import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.1_@sveltejs+vite-p_4e3f892a742bb9c5a510ac2c0515d785/node_modules/@mere/cli-auth/src/client.ts
@@ -258,6 +2411,210 @@ async function logoutRemoteSession(input) {
   });
 }
 
+// cli/projects.ts
+init_src();
+init_config();
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
+import { createHash as createHash2 } from "node:crypto";
+import https from "node:https";
+import os3 from "node:os";
+import path4 from "node:path";
+import { spawn as spawn2, spawnSync } from "node:child_process";
+var DEFAULT_DMG_URL = "https://mere.run/releases/mere-run.dmg";
+var DEFAULT_INSTALL_BIN = path4.join(os3.homedir(), ".local", "bin", "mere.run");
+var DEFAULT_CHAT_MODEL = "text-chat-q35-nano";
+var GLOBAL_CANDIDATES = ["/usr/local/bin/mere.run", "/opt/homebrew/bin/mere.run"];
+async function isExecutable(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function which(binary, env) {
+  const pathValue = env.PATH ?? process.env.PATH ?? "";
+  for (const segment of pathValue.split(path4.delimiter)) {
+    if (!segment) continue;
+    const candidate = path4.join(segment, binary);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+function envPrefix3(appId) {
+  if (!appId) return null;
+  const prefix = appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+  return prefix || null;
+}
+function configuredBin(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_BIN`] : void 0) ?? env.MERE_RUN_BIN ?? env.MERE_LOCAL_PLANE_MERE_RUN_BIN ?? null;
+}
+function configuredInstallBin(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_INSTALL_BIN`] : void 0) ?? env.MERE_RUN_INSTALL_BIN ?? env.MERE_LOCAL_PLANE_MERE_RUN_INSTALL_BIN ?? DEFAULT_INSTALL_BIN;
+}
+function configuredDmgUrl(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_DOWNLOAD_URL`] : void 0) ?? env.MERE_RUN_DOWNLOAD_URL ?? env.MERE_LOCAL_PLANE_MERE_RUN_DOWNLOAD_URL ?? DEFAULT_DMG_URL;
+}
+function configuredDmgSha256(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_DOWNLOAD_SHA256`] : void 0) ?? env.MERE_RUN_DOWNLOAD_SHA256 ?? env.MERE_LOCAL_PLANE_MERE_RUN_DOWNLOAD_SHA256 ?? null;
+}
+function requireDmgSha256(env, appId) {
+  const expectedSha256 = configuredDmgSha256(env, appId);
+  if (!expectedSha256) {
+    const prefix = envPrefix3(appId);
+    const label = prefix ? `${prefix}_MERE_RUN_DOWNLOAD_SHA256` : "MERE_RUN_DOWNLOAD_SHA256";
+    throw new Error(`Auto-installing mere.run requires ${label}.`);
+  }
+  return expectedSha256;
+}
+async function download(url, dest) {
+  await new Promise((resolve2, reject) => {
+    const file = createWriteStream(dest);
+    https.get(url, (response) => {
+      if (response.statusCode && response.statusCode >= 400) {
+        reject(new Error(`Download failed with status ${response.statusCode.toString()}`));
+        return;
+      }
+      response.pipe(file);
+      file.on("finish", () => {
+        file.close();
+        resolve2();
+      });
+    }).on("error", reject);
+  });
+}
+async function sha256File(filePath) {
+  const hash = createHash2("sha256");
+  await new Promise((resolve2, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve2);
+  });
+  return hash.digest("hex");
+}
+async function installFromDmg(env, appId) {
+  const installBin = configuredInstallBin(env, appId);
+  const expectedSha256 = requireDmgSha256(env, appId);
+  mkdirSync(path4.dirname(installBin), { recursive: true });
+  const tmp = await mkdtemp(path4.join(os3.tmpdir(), "mere-local-plane-run-"));
+  const dmg = path4.join(tmp, "mere-run.dmg");
+  const mount = path4.join(tmp, "mount");
+  mkdirSync(mount);
+  try {
+    await download(configuredDmgUrl(env, appId), dmg);
+    const actualSha256 = await sha256File(dmg);
+    if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+      throw new Error("Downloaded mere.run DMG failed SHA-256 verification.");
+    }
+    const attach = spawnSync("hdiutil", ["attach", dmg, "-mountpoint", mount, "-nobrowse", "-readonly", "-quiet"], {
+      encoding: "utf8"
+    });
+    if (attach.status !== 0) {
+      throw new Error(attach.stderr || attach.stdout || "Unable to mount mere.run DMG.");
+    }
+    const installer = path4.join(mount, "install.sh");
+    const install = spawnSync(installer, {
+      encoding: "utf8",
+      env: { ...process.env, ...env, MERERUN_INSTALL_BIN_DEST: installBin }
+    });
+    spawnSync("hdiutil", ["detach", mount, "-quiet"], { encoding: "utf8" });
+    if (install.status !== 0) {
+      throw new Error(install.stderr || install.stdout || "mere.run installer failed.");
+    }
+    await chmod2(installBin, 493).catch(() => void 0);
+    return installBin;
+  } finally {
+    await rm2(tmp, { recursive: true, force: true });
+  }
+}
+async function resolveMereRunBin(env = process.env, appId) {
+  const explicit = configuredBin(env, appId);
+  if (explicit) {
+    if (!await isExecutable(explicit)) {
+      throw new Error(`mere.run binary is not executable: ${explicit}`);
+    }
+    return explicit;
+  }
+  const onPath = which("mere.run", env);
+  if (onPath) return onPath;
+  for (const candidate of GLOBAL_CANDIDATES) {
+    if (await isExecutable(candidate)) return candidate;
+  }
+  const cached = configuredInstallBin(env, appId);
+  if (await isExecutable(cached)) return cached;
+  return installFromDmg(env, appId);
+}
+async function runMereRun(args, options = {}) {
+  const bin = await resolveMereRunBin(options.env ?? process.env, options.appId);
+  return new Promise((resolve2, reject) => {
+    const child = spawn2(bin, args, {
+      env: { ...process.env, ...options.env ?? {} },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout2 = "";
+    let stderr2 = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`mere.run timed out after ${String(options.timeoutMs ?? 24e4)}ms`));
+    }, options.timeoutMs ?? 24e4);
+    child.stdout.on("data", (chunk) => {
+      stdout2 += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr2 += String(chunk);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve2(stdout2.trim());
+      } else {
+        reject(new Error(stderr2.trim() || stdout2.trim() || `mere.run exited with ${String(code)}`));
+      }
+    });
+  });
+}
+async function generateText(prompt, options = {}) {
+  return runMereRun(
+    [
+      "text",
+      "chat",
+      "--model",
+      options.model ?? DEFAULT_CHAT_MODEL,
+      "--prompt",
+      prompt,
+      "--max-tokens",
+      String(options.maxTokens ?? 384),
+      "--temperature",
+      "0",
+      "--top-p",
+      "1",
+      "--quiet"
+    ],
+    {
+      env: options.env,
+      appId: options.appId,
+      timeoutMs: options.timeoutMs ?? 3e5
+    }
+  );
+}
+
+// cli/projects.ts
+init_projection();
+
 // cli/session.ts
 var APP_NAME = "mere-projects";
 function sessionFilePath(env = process.env) {
@@ -301,7 +2658,11 @@ async function logoutRemote(input = {}) {
 
 // cli/projects.ts
 var DEFAULT_BASE_URL = process.env.PROJECTS_BASE_URL?.trim() || process.env.PASTPERF_BASE_URL?.trim() || "https://projects.meresmb.com";
+var APP_ID = "mere-projects";
+var DEFAULT_LOCAL_SUMMARY_MODEL = "text-chat-q35-nano";
+var LOCAL_PROJECT_SUMMARY_PROMPT_VERSION = "projects-local-summary-v1";
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
+  "dry-run",
   "featured",
   "help",
   "json",
@@ -315,6 +2676,7 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
 ]);
 var SHORT_FLAGS = /* @__PURE__ */ new Map([
   ["h", "help"],
+  ["v", "version"],
   ["y", "yes"]
 ]);
 var MIME_BY_EXTENSION = /* @__PURE__ */ new Map([
@@ -489,10 +2851,10 @@ async function cliVersion() {
   const parsed = JSON.parse(raw);
   return parsed.version ?? "0.0.0";
 }
-function manifestCommand(path2, summary, options = {}) {
+function manifestCommand(path5, summary, options = {}) {
   return {
-    id: path2.join("."),
-    path: path2,
+    id: path5.join("."),
+    path: path5,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -500,12 +2862,16 @@ function manifestCommand(path2, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
 function commandManifest() {
+  const projectBodyFlags = ["kind", "schema-version", "attributes", "title", "client", "contract-vehicle", "role", "date-start", "date-end", "ongoing", "not-ongoing", "description", "outcomes", "capability", "capabilities", "tag", "tags", "status"];
+  const profileBodyFlags = ["project", "project-id", "title", "client", "contract-vehicle", "role", "date-start", "date-end", "ongoing", "not-ongoing", "summary", "relevance", "differentiators", "capability-tag", "capability", "featured-outcome", "outcome", "reference-contact-id", "reference-name", "reference-title", "reference-organization", "reference-location", "reference-email", "reference-phone", "visibility", "featured"];
+  const proposalBodyFlags = ["kind", "schema-version", "source-item", "source-item-id", "external-reference", "attributes", "title", "client", "solicitation-number", "business-deal-id", "due-date", "stage", "summary", "win-themes", "requirements", "linked-profile-id", "profile"];
+  const projectionFlags = ["dry-run", "projection-url", "projection-token", "canonical-url"];
   return {
     schemaVersion: 1,
     app: "mere-projects",
@@ -514,56 +2880,81 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["PROJECTS_BASE_URL", "PASTPERF_BASE_URL"],
     sessionPath: "~/.local/state/mere-projects/session.json",
-    globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file"],
+    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
+      manifestCommand(["store", "info"], "Inspect local/cloud data and AI plane configuration.", { auth: "none", auditDefault: true }),
+      manifestCommand(["export"], "Export local project context as a local-plane transfer bundle.", { auth: "none", risk: "read", flags: ["output"] }),
+      manifestCommand(["import"], "Import a local-plane project transfer bundle.", { auth: "none", risk: "write", flags: ["file", "dry-run"] }),
       manifestCommand(["workspace", "list"], "List available workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show the current workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "use"], "Select a default workspace.", { auth: "session", risk: "write" }),
-      ...["list", "get"].map((action) => manifestCommand(["project", action], `Project ${action}.`, { auditDefault: action === "list" })),
-      ...["create", "update"].map((action) => manifestCommand(["project", action], `Project ${action}.`, { risk: "write", supportsData: true })),
+      manifestCommand(["project", "list"], "Project list.", { auditDefault: true, flags: ["search", "role", "status", "client"] }),
+      manifestCommand(["project", "get"], "Project get."),
+      manifestCommand(["project", "create"], "Project create.", { risk: "write", supportsData: true, flags: projectBodyFlags }),
+      manifestCommand(["project", "update"], "Project update.", { risk: "write", supportsData: true, flags: projectBodyFlags }),
+      manifestCommand(["project", "summarize"], "Summarize project context with local mere.run.", { risk: "write", flags: ["model", "max-tokens"] }),
+      manifestCommand(["project", "publish"], "Publish a selected local project projection to Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["project", "revoke"], "Revoke a selected local project projection from Business.", { risk: "external", flags: projectionFlags }),
       manifestCommand(["project", "archive"], "Archive a project.", { risk: "destructive", requiresYes: true }),
       manifestCommand(["project", "delete"], "Permanently delete a project.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      ...["contact", "knowledge", "link"].flatMap((resource) => [
-        manifestCommand([resource, "list"], `List ${resource} records.`),
-        manifestCommand([resource, "upsert"], `Upsert a ${resource} record.`, { risk: "write", supportsData: true }),
-        manifestCommand([resource, "delete"], `Delete a ${resource} record.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })
-      ]),
-      manifestCommand(["file", "list"], "List files."),
-      manifestCommand(["file", "upload"], "Upload file.", { risk: "write" }),
-      manifestCommand(["file", "download"], "Download file."),
-      manifestCommand(["file", "delete"], "Delete file.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      ...["profile", "proposal"].flatMap((resource) => [
-        manifestCommand([resource, "list"], `List ${resource} records.`),
-        manifestCommand([resource, "get"], `Get a ${resource} record.`),
-        manifestCommand([resource, "create"], `Create a ${resource} record.`, { risk: "write", supportsData: true }),
-        manifestCommand([resource, "update"], `Update a ${resource} record.`, { risk: "write", supportsData: true }),
-        manifestCommand([resource, "delete"], `Delete a ${resource} record.`, { risk: "destructive", requiresYes: true, requiresConfirm: true })
-      ]),
-      manifestCommand(["proposal", "draft"], "Draft proposal.", { risk: "write", supportsData: true }),
-      manifestCommand(["proposal", "generate-draft"], "Generate proposal draft.", { risk: "write", supportsData: true }),
+      manifestCommand(["contact", "list"], "List contact records.", { flags: ["project"] }),
+      manifestCommand(["contact", "upsert"], "Upsert a contact record.", { risk: "write", supportsData: true, flags: ["project", "id", "name", "title", "organization", "location", "email", "phone", "kind"] }),
+      manifestCommand(["contact", "delete"], "Delete a contact record.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["project", "id"] }),
+      manifestCommand(["knowledge", "list"], "List knowledge records.", { flags: ["project"] }),
+      manifestCommand(["knowledge", "upsert"], "Upsert a knowledge record.", { risk: "write", supportsData: true, flags: ["project", "id", "entry-type", "title", "content", "tag", "tags"] }),
+      manifestCommand(["knowledge", "delete"], "Delete a knowledge record.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["project", "id"] }),
+      manifestCommand(["link", "list"], "List link records.", { flags: ["project"] }),
+      manifestCommand(["link", "upsert"], "Upsert a link record.", { risk: "write", supportsData: true, flags: ["project", "id", "label", "url", "kind"] }),
+      manifestCommand(["link", "delete"], "Delete a link record.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["project", "id"] }),
+      manifestCommand(["file", "list"], "List files.", { flags: ["project", "project-id", "proposal", "proposal-id"] }),
+      manifestCommand(["file", "get"], "Get local file metadata."),
+      manifestCommand(["file", "upsert"], "Upsert local file metadata.", { risk: "write", supportsData: true, flags: ["id", "project", "project-id", "proposal", "proposal-id", "name", "kind", "mime-type", "content-type", "size-bytes", "artifact-key", "sha256", "notes"] }),
+      manifestCommand(["file", "publish"], "Publish selected local file metadata projection to Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["file", "revoke"], "Revoke selected local file metadata projection from Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["file", "upload"], "Upload file.", { risk: "write", flags: ["project", "path", "kind"] }),
+      manifestCommand(["file", "download"], "Download file.", { flags: ["project", "output"] }),
+      manifestCommand(["file", "delete"], "Delete file.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["project"] }),
+      manifestCommand(["profile", "list"], "List profile records.", { flags: ["search", "role", "client", "visibility", "capability-tag"] }),
+      manifestCommand(["profile", "get"], "Get a profile record."),
+      manifestCommand(["profile", "upsert"], "Upsert a local profile record.", { risk: "write", supportsData: true, flags: ["id", ...profileBodyFlags] }),
+      manifestCommand(["profile", "publish"], "Publish selected local profile projection to Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["profile", "revoke"], "Revoke selected local profile projection from Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["profile", "create"], "Create a profile record.", { risk: "write", supportsData: true, flags: ["id", ...profileBodyFlags] }),
+      manifestCommand(["profile", "update"], "Update a profile record.", { risk: "write", supportsData: true, flags: profileBodyFlags }),
+      manifestCommand(["profile", "delete"], "Delete a profile record.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["proposal", "list"], "List proposal records.", { flags: ["search", "client", "stage", "business-deal-id"] }),
+      manifestCommand(["proposal", "get"], "Get a proposal record."),
+      manifestCommand(["proposal", "upsert"], "Upsert a local proposal record.", { risk: "write", supportsData: true, flags: ["id", ...proposalBodyFlags] }),
+      manifestCommand(["proposal", "publish"], "Publish selected local proposal projection to Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["proposal", "revoke"], "Revoke selected local proposal projection from Business.", { risk: "external", flags: projectionFlags }),
+      manifestCommand(["proposal", "create"], "Create a proposal record.", { risk: "write", supportsData: true, flags: ["id", ...proposalBodyFlags] }),
+      manifestCommand(["proposal", "update"], "Update a proposal record.", { risk: "write", supportsData: true, flags: proposalBodyFlags }),
+      manifestCommand(["proposal", "delete"], "Delete a proposal record.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["proposal", "draft"], "Draft proposal.", { risk: "write", flags: ["output", "format"] }),
+      manifestCommand(["proposal", "generate-draft"], "Generate proposal draft.", { risk: "write", flags: ["section-key"] }),
       manifestCommand(["proposal", "analysis"], "Show proposal analysis."),
-      manifestCommand(["proposal", "analyze"], "Analyze proposal.", { risk: "write", supportsData: true }),
+      manifestCommand(["proposal", "analyze"], "Analyze proposal.", { risk: "write", flags: ["refresh-sources"] }),
       manifestCommand(["proposal", "readiness"], "Show proposal submission readiness."),
       manifestCommand(["proposal", "review"], "Run proposal submission readiness review.", { risk: "write" }),
       manifestCommand(["proposal", "claims"], "List proposal claim ledger entries."),
       manifestCommand(["proposal", "findings"], "List proposal readiness findings."),
       manifestCommand(["proposal", "exports"], "List proposal export history."),
-      manifestCommand(["proposal", "export"], "Export proposal artifact.", { risk: "write" }),
+      manifestCommand(["proposal", "export"], "Export proposal artifact.", { risk: "write", flags: ["format", "output", "override"] }),
       manifestCommand(["proposal", "defaults"], "List proposal defaults."),
-      manifestCommand(["proposal", "defaults", "upload"], "Upload proposal default file.", { risk: "write" }),
-      manifestCommand(["proposal", "defaults", "download"], "Download proposal default file."),
+      manifestCommand(["proposal", "defaults", "upload"], "Upload proposal default file.", { risk: "write", flags: ["path", "kind"] }),
+      manifestCommand(["proposal", "defaults", "download"], "Download proposal default file.", { flags: ["output"] }),
       manifestCommand(["proposal", "defaults", "delete"], "Delete proposal default file.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["proposal", "defaults", "extract"], "Refresh proposal default structured output.", { risk: "write" }),
       manifestCommand(["proposal", "defaults", "structured"], "List proposal default structured outputs."),
-      manifestCommand(["source", "list"], "List sources."),
+      manifestCommand(["source", "list"], "List sources.", { flags: ["status", "source-type"] }),
       manifestCommand(["source", "get"], "Get source."),
-      manifestCommand(["source", "upsert"], "Upsert source.", { risk: "write", supportsData: true }),
-      manifestCommand(["source", "patch"], "Patch source.", { risk: "write", supportsData: true }),
-      manifestCommand(["source", "capture"], "Capture source.", { risk: "write", supportsData: true }),
-      manifestCommand(["sam", "search"], "Search SAM opportunities.", { auth: "none" }),
+      manifestCommand(["source", "upsert"], "Upsert source.", { risk: "write", supportsData: true, flags: ["source-type", "external-id", "title", "organization", "url", "summary", "due-date", "status", "score", "raw", "normalized", "attributes"] }),
+      manifestCommand(["source", "patch"], "Patch source.", { risk: "write", flags: ["status"] }),
+      manifestCommand(["source", "capture"], "Capture source.", { risk: "write" }),
+      manifestCommand(["sam", "search"], "Search SAM opportunities.", { auth: "none", flags: ["api-key-env", "keyword", "query", "naics", "naics-code", "set-aside", "procurement-type", "posted-days", "limit", "offset"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -585,19 +2976,25 @@ Global flags:
   --workspace <id|slug|host>
                           Target workspace for login or this command
   --json                  Print JSON
+  --store cloud|local     Select data plane for inspection (default: cloud)
+  --ai cloud|local        Select AI plane for inspection (default: cloud)
+  --local-db <path>       Local-plane SQLite path when local is selected
   --yes                   Confirm destructive commands
   --confirm <id>          Exact id required for permanent deletes
   --help, -h              Show help
   --version               Show CLI version
 
 Resources:
-  project list|get|create|update|archive|delete
+  store info
+  export [--output transfer.json]
+  import --file transfer.json [--dry-run]
+  project list|get|create|update|archive|delete|summarize|publish|revoke
   contact list|upsert|delete --project <projectId>
   knowledge list|upsert|delete --project <projectId>
   link list|upsert|delete --project <projectId>
-  file list|upload|download|delete --project <projectId>
-  profile list|get|create|update|delete
-  proposal list|get|create|update|delete|draft|generate-draft|analysis|analyze
+  file list|get|upsert|publish|revoke|upload|download|delete --project <projectId>
+  profile list|get|upsert|publish|revoke|create|update|delete
+  proposal list|get|upsert|publish|revoke|create|update|delete|draft|generate-draft|analysis|analyze
   proposal readiness|review|claims|findings|exports|export <proposalId>
   proposal defaults [list|upload|download|delete|extract|structured]
   source list|get|upsert|patch|capture
@@ -607,7 +3004,74 @@ Input:
   Mutating JSON commands accept --data '<json>' or --data-file payload.json.
   Common project/profile/proposal fields also have flags such as --title, --client,
   --role, --date-start, --summary, --tag, --capability, and --linked-profile-id.
+  project summarize requires --ai local and accepts --model and --max-tokens.
+  project|proposal|file|profile publish|revoke requires --store local and accepts --dry-run,
+  --projection-url, --projection-token, and --canonical-url.
 `);
+}
+function planeConfig(parsed, env) {
+  return resolvePlaneConfigInspection({
+    appId: APP_ID,
+    env,
+    data: readFlag(parsed, "store", "data"),
+    ai: readFlag(parsed, "ai"),
+    localDbPath: readFlag(parsed, "local-db")
+  });
+}
+function localWorkspace(parsed, env) {
+  const workspaceId = (readFlag(parsed, "workspace") ?? env.MERE_PROJECTS_WORKSPACE_ID ?? env.PROJECTS_WORKSPACE_ID ?? env.MERE_WORKSPACE_ID ?? "personal").trim();
+  return {
+    workspaceId: workspaceId || "personal",
+    slug: (env.MERE_PROJECTS_WORKSPACE_SLUG ?? workspaceId ?? "personal").trim() || "personal",
+    name: (env.MERE_PROJECTS_WORKSPACE_NAME ?? workspaceId ?? "Personal").trim() || "Personal"
+  };
+}
+async function openLocalProjectsStore(parsed, io) {
+  const { LocalProjectsStore: LocalProjectsStore2 } = await Promise.resolve().then(() => (init_local_store(), local_store_exports));
+  return LocalProjectsStore2.open({
+    config: planeConfig(parsed, io.env),
+    workspace: localWorkspace(parsed, io.env)
+  });
+}
+async function storeInfo(parsed, io) {
+  const config = planeConfig(parsed, io.env);
+  if (config.data === "local") {
+    const store = await openLocalProjectsStore(parsed, io);
+    try {
+      return {
+        ok: true,
+        app: APP_ID,
+        store: config.data,
+        ai: config.ai,
+        cloudProjection: config.cloudProjection,
+        blended: config.blended,
+        ...store.info(),
+        sources: config.sources
+      };
+    } finally {
+      store.close();
+    }
+  }
+  return {
+    ok: true,
+    app: APP_ID,
+    store: config.data,
+    ai: config.ai,
+    cloudProjection: config.cloudProjection,
+    blended: config.blended,
+    dbPath: config.localDbPath,
+    localProjectStore: "available",
+    localProjectPersistenceSupported: false,
+    localAiSupported: true,
+    baseUrl: normalizeBaseUrl2(readFlag(parsed, "base-url")),
+    sources: config.sources
+  };
+}
+function localOnlyError(resource) {
+  return new CliError(
+    `Local Projects data currently supports project, proposal, file metadata, profile, contact, knowledge, link, export/import, local project summarize, and selected publish/revoke commands. ${resource} remains cloud-only; rerun with --store cloud.`,
+    2
+  );
 }
 function renderWorkspaceLabel(workspace) {
   return `${workspace.name} (${workspace.slug}, ${workspace.host}, ${workspace.role})`;
@@ -682,6 +3146,9 @@ async function switchWorkspace(selector, io) {
 var COMPLETION_WORDS = [
   "auth",
   "workspace",
+  "store",
+  "export",
+  "import",
   "project",
   "contact",
   "knowledge",
@@ -888,7 +3355,464 @@ function samBody(parsed, env) {
   setIfDefined(body, "offset", numberOption(readFlag(parsed, "offset"), "Offset"));
   return body;
 }
-async function handleProject(active, action, rest, parsed) {
+function records(value) {
+  return Array.isArray(value) ? value.map((entry) => objectValue(entry)).filter((entry) => Object.keys(entry).length > 0) : [];
+}
+function compact(value, max = 900) {
+  const rendered = scalar(value).replace(/\s+/g, " ").trim();
+  return rendered.length > max ? `${rendered.slice(0, max - 1)}...` : rendered;
+}
+function projectContextPrompt(bundle) {
+  const project = objectValue(bundle.project);
+  const contacts = records(bundle.contacts);
+  const knowledgeEntries = records(bundle.knowledgeEntries);
+  const links = records(bundle.links);
+  const lines = [
+    "Use only the project context below. Write a concise internal project brief.",
+    "Return sections named Summary, Proof points, Risks or unknowns, People, and Follow-up.",
+    "Keep it useful for a private workspace operator preparing project/proposal material.",
+    "",
+    "Project:",
+    `- id: ${compact(project.id)}`,
+    `- title: ${compact(project.title)}`,
+    `- client: ${compact(project.client)}`,
+    `- role: ${compact(project.role)}`,
+    `- status: ${compact(project.status)}`,
+    `- dates: ${compact(project.dateStart)} to ${compact(project.dateEnd ?? (project.isOngoing ? "ongoing" : "not specified"))}`,
+    `- contract vehicle: ${compact(project.contractVehicle)}`,
+    `- description: ${compact(project.description, 1400)}`,
+    `- outcomes: ${compact(project.outcomes, 1400)}`,
+    `- capabilities: ${compact(project.capabilities)}`,
+    `- tags: ${compact(project.tags)}`,
+    ""
+  ];
+  if (contacts.length > 0) {
+    lines.push("Contacts:");
+    for (const contact of contacts.slice(0, 12)) {
+      lines.push(
+        `- ${compact(contact.name)}; ${compact(contact.kind)}; ${compact(contact.title)}; ${compact(contact.organization)}; ${compact(contact.email)}`
+      );
+    }
+    lines.push("");
+  }
+  if (knowledgeEntries.length > 0) {
+    lines.push("Knowledge entries:");
+    for (const entry of knowledgeEntries.slice(0, 16)) {
+      lines.push(`- ${compact(entry.entryType)}: ${compact(entry.title)} - ${compact(entry.content, 1e3)}; tags=${compact(entry.tags)}`);
+    }
+    lines.push("");
+  }
+  if (links.length > 0) {
+    lines.push("Links:");
+    for (const link of links.slice(0, 12)) {
+      lines.push(`- ${compact(link.kind)}: ${compact(link.label)} (${compact(link.url)})`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+function positiveNumberOption(value, label) {
+  const parsed = numberOption(value, label);
+  if (parsed !== void 0 && parsed <= 0) {
+    throw new CliError(`${label} must be greater than 0.`, 2);
+  }
+  return parsed;
+}
+function stableId(prefix, parts) {
+  const hash = createHash3("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
+  return `${prefix}_${hash}`;
+}
+function readCanonicalUrl(project, parsed) {
+  return readFlag(parsed, "canonical-url") ?? (typeof project.canonicalUrl === "string" && project.canonicalUrl.trim() ? project.canonicalUrl.trim() : null);
+}
+function toProjectionStringList(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string" && entry.trim().length > 0) : [];
+}
+function projectProjectionSnapshot(input) {
+  const project = objectValue(input.bundle.project);
+  const contacts = records(input.bundle.contacts).map((contact) => ({
+    id: compact(contact.id, 120),
+    name: compact(contact.name, 240) || "Unknown contact",
+    title: readOptionalProjectionString(contact.title),
+    organization: readOptionalProjectionString(contact.organization),
+    location: readOptionalProjectionString(contact.location),
+    email: readOptionalProjectionString(contact.email),
+    phone: readOptionalProjectionString(contact.phone),
+    kind: compact(contact.kind, 80) || "reference"
+  }));
+  const links = records(input.bundle.links).map((link) => ({
+    id: compact(link.id, 120),
+    label: compact(link.label, 240) || compact(link.url, 240),
+    url: readOptionalProjectionString(link.url),
+    kind: compact(link.kind, 80) || "general"
+  })).filter((link) => link.url);
+  const updatedAt = input.deletedAt ?? (typeof project.updatedAt === "string" && project.updatedAt.trim() ? project.updatedAt.trim() : (/* @__PURE__ */ new Date()).toISOString());
+  return {
+    id: compact(project.id, 160),
+    workspaceId: input.workspaceId,
+    kind: compact(project.kind, 160) || "project.default",
+    schemaVersion: typeof project.schemaVersion === "number" ? project.schemaVersion : 1,
+    attributes: objectValue(project.attributes),
+    title: compact(project.title, 360) || "Untitled project",
+    client: compact(project.client, 240),
+    contractVehicle: readOptionalProjectionString(project.contractVehicle),
+    role: compact(project.role, 80),
+    status: input.deletedAt ? "archived" : compact(project.status, 80) || "active",
+    dateStart: readOptionalProjectionString(project.dateStart),
+    dateEnd: readOptionalProjectionString(project.dateEnd),
+    isOngoing: project.isOngoing === true,
+    description: compact(project.description, 2e3),
+    outcomes: compact(project.outcomes, 2e3),
+    capabilities: toProjectionStringList(project.capabilities),
+    tags: toProjectionStringList(project.tags),
+    contacts,
+    links,
+    canonicalUrl: input.canonicalUrl,
+    createdAt: typeof project.createdAt === "string" && project.createdAt.trim() ? project.createdAt.trim() : updatedAt,
+    updatedAt,
+    ...input.deletedAt ? { deletedAt: input.deletedAt } : {}
+  };
+}
+function readOptionalProjectionString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function buildProjectProjectionEnvelope(input) {
+  const rawProject = objectValue(input.bundle.project);
+  const projectId = readStringValue(rawProject.id, "project.id");
+  const deletedAt = input.action === "revoke" ? (/* @__PURE__ */ new Date()).toISOString() : null;
+  const project = projectProjectionSnapshot({
+    bundle: input.bundle,
+    canonicalUrl: readCanonicalUrl(rawProject, input.parsed),
+    deletedAt,
+    workspaceId: input.workspaceId
+  });
+  const eventType = input.action === "revoke" ? "project.deleted" : "project.upserted";
+  const occurredAt = readStringValue(project.updatedAt, "project.updatedAt");
+  const eventId = stableId("pevt", [APP_ID, input.workspaceId, eventType, projectId, occurredAt]);
+  return {
+    eventId,
+    schemaVersion: "1",
+    product: "pastperf",
+    eventType,
+    workspaceId: input.workspaceId,
+    externalObjectType: "project",
+    externalObjectId: projectId,
+    occurredAt,
+    canonicalUrl: project.canonicalUrl,
+    payload: { project },
+    dedupeKey: `pastperf:${input.workspaceId}:project:${projectId}:${eventType}:${occurredAt}`
+  };
+}
+function readStringValue(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new CliError(`${label} is required.`, 2);
+  }
+  return value.trim();
+}
+async function deliverProjectProjection(input) {
+  const event = buildProjectProjectionEnvelope({
+    action: input.action,
+    bundle: input.bundle,
+    parsed: input.parsed,
+    workspaceId: input.workspaceId
+  });
+  const projectionAuditId = stableId("pprj", [APP_ID, input.workspaceId, "project", input.projectId]);
+  const projectionUrl = readFlag(input.parsed, "projection-url");
+  const projectionToken = readFlag(input.parsed, "projection-token");
+  if (readBooleanFlag(input.parsed, "dry-run")) {
+    let receiverUrl;
+    try {
+      receiverUrl = resolveCloudProjectionTarget({
+        appId: APP_ID,
+        env: input.io.env,
+        receiverUrl: projectionUrl,
+        bearerToken: projectionToken
+      }).receiverUrl;
+    } catch {
+      receiverUrl = void 0;
+    }
+    return {
+      ok: true,
+      dryRun: true,
+      store: input.config.data,
+      projection: input.config.cloudProjection,
+      action: input.action,
+      projectId: input.projectId,
+      projectionAuditId,
+      receiverUrl,
+      event
+    };
+  }
+  const delivery = await deliverCloudProjectionEvent({
+    appId: APP_ID,
+    env: input.io.env,
+    receiverUrl: projectionUrl,
+    bearerToken: projectionToken,
+    event,
+    fetchImpl: input.io.fetchImpl
+  });
+  return {
+    ok: true,
+    store: input.config.data,
+    projection: input.config.cloudProjection,
+    action: input.action,
+    projectId: input.projectId,
+    projectionAuditId,
+    receiverUrl: delivery.receiverUrl,
+    status: delivery.status,
+    receiver: delivery.responseJson,
+    event
+  };
+}
+function localProjectionAuditId(entity, workspaceId, id) {
+  return stableId("pprj", [APP_ID, workspaceId, entity, id]);
+}
+function sizeBand(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  if (value === 0) return "empty";
+  if (value < 1e5) return "small";
+  if (value < 1e7) return "medium";
+  return "large";
+}
+function buildLocalEntityProjectionEnvelope(input) {
+  const id = readStringValue(input.record.id, `${input.entity}.id`);
+  const deletedAt = input.action === "revoke" ? (/* @__PURE__ */ new Date()).toISOString() : null;
+  const updatedAt = deletedAt ?? readOptionalProjectionString(input.record.updatedAt) ?? (/* @__PURE__ */ new Date()).toISOString();
+  const canonicalUrl = readFlag(input.parsed, "canonical-url") ?? readOptionalProjectionString(input.record.canonicalUrl);
+  const eventType = `${input.entity}.${input.action === "revoke" ? "deleted" : "upserted"}`;
+  const eventId = stableId("pevt", [APP_ID, input.workspaceId, eventType, id, updatedAt]);
+  let externalObjectType = input.entity;
+  let payload;
+  if (input.entity === "proposal") {
+    payload = {
+      proposal: {
+        id,
+        workspaceId: input.workspaceId,
+        kind: compact(input.record.kind, 160) || "proposal.default",
+        schemaVersion: typeof input.record.schemaVersion === "number" ? input.record.schemaVersion : 1,
+        stage: deletedAt ? "archived" : compact(input.record.stage, 80) || "tracking",
+        dueDate: readOptionalProjectionString(input.record.dueDate),
+        businessDealId: readOptionalProjectionString(input.record.businessDealId),
+        linkedProfileCount: toProjectionStringList(input.record.linkedProfileIds).length,
+        hasSourceItem: Boolean(readOptionalProjectionString(input.record.sourceItemId)),
+        hasExternalReference: Boolean(readOptionalProjectionString(input.record.externalReference)),
+        canonicalUrl,
+        createdAt: readOptionalProjectionString(input.record.createdAt),
+        updatedAt,
+        ...deletedAt ? { deletedAt } : {}
+      },
+      exclusions: [
+        "proposal titles and client names",
+        "summaries, win themes, requirements, and draft text",
+        "solicitation numbers and external references",
+        "linked profile ids",
+        "attributes and source payloads",
+        "proposal files, exports, readiness findings, and claim ledgers",
+        "raw local proposal rows and transfer payloads"
+      ]
+    };
+  } else if (input.entity === "file") {
+    externalObjectType = "project_file";
+    payload = {
+      file: {
+        id,
+        workspaceId: input.workspaceId,
+        projectId: readOptionalProjectionString(input.record.projectId),
+        proposalId: readOptionalProjectionString(input.record.proposalId),
+        kind: compact(input.record.kind, 80) || "general",
+        mimeType: readOptionalProjectionString(input.record.mimeType),
+        sizeBand: sizeBand(input.record.sizeBytes),
+        hasArtifactReference: Boolean(readOptionalProjectionString(input.record.artifactKey)),
+        hasChecksum: Boolean(readOptionalProjectionString(input.record.sha256)),
+        canonicalUrl,
+        createdAt: readOptionalProjectionString(input.record.createdAt),
+        updatedAt,
+        ...deletedAt ? { deletedAt } : {}
+      },
+      exclusions: [
+        "file names",
+        "artifact keys and storage paths",
+        "content hashes and exact byte lengths",
+        "file notes and extracted text",
+        "file bytes and generated artifacts",
+        "raw local file rows and transfer payloads"
+      ]
+    };
+  } else {
+    externalObjectType = "past_performance_profile";
+    payload = {
+      profile: {
+        id,
+        workspaceId: input.workspaceId,
+        projectId: readOptionalProjectionString(input.record.projectId),
+        role: compact(input.record.role, 80) || "prime",
+        visibility: compact(input.record.visibility, 80) || "private",
+        isFeatured: input.record.isFeatured === true,
+        dateStart: readOptionalProjectionString(input.record.dateStart),
+        dateEnd: readOptionalProjectionString(input.record.dateEnd),
+        isOngoing: input.record.isOngoing === true,
+        capabilityTags: toProjectionStringList(input.record.capabilityTags),
+        featuredOutcomeCount: toProjectionStringList(input.record.featuredOutcomes).length,
+        hasReferenceContact: Boolean(
+          readOptionalProjectionString(input.record.referenceContactId) ?? readOptionalProjectionString(input.record.referenceName) ?? readOptionalProjectionString(input.record.referenceEmail)
+        ),
+        canonicalUrl,
+        createdAt: readOptionalProjectionString(input.record.createdAt),
+        updatedAt,
+        ...deletedAt ? { deletedAt } : {}
+      },
+      exclusions: [
+        "profile titles, client names, summaries, relevance, and differentiators",
+        "featured outcome text",
+        "reference names, emails, phone numbers, titles, organizations, and locations",
+        "raw local profile rows and transfer payloads"
+      ]
+    };
+  }
+  return {
+    eventId,
+    schemaVersion: "1",
+    product: "pastperf",
+    eventType,
+    workspaceId: input.workspaceId,
+    externalObjectType,
+    externalObjectId: id,
+    occurredAt: updatedAt,
+    canonicalUrl,
+    payload,
+    dedupeKey: `pastperf:${input.workspaceId}:${input.entity}:${id}:${eventType}:${updatedAt}`
+  };
+}
+async function deliverLocalEntityProjection(input) {
+  const id = readStringValue(input.record.id, `${input.entity}.id`);
+  const event = buildLocalEntityProjectionEnvelope({
+    action: input.action,
+    entity: input.entity,
+    record: input.record,
+    parsed: input.parsed,
+    workspaceId: input.workspaceId
+  });
+  const projectionAuditId = localProjectionAuditId(input.entity, input.workspaceId, id);
+  const projectionUrl = readFlag(input.parsed, "projection-url");
+  const projectionToken = readFlag(input.parsed, "projection-token");
+  if (readBooleanFlag(input.parsed, "dry-run")) {
+    let receiverUrl;
+    try {
+      receiverUrl = resolveCloudProjectionTarget({
+        appId: APP_ID,
+        env: input.io.env,
+        receiverUrl: projectionUrl,
+        bearerToken: projectionToken
+      }).receiverUrl;
+    } catch {
+      receiverUrl = void 0;
+    }
+    return {
+      ok: true,
+      dryRun: true,
+      store: input.config.data,
+      projection: input.config.cloudProjection,
+      action: input.action,
+      entity: input.entity,
+      id,
+      projectionAuditId,
+      receiverUrl,
+      event
+    };
+  }
+  const delivery = await deliverCloudProjectionEvent({
+    appId: APP_ID,
+    env: input.io.env,
+    receiverUrl: projectionUrl,
+    bearerToken: projectionToken,
+    event,
+    fetchImpl: input.io.fetchImpl
+  });
+  return {
+    ok: true,
+    store: input.config.data,
+    projection: input.config.cloudProjection,
+    action: input.action,
+    entity: input.entity,
+    id,
+    projectionAuditId,
+    receiverUrl: delivery.receiverUrl,
+    status: delivery.status,
+    receiver: delivery.responseJson,
+    event
+  };
+}
+async function summarizeProjectContext(input) {
+  if (input.config.ai !== "local") {
+    throw new CliError("project summarize requires --ai local so the command can invoke local mere.run explicitly.", 2);
+  }
+  const model = readFlag(input.parsed, "model") ?? DEFAULT_LOCAL_SUMMARY_MODEL;
+  const maxTokens = positiveNumberOption(readFlag(input.parsed, "max-tokens"), "--max-tokens");
+  const prompt = projectContextPrompt(input.bundle);
+  const plane = await openLocalPlaneDatabase({ localDbPath: input.config.localDbPath });
+  let jobId = null;
+  try {
+    upsertPlaneWorkspace(plane.db, APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    jobId = recordPlaneAiJob(plane.db, {
+      appId: APP_ID,
+      workspaceId: input.workspace.workspaceId,
+      subjectType: "project",
+      subjectId: input.projectId,
+      mode: "local",
+      model,
+      status: "running",
+      input: {
+        dataPlane: input.config.data,
+        promptVersion: LOCAL_PROJECT_SUMMARY_PROMPT_VERSION,
+        projectId: input.projectId,
+        prompt
+      }
+    });
+    const summary = await generateText(prompt, {
+      appId: APP_ID,
+      env: input.env,
+      model,
+      maxTokens
+    });
+    updatePlaneAiJob(plane.db, {
+      id: jobId,
+      status: "done",
+      model,
+      outputText: summary
+    });
+    return {
+      ok: true,
+      app: APP_ID,
+      store: input.config.data,
+      ai: input.config.ai,
+      model,
+      jobId,
+      dbPath: input.config.localDbPath,
+      workspaceId: input.workspace.workspaceId,
+      projectId: input.projectId,
+      summary
+    };
+  } catch (error) {
+    if (jobId) {
+      updatePlaneAiJob(plane.db, {
+        id: jobId,
+        status: "failed",
+        model,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    throw error;
+  } finally {
+    plane.close();
+  }
+}
+async function handleProject(active, action, rest, parsed, env) {
   if (action === "list") {
     return requestJson(active, "/api/projects", {
       query: queryFromFlags(parsed, [
@@ -901,6 +3825,23 @@ async function handleProject(active, action, rest, parsed) {
   }
   if (action === "get") {
     return requestJson(active, `/api/projects/${encodeURIComponent(firstPositional(rest, "project id"))}`);
+  }
+  if (action === "summarize" || action === "summary") {
+    const id = firstPositional(rest, "project id");
+    const bundle = objectValue(await requestJson(active, `/api/projects/${encodeURIComponent(id)}`));
+    const workspace = active.session.workspace;
+    return summarizeProjectContext({
+      bundle,
+      config: planeConfig(parsed, env),
+      env,
+      parsed,
+      projectId: id,
+      workspace: {
+        workspaceId: workspace?.id ?? active.session.defaultWorkspaceId ?? "cloud",
+        slug: workspace?.slug ?? active.session.defaultWorkspaceId ?? "cloud",
+        name: workspace?.name ?? workspace?.slug ?? active.session.defaultWorkspaceId ?? "Cloud workspace"
+      }
+    });
   }
   if (action === "create") {
     return requestJson(active, "/api/projects", { method: "POST", body: await projectBody(parsed) });
@@ -932,40 +3873,400 @@ async function handleProject(active, action, rest, parsed) {
   }
   throw new CliError(`Unknown project action: ${action}`, 2);
 }
+async function handleLocalProject(action, rest, parsed, io) {
+  if (action === "publish" || action === "revoke") {
+    const id = firstPositional(rest, "project id");
+    const store2 = await openLocalProjectsStore(parsed, io);
+    try {
+      const found = store2.getProjectBundle(id);
+      if (!found) throw new CliError("Project not found.", 1);
+      const result = await deliverProjectProjection({
+        action,
+        bundle: found,
+        config: planeConfig(parsed, io.env),
+        io,
+        parsed,
+        projectId: id,
+        workspaceId: localWorkspace(parsed, io.env).workspaceId
+      });
+      if (!readBooleanFlag(parsed, "dry-run")) {
+        store2.recordProjection({
+          id: readStringValue(result.projectionAuditId, "projectionAuditId"),
+          scope: "project",
+          objectType: "project",
+          objectId: id,
+          envelope: objectValue(result.event),
+          revoked: action === "revoke"
+        });
+      }
+      return result;
+    } finally {
+      store2.close();
+    }
+  }
+  if (action === "summarize" || action === "summary") {
+    const id = firstPositional(rest, "project id");
+    const store2 = await openLocalProjectsStore(parsed, io);
+    let bundle;
+    try {
+      const found = store2.getProjectBundle(id);
+      if (!found) throw new CliError("Project not found.", 1);
+      bundle = found;
+    } finally {
+      store2.close();
+    }
+    return summarizeProjectContext({
+      bundle,
+      config: planeConfig(parsed, io.env),
+      env: io.env,
+      parsed,
+      projectId: id,
+      workspace: localWorkspace(parsed, io.env)
+    });
+  }
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (action === "list") {
+      return store.listProjects(
+        queryFromFlags(parsed, [
+          ["search", "search"],
+          ["role", "role"],
+          ["status", "status"],
+          ["client", "client"]
+        ])
+      );
+    }
+    if (action === "get") {
+      const bundle = store.getProjectBundle(firstPositional(rest, "project id"));
+      if (!bundle) throw new CliError("Project not found.", 1);
+      return bundle;
+    }
+    if (action === "create") {
+      return store.upsertProject(await projectBody(parsed));
+    }
+    if (action === "update") {
+      const id = firstPositional(rest, "project id");
+      const project = store.updateProject(id, await projectBody(parsed));
+      if (!project) throw new CliError("Project not found.", 1);
+      return project;
+    }
+    if (action === "archive") {
+      const id = firstPositional(rest, "project id");
+      const project = store.archiveProject(id);
+      if (!project) throw new CliError("Project not found.", 1);
+      return project;
+    }
+    if (action === "delete") {
+      const id = firstPositional(rest, "project id");
+      requireDeleteConfirmation(parsed, "project", id);
+      return { ok: store.deleteProject(id) };
+    }
+    throw new CliError(`Unknown project action: ${action}`, 2);
+  } finally {
+    store.close();
+  }
+}
+async function handleLocalExport(parsed, io) {
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    const bundle = store.exportBundle();
+    const output = readFlag(parsed, "output");
+    if (output) {
+      const target = resolve(output);
+      await mkdir3(dirname(target), { recursive: true });
+      await writeFile2(target, JSON.stringify(bundle, null, 2));
+      return {
+        ok: true,
+        path: target,
+        appId: bundle.appId,
+        workspaceId: bundle.workspaceId,
+        payloadSchema: bundle.payloadSchema,
+        payloadSha256: bundle.payloadSha256,
+        projectCount: bundle.payload.projects.length,
+        contactCount: bundle.payload.contacts.length,
+        knowledgeCount: bundle.payload.knowledgeEntries.length,
+        linkCount: bundle.payload.links.length,
+        proposalCount: bundle.payload.proposals.length,
+        fileCount: bundle.payload.files.length,
+        profileCount: bundle.payload.pastPerformanceProfiles.length
+      };
+    }
+    return bundle;
+  } finally {
+    store.close();
+  }
+}
+async function handleLocalImport(parsed, io) {
+  const file = requireFlag(parsed, "file");
+  const value = JSON.parse(await readFile2(file, "utf8"));
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (readBooleanFlag(parsed, "dry-run")) {
+      return store.importPlan(value);
+    }
+    return store.importValue(value);
+  } finally {
+    store.close();
+  }
+}
+async function projectChildBody(resource, parsed) {
+  const body = await readJsonBody(parsed);
+  if (resource === "contact") {
+    setStringFlag(body, "id", parsed, "id");
+    setStringFlag(body, "name", parsed, "name");
+    setStringFlag(body, "title", parsed, "title");
+    setStringFlag(body, "organization", parsed, "organization");
+    setStringFlag(body, "location", parsed, "location");
+    setStringFlag(body, "email", parsed, "email");
+    setStringFlag(body, "phone", parsed, "phone");
+    setStringFlag(body, "kind", parsed, "kind");
+  } else if (resource === "knowledge") {
+    setStringFlag(body, "id", parsed, "id");
+    setStringFlag(body, "entryType", parsed, "entry-type");
+    setStringFlag(body, "title", parsed, "title");
+    setStringFlag(body, "content", parsed, "content");
+    setListFlag(body, "tags", parsed, "tag", "tags");
+  } else {
+    setStringFlag(body, "id", parsed, "id");
+    setStringFlag(body, "label", parsed, "label");
+    setStringFlag(body, "url", parsed, "url");
+    setStringFlag(body, "kind", parsed, "kind");
+  }
+  return body;
+}
+async function localFileBody(parsed) {
+  const body = await readJsonBody(parsed);
+  setStringFlag(body, "id", parsed, "id");
+  setStringFlag(body, "projectId", parsed, "project", "project-id");
+  setStringFlag(body, "proposalId", parsed, "proposal", "proposal-id");
+  setStringFlag(body, "name", parsed, "name");
+  setStringFlag(body, "kind", parsed, "kind");
+  setStringFlag(body, "mimeType", parsed, "mime-type", "content-type");
+  setIfDefined(body, "sizeBytes", numberOption(readFlag(parsed, "size-bytes"), "--size-bytes"));
+  setStringFlag(body, "artifactKey", parsed, "artifact-key");
+  setStringFlag(body, "sha256", parsed, "sha256");
+  setStringFlag(body, "notes", parsed, "notes");
+  return body;
+}
+async function handleLocalProjectChild(resource, action, parsed, io) {
+  const projectId = requireFlag(parsed, "project");
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (action === "list") {
+      if (resource === "contact") return store.listContacts(projectId);
+      if (resource === "knowledge") return store.listKnowledgeEntries(projectId);
+      return store.listLinks(projectId);
+    }
+    if (action === "upsert" || action === "save") {
+      const body = await projectChildBody(resource, parsed);
+      if (resource === "contact") return store.upsertContact(projectId, body);
+      if (resource === "knowledge") return store.upsertKnowledgeEntry(projectId, body);
+      return store.upsertLink(projectId, body);
+    }
+    if (action === "delete") {
+      const id = requireFlag(parsed, "id");
+      requireDeleteConfirmation(parsed, resource, id);
+      if (resource === "contact") return { ok: store.deleteContact(projectId, id) };
+      if (resource === "knowledge") return { ok: store.deleteKnowledgeEntry(projectId, id) };
+      return { ok: store.deleteLink(projectId, id) };
+    }
+    throw new CliError(`Unknown ${resource} action: ${action}`, 2);
+  } finally {
+    store.close();
+  }
+}
+async function handleLocalProposal(action, rest, parsed, io) {
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (action === "list") {
+      return store.listProposals(queryFromFlags(parsed, [
+        ["search", "search"],
+        ["stage", "stage"],
+        ["client", "client"]
+      ]));
+    }
+    if (action === "get") {
+      const proposal = store.getProposal(firstPositional(rest, "proposal id"));
+      if (!proposal) throw new CliError("Proposal not found.", 1);
+      return proposal;
+    }
+    if (action === "create" || action === "upsert") {
+      const body = await proposalBody(parsed);
+      setStringFlag(body, "id", parsed, "id");
+      if (action === "upsert" && rest[0] && body.id === void 0) body.id = rest[0];
+      return store.upsertProposal(body, typeof body.id === "string" ? store.getProposal(body.id) ?? void 0 : void 0);
+    }
+    if (action === "update") {
+      const id = firstPositional(rest, "proposal id");
+      const proposal = store.updateProposal(id, await proposalBody(parsed));
+      if (!proposal) throw new CliError("Proposal not found.", 1);
+      return proposal;
+    }
+    if (action === "delete") {
+      const id = firstPositional(rest, "proposal id");
+      requireDeleteConfirmation(parsed, "proposal", id);
+      return { ok: store.deleteProposal(id) };
+    }
+    if (action === "publish" || action === "revoke") {
+      const id = firstPositional(rest, "proposal id");
+      const proposal = store.getProposal(id);
+      if (!proposal) throw new CliError("Proposal not found.", 1);
+      const result = await deliverLocalEntityProjection({
+        action,
+        config: planeConfig(parsed, io.env),
+        entity: "proposal",
+        io,
+        parsed,
+        record: proposal,
+        workspaceId: localWorkspace(parsed, io.env).workspaceId
+      });
+      if (!readBooleanFlag(parsed, "dry-run")) {
+        store.recordProjection({
+          id: readStringValue(result.projectionAuditId, "projectionAuditId"),
+          scope: "proposal",
+          objectType: "proposal",
+          objectId: id,
+          envelope: objectValue(result.event),
+          revoked: action === "revoke"
+        });
+      }
+      return result;
+    }
+    throw new CliError(`Unknown proposal action: ${action}`, 2);
+  } finally {
+    store.close();
+  }
+}
+async function handleLocalFile(action, rest, parsed, io) {
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (action === "list") {
+      return store.listFiles({
+        projectId: readFlag(parsed, "project", "project-id"),
+        proposalId: readFlag(parsed, "proposal", "proposal-id")
+      });
+    }
+    if (action === "get") {
+      const file = store.getFile(firstPositional(rest, "file id"));
+      if (!file) throw new CliError("File metadata not found.", 1);
+      return file;
+    }
+    if (action === "upsert") {
+      const body = await localFileBody(parsed);
+      if (rest[0] && body.id === void 0) body.id = rest[0];
+      return store.upsertFile(body, typeof body.id === "string" ? store.getFile(body.id) ?? void 0 : void 0);
+    }
+    if (action === "delete") {
+      const id = firstPositional(rest, "file id");
+      requireDeleteConfirmation(parsed, "file", id);
+      return { ok: store.deleteFile(id) };
+    }
+    if (action === "publish" || action === "revoke") {
+      const id = firstPositional(rest, "file id");
+      const file = store.getFile(id);
+      if (!file) throw new CliError("File metadata not found.", 1);
+      const result = await deliverLocalEntityProjection({
+        action,
+        config: planeConfig(parsed, io.env),
+        entity: "file",
+        io,
+        parsed,
+        record: file,
+        workspaceId: localWorkspace(parsed, io.env).workspaceId
+      });
+      if (!readBooleanFlag(parsed, "dry-run")) {
+        store.recordProjection({
+          id: readStringValue(result.projectionAuditId, "projectionAuditId"),
+          scope: "file",
+          objectType: "file",
+          objectId: id,
+          envelope: objectValue(result.event),
+          revoked: action === "revoke"
+        });
+      }
+      return result;
+    }
+    throw localOnlyError(`file ${action}`);
+  } finally {
+    store.close();
+  }
+}
+async function handleLocalProfile(action, rest, parsed, io) {
+  const store = await openLocalProjectsStore(parsed, io);
+  try {
+    if (action === "list") {
+      return store.listProfiles(queryFromFlags(parsed, [
+        ["search", "search"],
+        ["role", "role"],
+        ["client", "client"],
+        ["visibility", "visibility"]
+      ]));
+    }
+    if (action === "get") {
+      const profile = store.getProfile(firstPositional(rest, "profile id"));
+      if (!profile) throw new CliError("Profile not found.", 1);
+      return profile;
+    }
+    if (action === "create" || action === "upsert") {
+      const body = await profileBody(parsed);
+      setStringFlag(body, "id", parsed, "id");
+      if (action === "upsert" && rest[0] && body.id === void 0) body.id = rest[0];
+      return store.upsertProfile(body, typeof body.id === "string" ? store.getProfile(body.id) ?? void 0 : void 0);
+    }
+    if (action === "update") {
+      const id = firstPositional(rest, "profile id");
+      const profile = store.updateProfile(id, await profileBody(parsed));
+      if (!profile) throw new CliError("Profile not found.", 1);
+      return profile;
+    }
+    if (action === "delete") {
+      const id = firstPositional(rest, "profile id");
+      requireDeleteConfirmation(parsed, "profile", id);
+      return { ok: store.deleteProfile(id) };
+    }
+    if (action === "publish" || action === "revoke") {
+      const id = firstPositional(rest, "profile id");
+      const profile = store.getProfile(id);
+      if (!profile) throw new CliError("Profile not found.", 1);
+      const result = await deliverLocalEntityProjection({
+        action,
+        config: planeConfig(parsed, io.env),
+        entity: "profile",
+        io,
+        parsed,
+        record: profile,
+        workspaceId: localWorkspace(parsed, io.env).workspaceId
+      });
+      if (!readBooleanFlag(parsed, "dry-run")) {
+        store.recordProjection({
+          id: readStringValue(result.projectionAuditId, "projectionAuditId"),
+          scope: "profile",
+          objectType: "past_performance_profile",
+          objectId: id,
+          envelope: objectValue(result.event),
+          revoked: action === "revoke"
+        });
+      }
+      return result;
+    }
+    throw new CliError(`Unknown profile action: ${action}`, 2);
+  } finally {
+    store.close();
+  }
+}
 async function handleProjectChild(active, resource, action, parsed) {
   const projectId = requireFlag(parsed, "project");
   const route = resource === "contact" ? "contacts" : resource === "knowledge" ? "knowledge" : "links";
-  const path2 = `/api/projects/${encodeURIComponent(projectId)}/${route}`;
-  if (action === "list") return requestJson(active, path2);
+  const path5 = `/api/projects/${encodeURIComponent(projectId)}/${route}`;
+  if (action === "list") return requestJson(active, path5);
   if (action === "upsert" || action === "save") {
-    const body = await readJsonBody(parsed);
-    if (resource === "contact") {
-      setStringFlag(body, "id", parsed, "id");
-      setStringFlag(body, "name", parsed, "name");
-      setStringFlag(body, "title", parsed, "title");
-      setStringFlag(body, "organization", parsed, "organization");
-      setStringFlag(body, "location", parsed, "location");
-      setStringFlag(body, "email", parsed, "email");
-      setStringFlag(body, "phone", parsed, "phone");
-      setStringFlag(body, "kind", parsed, "kind");
-    } else if (resource === "knowledge") {
-      setStringFlag(body, "id", parsed, "id");
-      setStringFlag(body, "entryType", parsed, "entry-type");
-      setStringFlag(body, "title", parsed, "title");
-      setStringFlag(body, "content", parsed, "content");
-      setListFlag(body, "tags", parsed, "tag", "tags");
-    } else {
-      setStringFlag(body, "id", parsed, "id");
-      setStringFlag(body, "label", parsed, "label");
-      setStringFlag(body, "url", parsed, "url");
-      setStringFlag(body, "kind", parsed, "kind");
-    }
-    return requestJson(active, path2, { method: "POST", body });
+    const body = await projectChildBody(resource, parsed);
+    return requestJson(active, path5, { method: "POST", body });
   }
   if (action === "delete") {
     const id = requireFlag(parsed, "id");
     requireDeleteConfirmation(parsed, resource, id);
-    return requestJson(active, path2, { method: "DELETE", body: { id } });
+    return requestJson(active, path5, { method: "DELETE", body: { id } });
   }
   throw new CliError(`Unknown ${resource} action: ${action}`, 2);
 }
@@ -984,7 +4285,7 @@ async function saveResponse(response, outputPath, fallbackFilename) {
   const bytes = Buffer.from(await response.arrayBuffer());
   const filename = basename(filenameFromDisposition(response.headers.get("content-disposition")) ?? fallbackFilename);
   const target = resolve(outputPath ?? filename);
-  await mkdir2(dirname(target), { recursive: true });
+  await mkdir3(dirname(target), { recursive: true });
   await writeFile2(target, bytes);
   return {
     path: target,
@@ -1212,7 +4513,7 @@ async function dispatch(parsed, active, env) {
   if (!resource || !action) {
     throw new CliError("A resource and action are required. Run `mere-projects --help`.", 2);
   }
-  if (resource === "project" || resource === "projects") return handleProject(active, action, rest, parsed);
+  if (resource === "project" || resource === "projects") return handleProject(active, action, rest, parsed, env);
   if (resource === "contact" || resource === "contacts") return handleProjectChild(active, "contact", action, parsed);
   if (resource === "knowledge") return handleProjectChild(active, "knowledge", action, parsed);
   if (resource === "link" || resource === "links") return handleProjectChild(active, "link", action, parsed);
@@ -1229,6 +4530,47 @@ async function dispatch(parsed, active, env) {
     });
   }
   throw new CliError(`Unknown resource: ${resource}`, 2);
+}
+async function dispatchLocal(parsed, io) {
+  const [resource, action, ...rest] = parsed.positionals;
+  if (!resource) {
+    throw new CliError("A resource is required. Run `mere-projects --help`.", 2);
+  }
+  if (resource === "project" || resource === "projects") {
+    if (!action) throw new CliError("A project action is required.", 2);
+    return handleLocalProject(action, rest, parsed, io);
+  }
+  if (resource === "contact" || resource === "contacts") {
+    if (!action) throw new CliError("A contact action is required.", 2);
+    return handleLocalProjectChild("contact", action, parsed, io);
+  }
+  if (resource === "knowledge") {
+    if (!action) throw new CliError("A knowledge action is required.", 2);
+    return handleLocalProjectChild("knowledge", action, parsed, io);
+  }
+  if (resource === "link" || resource === "links") {
+    if (!action) throw new CliError("A link action is required.", 2);
+    return handleLocalProjectChild("link", action, parsed, io);
+  }
+  if (resource === "proposal" || resource === "proposals") {
+    if (!action) throw new CliError("A proposal action is required.", 2);
+    return handleLocalProposal(action, rest, parsed, io);
+  }
+  if (resource === "file" || resource === "files") {
+    if (!action) throw new CliError("A file action is required.", 2);
+    return handleLocalFile(action, rest, parsed, io);
+  }
+  if (resource === "profile" || resource === "profiles" || resource === "past-performance") {
+    if (!action) throw new CliError("A profile action is required.", 2);
+    return handleLocalProfile(action, rest, parsed, io);
+  }
+  if (resource === "export") {
+    return handleLocalExport(parsed, io);
+  }
+  if (resource === "import") {
+    return handleLocalImport(parsed, io);
+  }
+  throw localOnlyError(resource);
 }
 function scalar(value) {
   if (value === null || value === void 0) return "";
@@ -1256,6 +4598,16 @@ function renderTable(rows) {
 function renderHuman(value) {
   if (Array.isArray(value) && value.every((item) => item && typeof item === "object" && !Array.isArray(item))) {
     return renderTable(value);
+  }
+  if (value && typeof value === "object" && "summary" in value && "projectId" in value && "model" in value) {
+    const summary = value;
+    return [
+      `project: ${summary.projectId ?? ""}`,
+      `model: ${summary.model ?? ""}`,
+      summary.jobId ? `job: ${summary.jobId}` : null,
+      "",
+      summary.summary ?? ""
+    ].filter((line) => line !== null).join("\n");
   }
   if (value && typeof value === "object" && "path" in value && "filename" in value && "size" in value) {
     const saved = value;
@@ -1308,7 +4660,7 @@ async function handleWorkspace(parsed, io) {
 async function runCli(argv, io) {
   try {
     const parsed = parseArgv(argv);
-    if (readBooleanFlag(parsed, "version")) {
+    if (readBooleanFlag(parsed, "version") || parsed.positionals.length === 1 && parsed.positionals[0] === "version") {
       io.stdout(`${await cliVersion()}
 `);
       return 0;
@@ -1320,6 +4672,14 @@ async function runCli(argv, io) {
     if (parsed.positionals[0] === "commands") {
       io.stdout(`${JSON.stringify(commandManifest(), null, 2)}
 `);
+      return 0;
+    }
+    if (parsed.positionals[0] === "store") {
+      const action = parsed.positionals[1] ?? "info";
+      if (action !== "info") {
+        throw new CliError(`Unknown store action: ${action}`, 2);
+      }
+      writeResult(io, parsed, await storeInfo(parsed, io));
       return 0;
     }
     if (parsed.positionals[0] === "auth") {
@@ -1342,6 +4702,11 @@ async function runCli(argv, io) {
     }
     if (parsed.positionals[0] === "completion") {
       io.stdout(completionScript(parsed.positionals[1]));
+      return 0;
+    }
+    if (planeConfig(parsed, io.env).data === "local") {
+      const result2 = await dispatchLocal(parsed, io);
+      writeResult(io, parsed, result2);
       return 0;
     }
     const session = await ensureSession(parsed, io);
