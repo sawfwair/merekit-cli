@@ -63,10 +63,17 @@ export const WRITE_LIKE_COMMAND_SEGMENTS = new Set([
     'use'
 ]);
 export const READ_ONLY_EXACT_COMMANDS = new Set([
+    'calls.sync',
     'commands',
     'completion',
     'diagnostics.provider-sync',
+    'export',
     'import.status',
+    'interactions.sync',
+    'login-attempts.get',
+    'login-attempts.list',
+    'login-attempts.show',
+    'sms.sync',
     'tenant.resolve'
 ]);
 export const WRITE_LIKE_EXACT_COMMANDS = new Set([

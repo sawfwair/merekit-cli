@@ -1153,7 +1153,7 @@ var require_command = __commonJS({
   "node_modules/.pnpm/commander@13.1.0/node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path2 = __require("node:path");
+    var path4 = __require("node:path");
     var fs = __require("node:fs");
     var process2 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -1161,7 +1161,7 @@ var require_command = __commonJS({
     var { Help: Help2, stripColor } = require_help();
     var { Option: Option2, DualOptions } = require_option();
     var { suggestSimilar } = require_suggestSimilar();
-    var Command15 = class _Command extends EventEmitter {
+    var Command16 = class _Command extends EventEmitter {
       /**
        * Initialize a new `Command`.
        *
@@ -2153,9 +2153,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path2.resolve(baseDir, baseName);
+          const localBin = path4.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path2.extname(baseName))) return void 0;
+          if (sourceExt.includes(path4.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2173,17 +2173,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path2.resolve(
-            path2.dirname(resolvedScriptPath),
+          executableDir = path4.resolve(
+            path4.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path2.basename(
+            const legacyName = path4.basename(
               this._scriptPath,
-              path2.extname(this._scriptPath)
+              path4.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2194,7 +2194,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path2.extname(executableFile));
+        launchWithNode = sourceExt.includes(path4.extname(executableFile));
         let proc;
         if (process2.platform !== "win32") {
           if (launchWithNode) {
@@ -3041,7 +3041,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path2.basename(filename, path2.extname(filename));
+        this._name = path4.basename(filename, path4.extname(filename));
         return this;
       }
       /**
@@ -3055,9 +3055,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path3) {
-        if (path3 === void 0) return this._executableDir;
-        this._executableDir = path3;
+      executableDir(path5) {
+        if (path5 === void 0) return this._executableDir;
+        this._executableDir = path5;
         return this;
       }
       /**
@@ -3302,7 +3302,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         return true;
       return void 0;
     }
-    exports.Command = Command15;
+    exports.Command = Command16;
     exports.useColor = useColor;
   }
 });
@@ -3311,15 +3311,15 @@ Expecting one of '${allowedValues.join("', '")}'`);
 var require_commander = __commonJS({
   "node_modules/.pnpm/commander@13.1.0/node_modules/commander/index.js"(exports) {
     var { Argument: Argument2 } = require_argument();
-    var { Command: Command15 } = require_command();
+    var { Command: Command16 } = require_command();
     var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
     var { Help: Help2 } = require_help();
     var { Option: Option2 } = require_option();
-    exports.program = new Command15();
-    exports.createCommand = (name) => new Command15(name);
+    exports.program = new Command16();
+    exports.createCommand = (name) => new Command16(name);
     exports.createOption = (flags, description) => new Option2(flags, description);
     exports.createArgument = (name, description) => new Argument2(name, description);
-    exports.Command = Command15;
+    exports.Command = Command16;
     exports.Option = Option2;
     exports.Argument = Argument2;
     exports.Help = Help2;
@@ -3379,8 +3379,8 @@ var CliApiError = class extends Error {
     this.details = details;
   }
 };
-function buildUrl(baseUrl, path2, query) {
-  const url = new URL2(path2, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+function buildUrl(baseUrl, path4, query) {
+  const url = new URL2(path4, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === void 0) continue;
@@ -3423,7 +3423,7 @@ function ensureToken(ctx) {
   }
   return ctx.accessToken;
 }
-async function apiRequest(ctx, method, path2, options = {}) {
+async function apiRequest(ctx, method, path4, options = {}) {
   const requireAuth = options.requireAuth ?? true;
   const headers = {
     "Content-Type": "application/json"
@@ -3431,7 +3431,7 @@ async function apiRequest(ctx, method, path2, options = {}) {
   if (requireAuth) {
     headers.Authorization = `Bearer ${ensureToken(ctx)}`;
   }
-  const response = await ctx.fetchImpl(buildUrl(ctx.baseUrl, path2, options.query), {
+  const response = await ctx.fetchImpl(buildUrl(ctx.baseUrl, path4, options.query), {
     method,
     headers,
     body: options.body === void 0 ? void 0 : JSON.stringify(options.body)
@@ -3447,8 +3447,8 @@ async function apiRequest(ctx, method, path2, options = {}) {
   }
   return parsed;
 }
-async function apiRequestText(ctx, path2, query) {
-  const response = await ctx.fetchImpl(buildUrl(ctx.baseUrl, path2, query), {
+async function apiRequestText(ctx, path4, query) {
+  const response = await ctx.fetchImpl(buildUrl(ctx.baseUrl, path4, query), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${ensureToken(ctx)}`
@@ -3461,8 +3461,8 @@ async function apiRequestText(ctx, path2, query) {
   }
   return raw;
 }
-async function rawCanaryRequest(baseUrl, path2, token, fetchImpl = fetch) {
-  const response = await fetchImpl(buildUrl(baseUrl, path2), {
+async function rawCanaryRequest(baseUrl, path4, token, fetchImpl = fetch) {
+  const response = await fetchImpl(buildUrl(baseUrl, path4), {
     method: "GET",
     headers: token ? { Authorization: `Bearer ${token}` } : void 0
   });
@@ -3953,8 +3953,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -4070,11 +4070,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -7607,14 +7607,14 @@ function parseSplit(split) {
     amt: parseMoneyToCents(amtRaw)
   };
 }
-async function readFileUtf8(path2) {
-  return readFile(path2, "utf8");
+async function readFileUtf8(path4) {
+  return readFile(path4, "utf8");
 }
 function collectList(value, previous) {
   return [...previous, value];
 }
-async function readJsonFile(path2, schema) {
-  const raw = await readFileUtf8(path2);
+async function readJsonFile(path4, schema) {
+  const raw = await readFileUtf8(path4);
   const parsed = JSON.parse(raw);
   return schema ? schema.parse(parsed) : parsed;
 }
@@ -7656,97 +7656,1184 @@ function requireDestructiveConfirmation(options, target, action) {
   }
 }
 
-// packages/cli/src/config/store.ts
-import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { homedir } from "node:os";
-function getDefaultConfigPath() {
-  return resolve(homedir(), ".config", "merefi", "config.json");
+// packages/cli/src/commands/local-plane.ts
+import { mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolve2 } from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+import os from "node:os";
+import path from "node:path";
+function stateHome(env) {
+  const home = env.HOME?.trim() || os.homedir();
+  return env.XDG_DATA_HOME?.trim() || path.join(home, ".local", "share");
 }
-function getConfigPath(options = {}) {
-  if (options.configPath) {
-    return resolve(options.configPath);
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env) {
+  return path.join(stateHome(env), "mere", "local-plane.db");
+}
+function readMode(input) {
+  const argument = normalizeMode(input.argument, input.label);
+  if (argument) return { value: argument, source: "argument" };
+  for (const [name, value] of input.appEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "app-env" };
   }
-  const env = options.env ?? process.env;
-  return env.FINANCE_CONFIG_PATH ? resolve(env.FINANCE_CONFIG_PATH) : getDefaultConfigPath();
+  for (const [name, value] of input.globalEnv) {
+    const mode = normalizeMode(value, name);
+    if (mode) return { value: mode, source: "global-env" };
+  }
+  return { value: "cloud", source: "default" };
 }
-function getDefaultBaseUrl(options = {}) {
-  const env = options.env ?? process.env;
-  return env.FINANCE_BASE_URL?.trim() || "";
-}
-function createDefaultConfig(options = {}) {
+function readLocalDbPath(input) {
+  const prefix = envPrefix(input.appId);
+  if (input.argument?.trim()) {
+    return {
+      value: path.resolve(expandHome(input.argument, input.env)),
+      source: "argument"
+    };
+  }
+  const appValue = input.env[`${prefix}_LOCAL_DB`] ?? input.env[`${prefix}_LOCAL_PLANE_DB`];
+  if (appValue?.trim()) {
+    return {
+      value: path.resolve(expandHome(appValue, input.env)),
+      source: "app-env"
+    };
+  }
+  const globalValue = input.env.MERE_LOCAL_DB ?? input.env.MERE_LOCAL_PLANE_DB;
+  if (globalValue?.trim()) {
+    return {
+      value: path.resolve(expandHome(globalValue, input.env)),
+      source: "global-env"
+    };
+  }
   return {
-    currentProfile: "default",
-    profiles: {
-      default: {
-        baseUrl: getDefaultBaseUrl(options)
-      }
+    value: path.resolve(defaultLocalPlaneDbPath(input.env)),
+    source: "default"
+  };
+}
+function resolvePlaneConfigInspection(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const data = readMode({
+    argument: input.data,
+    appEnv: [
+      [`${prefix}_DATA_PLANE`, env[`${prefix}_DATA_PLANE`]],
+      [`${prefix}_STORE`, env[`${prefix}_STORE`]]
+    ],
+    globalEnv: [["MERE_DATA_PLANE", env.MERE_DATA_PLANE]],
+    label: "data plane"
+  });
+  const ai = readMode({
+    argument: input.ai,
+    appEnv: [
+      [`${prefix}_AI_PLANE`, env[`${prefix}_AI_PLANE`]],
+      [`${prefix}_AI`, env[`${prefix}_AI`]]
+    ],
+    globalEnv: [["MERE_AI_PLANE", env.MERE_AI_PLANE]],
+    label: "AI plane"
+  });
+  const localDbPath = readLocalDbPath({
+    argument: input.localDbPath,
+    appId: input.appId,
+    env
+  });
+  return {
+    appId: input.appId,
+    data: data.value,
+    ai: ai.value,
+    localDbPath: localDbPath.value,
+    cloudProjection: "cloudflare",
+    blended: data.value !== ai.value,
+    localData: data.value === "local",
+    localAi: ai.value === "local",
+    sources: {
+      data: data.source,
+      ai: ai.source,
+      localDbPath: localDbPath.source
     }
   };
 }
-async function loadConfig(options = {}) {
-  const path2 = getConfigPath(options);
+function formatPlaneConfigReport(report) {
+  const lines = ["Local plane config:"];
+  for (const config of report.configs) {
+    lines.push(
+      `  - ${config.appId}: data=${config.data}(${config.sources.data}) ai=${config.ai}(${config.sources.ai}) db=${config.localDbPath}(${config.sources.localDbPath}) projection=${config.cloudProjection}${config.blended ? " blended" : ""}`
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+var CloudProjectionDeliveryError = class extends Error {
+  constructor(message, status = null, responseText = null) {
+    super(message);
+    this.status = status;
+    this.responseText = responseText;
+    this.name = "CloudProjectionDeliveryError";
+  }
+  status;
+  responseText;
+};
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
   try {
-    const raw = await readFile2(path2, "utf8");
-    const parsed = JSON.parse(raw);
-    const defaultConfig = createDefaultConfig(options);
-    if (!parsed || typeof parsed !== "object") {
-      return defaultConfig;
-    }
-    const profiles = parsed.profiles && typeof parsed.profiles === "object" ? parsed.profiles : {};
-    const safeProfiles = {};
-    for (const [name, profile] of Object.entries(profiles)) {
-      if (!profile || typeof profile !== "object") continue;
-      const candidate = profile;
-      if (typeof candidate.baseUrl !== "string" || candidate.baseUrl.length === 0) {
-        continue;
-      }
-      safeProfiles[name] = {
-        baseUrl: candidate.baseUrl,
-        ...typeof candidate.token === "string" ? { token: candidate.token } : {}
-      };
-    }
-    if (!safeProfiles.default) {
-      safeProfiles.default = { baseUrl: getDefaultBaseUrl(options) };
-    }
-    return {
-      currentProfile: typeof parsed.currentProfile === "string" && safeProfiles[parsed.currentProfile] ? parsed.currentProfile : "default",
-      profiles: safeProfiles
-    };
+    return JSON.parse(trimmed);
   } catch {
-    return createDefaultConfig(options);
+    return null;
   }
 }
-async function saveConfig(config, options = {}) {
-  const path2 = getConfigPath(options);
-  await mkdir(dirname(path2), { recursive: true });
-  await writeFile(path2, `${JSON.stringify(config, null, 2)}
-`, "utf8");
-}
-async function upsertProfile(name, values, options = {}) {
-  const config = await loadConfig(options);
-  const profileName = name.trim();
-  const existing = config.profiles[profileName] ?? { baseUrl: getDefaultBaseUrl(options) };
-  const merged = {
-    baseUrl: values.baseUrl ?? existing.baseUrl,
-    ...values.token !== void 0 ? { token: values.token } : existing.token ? { token: existing.token } : {}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
   };
-  config.profiles[profileName] = merged;
-  config.currentProfile = profileName;
-  await saveConfig(config, options);
-  return config;
 }
-function resolveProfile(config, profileName) {
-  const selectedName = profileName ?? config.currentProfile ?? "default";
-  const profile = config.profiles[selectedName] ?? config.profiles.default;
-  if (!profile) {
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+
+// packages/cli/src/local-store.ts
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { mkdir } from "node:fs/promises";
+import path2 from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+var PLANE_TRANSFER_VERSION = 1;
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir(path2.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+
+// packages/cli/src/local-store.ts
+var FINANCE_APP_ID = "mere-finance";
+var FINANCE_LEDGER_PAYLOAD_SCHEMA = "mere.finance.ledger.v1";
+function isoNow3() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function makeId(prefix) {
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 16)}`;
+}
+function stableLedgerProjectionId(input) {
+  const hash = createHash2("sha256").update(FINANCE_APP_ID).update("\0").update(input.workspaceId).update("\0").update(input.fromDate ?? "").update("\0").update(input.toDate ?? "").digest("hex").slice(0, 24);
+  return `fipr_${hash}`;
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function jsonText(value) {
+  return JSON.stringify(value ?? null);
+}
+function parseJson(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+function readString2(value, label, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${label} is required for local finance records.`);
+  }
+  return raw.trim();
+}
+function readOptionalString(value, fallback) {
+  const raw = value === void 0 ? fallback : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+function readAccountType(value, fallback) {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : fallback;
+  if (raw === "ASSET" || raw === "LIABILITY" || raw === "EQUITY" || raw === "REVENUE" || raw === "EXPENSE") {
+    return raw;
+  }
+  throw new Error("type must be ASSET, LIABILITY, EQUITY, REVENUE, or EXPENSE.");
+}
+function readSplits(value, fallback = []) {
+  if (!Array.isArray(value)) return fallback;
+  return value.map((entry) => {
+    if (!isRecord2(entry)) throw new Error("Each split must be an object.");
+    const amount = Number(entry.amountCents ?? entry.amt ?? entry.amount);
+    if (!Number.isFinite(amount)) throw new Error("Split amountCents is required.");
+    const accountRef = readString2(entry.accountRef ?? entry.accountId ?? entry.accountCode ?? entry.acct, "split.accountRef");
     return {
-      name: "default",
-      profile: { baseUrl: getDefaultBaseUrl() }
+      accountRef,
+      accountId: readOptionalString(entry.accountId),
+      accountCode: readOptionalString(entry.accountCode),
+      amountCents: Math.trunc(amount)
+    };
+  });
+}
+function normalizeAccount(input, existing) {
+  const now = isoNow3();
+  const code = readString2(input.code, "code", existing?.code);
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? code,
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    code,
+    name: readString2(input.name, "name", existing?.name),
+    type: readAccountType(input.type, existing?.type),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function normalizeTransaction(input, existing) {
+  const now = isoNow3();
+  return {
+    id: existing?.id ?? readOptionalString(input.id) ?? makeId("txn"),
+    workspaceId: existing?.workspaceId ?? (typeof input.workspaceId === "string" ? input.workspaceId : ""),
+    date: readString2(input.date, "date", existing?.date),
+    memo: readOptionalString(input.memo, existing?.memo),
+    splits: readSplits(input.splits, existing?.splits ?? []),
+    createdAt: existing?.createdAt ?? readOptionalString(input.createdAt) ?? now,
+    updatedAt: readOptionalString(input.updatedAt) ?? now
+  };
+}
+function rowToAccount(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    code: row.code,
+    name: row.name,
+    type: row.type,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function rowToTransaction(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    date: row.date,
+    memo: row.memo,
+    splits: parseJson(row.splits_json, []),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function normalizeTransferPayload(value) {
+  if (!isRecord2(value) || value.kind !== FINANCE_LEDGER_PAYLOAD_SCHEMA || value.version !== 1) {
+    throw new Error(`Finance transfer payload must be ${FINANCE_LEDGER_PAYLOAD_SCHEMA} version 1.`);
+  }
+  return {
+    kind: FINANCE_LEDGER_PAYLOAD_SCHEMA,
+    version: 1,
+    accounts: Array.isArray(value.accounts) ? value.accounts.map((entry) => normalizeAccount(isRecord2(entry) ? entry : {})) : [],
+    transactions: Array.isArray(value.transactions) ? value.transactions.map((entry) => normalizeTransaction(isRecord2(entry) ? entry : {})) : []
+  };
+}
+var LocalFinanceStore = class _LocalFinanceStore {
+  constructor(dbPath, db, config, workspace) {
+    this.dbPath = dbPath;
+    this.db = db;
+    this.config = config;
+    this.workspace = workspace;
+  }
+  dbPath;
+  db;
+  config;
+  workspace;
+  static async open(input) {
+    const opened = await openLocalPlaneDatabase(input.config);
+    const db = opened.db;
+    registerPlaneApp(opened.db, FINANCE_APP_ID, "Mere Finance");
+    registerPlaneTransferSchema(opened.db, FINANCE_APP_ID, {
+      payloadSchema: FINANCE_LEDGER_PAYLOAD_SCHEMA,
+      displayName: "Finance ledger transfer",
+      description: "Portable mere.fi chart of accounts and double-entry ledger transactions."
+    });
+    upsertPlaneWorkspace(opened.db, FINANCE_APP_ID, {
+      workspaceId: input.workspace.workspaceId,
+      slug: input.workspace.slug,
+      name: input.workspace.name,
+      dataPlane: input.config.data,
+      aiPlane: input.config.ai
+    });
+    const store = new _LocalFinanceStore(opened.dbPath, db, input.config, input.workspace);
+    store.ensureSchema();
+    return store;
+  }
+  close() {
+    this.db.close();
+  }
+  ensureSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS finance_local_accounts (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_local_accounts_code
+        ON finance_local_accounts (workspace_id, code);
+
+      CREATE TABLE IF NOT EXISTS finance_local_transactions (
+        id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        memo TEXT,
+        splits_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_finance_local_transactions_date
+        ON finance_local_transactions (workspace_id, date DESC);
+
+      CREATE TABLE IF NOT EXISTS finance_local_projections (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        from_date TEXT,
+        to_date TEXT,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        payload_json TEXT NOT NULL,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_finance_local_projections_scope
+        ON finance_local_projections (workspace_id, scope, updated_at DESC);
+    `);
+  }
+  info() {
+    const inventory = getLocalPlaneInventory(this.db, { appId: FINANCE_APP_ID });
+    const count = (table) => Number(
+      this.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE workspace_id = ?`).get(this.workspace.workspaceId)?.count ?? 0
+    );
+    return {
+      dbPath: this.dbPath,
+      workspaceId: this.workspace.workspaceId,
+      accountCount: count("finance_local_accounts"),
+      transactionCount: count("finance_local_transactions"),
+      projectionCount: count("finance_local_projections"),
+      localLedgerStore: "enabled",
+      localLedgerPersistenceSupported: true,
+      planeAppCount: inventory.counts.apps,
+      planeWorkspaceCount: inventory.counts.workspaces,
+      transferSchemaCount: inventory.counts.transferSchemas,
+      transferCount: inventory.counts.transfers,
+      aiJobCount: inventory.counts.aiJobs
     };
   }
-  return { name: selectedName, profile };
-}
+  listAccounts() {
+    const rows = this.db.prepare("SELECT * FROM finance_local_accounts WHERE workspace_id = ? ORDER BY code").all(this.workspace.workspaceId);
+    return rows.map(rowToAccount);
+  }
+  getAccount(accountIdOrCode) {
+    const row = this.db.prepare("SELECT * FROM finance_local_accounts WHERE workspace_id = ? AND (id = ? OR code = ?) LIMIT 1").get(this.workspace.workspaceId, accountIdOrCode, accountIdOrCode);
+    return row ? rowToAccount(row) : null;
+  }
+  upsertAccount(input) {
+    const idOrCode = readOptionalString(input.id) ?? readOptionalString(input.code);
+    const account = {
+      ...normalizeAccount(input, idOrCode ? this.getAccount(idOrCode) ?? void 0 : void 0),
+      workspaceId: this.workspace.workspaceId
+    };
+    this.db.prepare(
+      `INSERT INTO finance_local_accounts (id, workspace_id, code, name, type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           code = excluded.code,
+           name = excluded.name,
+           type = excluded.type,
+           updated_at = excluded.updated_at`
+    ).run(account.id, account.workspaceId, account.code, account.name, account.type, account.createdAt, account.updatedAt);
+    return account;
+  }
+  deleteAccount(accountIdOrCode) {
+    const account = this.getAccount(accountIdOrCode);
+    if (!account) return false;
+    const result = this.db.prepare("DELETE FROM finance_local_accounts WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, account.id);
+    return Number(result.changes) > 0;
+  }
+  listTransactions() {
+    const rows = this.db.prepare("SELECT * FROM finance_local_transactions WHERE workspace_id = ? ORDER BY date DESC, updated_at DESC").all(this.workspace.workspaceId);
+    return rows.map(rowToTransaction);
+  }
+  listTransactionsForProjection(input = {}) {
+    return this.listTransactions().filter((transaction) => {
+      if (input.fromDate && transaction.date < input.fromDate) return false;
+      if (input.toDate && transaction.date > input.toDate) return false;
+      return true;
+    });
+  }
+  getTransaction(transactionId) {
+    const row = this.db.prepare("SELECT * FROM finance_local_transactions WHERE workspace_id = ? AND id = ?").get(this.workspace.workspaceId, transactionId);
+    return row ? rowToTransaction(row) : null;
+  }
+  upsertTransaction(input) {
+    const id = readOptionalString(input.id);
+    const transaction = {
+      ...normalizeTransaction(input, id ? this.getTransaction(id) ?? void 0 : void 0),
+      workspaceId: this.workspace.workspaceId
+    };
+    this.db.prepare(
+      `INSERT INTO finance_local_transactions (id, workspace_id, date, memo, splits_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id, id) DO UPDATE SET
+           date = excluded.date,
+           memo = excluded.memo,
+           splits_json = excluded.splits_json,
+           updated_at = excluded.updated_at`
+    ).run(
+      transaction.id,
+      transaction.workspaceId,
+      transaction.date,
+      transaction.memo,
+      jsonText(transaction.splits),
+      transaction.createdAt,
+      transaction.updatedAt
+    );
+    return transaction;
+  }
+  deleteTransaction(transactionId) {
+    const result = this.db.prepare("DELETE FROM finance_local_transactions WHERE workspace_id = ? AND id = ?").run(this.workspace.workspaceId, transactionId);
+    return Number(result.changes) > 0;
+  }
+  exportPayload() {
+    return {
+      kind: FINANCE_LEDGER_PAYLOAD_SCHEMA,
+      version: 1,
+      accounts: this.listAccounts(),
+      transactions: this.listTransactions()
+    };
+  }
+  getLedgerProjection(projectionId) {
+    const row = this.db.prepare("SELECT published_at, revoked_at FROM finance_local_projections WHERE workspace_id = ? AND id = ? LIMIT 1").get(this.workspace.workspaceId, projectionId);
+    return row ?? null;
+  }
+  buildLedgerProjectionEnvelope(input) {
+    const fromDate = readOptionalString(input.fromDate);
+    const toDate = readOptionalString(input.toDate);
+    const projectionId = stableLedgerProjectionId({
+      workspaceId: this.workspace.workspaceId,
+      fromDate,
+      toDate
+    });
+    const existing = this.getLedgerProjection(projectionId);
+    const now = isoNow3();
+    const publishedAt = existing?.published_at ?? now;
+    const revokedAt = input.action === "revoke" ? now : null;
+    const transactions = this.listTransactionsForProjection({ fromDate, toDate });
+    const accounts = this.listAccounts();
+    const accountRollups = /* @__PURE__ */ new Map();
+    let debitCents = 0;
+    let creditCents = 0;
+    for (const transaction of transactions) {
+      for (const split of transaction.splits) {
+        const account = split.accountCode ?? split.accountId ?? split.accountRef;
+        const rollup = accountRollups.get(account) ?? { balanceCents: 0, entryCount: 0 };
+        rollup.balanceCents += split.amountCents;
+        rollup.entryCount += 1;
+        accountRollups.set(account, rollup);
+        if (split.amountCents >= 0) {
+          debitCents += split.amountCents;
+        } else {
+          creditCents += Math.abs(split.amountCents);
+        }
+      }
+    }
+    const projectedAccounts = accounts.map((account) => ({
+      code: account.code,
+      name: account.name,
+      type: account.type,
+      balanceCents: accountRollups.get(account.code)?.balanceCents ?? accountRollups.get(account.id)?.balanceCents ?? 0,
+      entryCount: accountRollups.get(account.code)?.entryCount ?? accountRollups.get(account.id)?.entryCount ?? 0
+    })).filter((account) => account.entryCount > 0 || !fromDate && !toDate);
+    return {
+      version: 1,
+      appId: FINANCE_APP_ID,
+      event: {
+        type: input.action === "publish" ? "finance.ledger.projection.upserted" : "finance.ledger.projection.revoked",
+        workspaceId: this.workspace.workspaceId,
+        projection: {
+          id: projectionId,
+          scope: "ledger-summary",
+          fromDate,
+          toDate,
+          publishedByUserId: input.publishedByUserId,
+          publishedByEmail: input.publishedByEmail,
+          publishedAt,
+          revokedAt
+        },
+        ledger: {
+          workspaceId: this.workspace.workspaceId,
+          fromDate,
+          toDate,
+          accountCount: projectedAccounts.length,
+          transactionCount: transactions.length,
+          debitCents,
+          creditCents,
+          balanced: debitCents === creditCents
+        },
+        accounts: projectedAccounts,
+        exclusions: [
+          "transaction memos",
+          "raw transaction split rows",
+          "raw local account rows",
+          "raw local transaction rows",
+          "banking records",
+          "tax records",
+          "role and token records",
+          "admin records"
+        ]
+      }
+    };
+  }
+  recordLedgerProjection(envelope) {
+    const now = isoNow3();
+    this.db.prepare(
+      `INSERT INTO finance_local_projections (
+           id, workspace_id, scope, from_date, to_date, published_at, revoked_at, payload_json, last_projected_at, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           scope = excluded.scope,
+           from_date = excluded.from_date,
+           to_date = excluded.to_date,
+           published_at = excluded.published_at,
+           revoked_at = excluded.revoked_at,
+           payload_json = excluded.payload_json,
+           last_projected_at = excluded.last_projected_at,
+           updated_at = excluded.updated_at`
+    ).run(
+      envelope.event.projection.id,
+      this.workspace.workspaceId,
+      envelope.event.projection.scope,
+      envelope.event.projection.fromDate,
+      envelope.event.projection.toDate,
+      envelope.event.projection.publishedAt,
+      envelope.event.projection.revokedAt,
+      jsonText(envelope),
+      now,
+      now
+    );
+  }
+  exportBundle() {
+    const payload = this.exportPayload();
+    const bundle = createPlaneTransferBundle({
+      appId: FINANCE_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      plane: this.config,
+      payloadSchema: FINANCE_LEDGER_PAYLOAD_SCHEMA,
+      payload
+    });
+    recordPlaneTransfer(this.db, {
+      appId: FINANCE_APP_ID,
+      workspaceId: this.workspace.workspaceId,
+      direction: "export",
+      source: { data: this.config.data, ai: this.config.ai },
+      payloadSchema: FINANCE_LEDGER_PAYLOAD_SCHEMA,
+      payloadSha256: bundle.payloadSha256
+    });
+    return bundle;
+  }
+  importPlan(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: FINANCE_APP_ID,
+      payloadSchema: FINANCE_LEDGER_PAYLOAD_SCHEMA
+    });
+    const normalized = normalizeTransferPayload(payload);
+    return createPlaneTransferImportPlan({
+      appId: bundle?.appId ?? FINANCE_APP_ID,
+      workspaceId: bundle?.workspaceId ?? this.workspace.workspaceId,
+      payloadSchema: bundle?.payloadSchema ?? FINANCE_LEDGER_PAYLOAD_SCHEMA,
+      payload: normalized,
+      bundle,
+      destination: { data: this.config.data, ai: this.config.ai }
+    });
+  }
+  importValue(value) {
+    const { payload, bundle } = unwrapPlaneTransferPayload(value, {
+      appId: FINANCE_APP_ID,
+      payloadSchema: FINANCE_LEDGER_PAYLOAD_SCHEMA
+    });
+    const normalized = normalizeTransferPayload(payload);
+    this.db.exec("BEGIN");
+    try {
+      for (const account of normalized.accounts) this.upsertAccount(account);
+      for (const transaction of normalized.transactions) this.upsertTransaction(transaction);
+      const source = bundle?.source;
+      const transferId = recordPlaneTransfer(this.db, {
+        appId: FINANCE_APP_ID,
+        workspaceId: this.workspace.workspaceId,
+        direction: "import",
+        source,
+        destination: { data: this.config.data, ai: this.config.ai },
+        payloadSchema: bundle?.payloadSchema ?? FINANCE_LEDGER_PAYLOAD_SCHEMA,
+        payloadSha256: bundle?.payloadSha256 ?? hashPlanePayload(normalized)
+      });
+      this.db.exec("COMMIT");
+      return {
+        ok: true,
+        store: "local",
+        workspaceId: this.workspace.workspaceId,
+        accountCount: normalized.accounts.length,
+        transactionCount: normalized.transactions.length,
+        transferId
+      };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+};
 
 // packages/cli/src/output/format.ts
 function writeLine(writer, message) {
@@ -8122,13 +9209,105 @@ function printError(error, json, writers) {
   return error instanceof CliApiError && error.status === 401 ? 3 : 4;
 }
 
+// packages/cli/src/config/store.ts
+import { mkdir as mkdir2, readFile as readFile2, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
+function getDefaultConfigPath() {
+  return resolve(homedir(), ".config", "merefi", "config.json");
+}
+function getConfigPath(options = {}) {
+  if (options.configPath) {
+    return resolve(options.configPath);
+  }
+  const env = options.env ?? process.env;
+  return env.FINANCE_CONFIG_PATH ? resolve(env.FINANCE_CONFIG_PATH) : getDefaultConfigPath();
+}
+function getDefaultBaseUrl(options = {}) {
+  const env = options.env ?? process.env;
+  return env.FINANCE_BASE_URL?.trim() || "";
+}
+function createDefaultConfig(options = {}) {
+  return {
+    currentProfile: "default",
+    profiles: {
+      default: {
+        baseUrl: getDefaultBaseUrl(options)
+      }
+    }
+  };
+}
+async function loadConfig(options = {}) {
+  const path4 = getConfigPath(options);
+  try {
+    const raw = await readFile2(path4, "utf8");
+    const parsed = JSON.parse(raw);
+    const defaultConfig = createDefaultConfig(options);
+    if (!parsed || typeof parsed !== "object") {
+      return defaultConfig;
+    }
+    const profiles = parsed.profiles && typeof parsed.profiles === "object" ? parsed.profiles : {};
+    const safeProfiles = {};
+    for (const [name, profile] of Object.entries(profiles)) {
+      if (!profile || typeof profile !== "object") continue;
+      const candidate = profile;
+      if (typeof candidate.baseUrl !== "string" || candidate.baseUrl.length === 0) {
+        continue;
+      }
+      safeProfiles[name] = {
+        baseUrl: candidate.baseUrl,
+        ...typeof candidate.token === "string" ? { token: candidate.token } : {}
+      };
+    }
+    if (!safeProfiles.default) {
+      safeProfiles.default = { baseUrl: getDefaultBaseUrl(options) };
+    }
+    return {
+      currentProfile: typeof parsed.currentProfile === "string" && safeProfiles[parsed.currentProfile] ? parsed.currentProfile : "default",
+      profiles: safeProfiles
+    };
+  } catch {
+    return createDefaultConfig(options);
+  }
+}
+async function saveConfig(config, options = {}) {
+  const path4 = getConfigPath(options);
+  await mkdir2(dirname(path4), { recursive: true });
+  await writeFile(path4, `${JSON.stringify(config, null, 2)}
+`, "utf8");
+}
+async function upsertProfile(name, values, options = {}) {
+  const config = await loadConfig(options);
+  const profileName = name.trim();
+  const existing = config.profiles[profileName] ?? { baseUrl: getDefaultBaseUrl(options) };
+  const merged = {
+    baseUrl: values.baseUrl ?? existing.baseUrl,
+    ...values.token !== void 0 ? { token: values.token } : existing.token ? { token: existing.token } : {}
+  };
+  config.profiles[profileName] = merged;
+  config.currentProfile = profileName;
+  await saveConfig(config, options);
+  return config;
+}
+function resolveProfile(config, profileName) {
+  const selectedName = profileName ?? config.currentProfile ?? "default";
+  const profile = config.profiles[selectedName] ?? config.profiles.default;
+  if (!profile) {
+    return {
+      name: "default",
+      profile: { baseUrl: getDefaultBaseUrl() }
+    };
+  }
+  return { name: selectedName, profile };
+}
+
 // packages/mere-cli-auth/src/session.ts
-import { chmod, mkdir as mkdir2, readFile as readFile3, rm, writeFile as writeFile2 } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-function stateHome(env) {
-  const homeDir = env.HOME?.trim() || os.homedir();
-  return env.XDG_STATE_HOME?.trim() || path.join(homeDir, ".local", "state");
+import { chmod, mkdir as mkdir3, readFile as readFile3, rm, writeFile as writeFile2 } from "node:fs/promises";
+import os2 from "node:os";
+import path3 from "node:path";
+function stateHome2(env) {
+  const homeDir = env.HOME?.trim() || os2.homedir();
+  return env.XDG_STATE_HOME?.trim() || path3.join(homeDir, ".local", "state");
 }
 function normalizeBaseUrl(raw) {
   const url = new URL(raw);
@@ -8138,10 +9317,10 @@ function normalizeBaseUrl(raw) {
   return url.toString().replace(/\/$/, "");
 }
 function resolveCliPaths(appName, env = process.env) {
-  const stateDir = path.join(stateHome(env), appName);
+  const stateDir = path3.join(stateHome2(env), appName);
   return {
     stateDir,
-    sessionFile: path.join(stateDir, "session.json")
+    sessionFile: path3.join(stateDir, "session.json")
   };
 }
 async function loadCliSession(input) {
@@ -8167,7 +9346,7 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir2(paths.stateDir, { recursive: true });
+  await mkdir3(paths.stateDir, { recursive: true });
   await writeFile2(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
 `, "utf8");
   await chmod(paths.sessionFile, 384).catch(() => void 0);
@@ -8241,7 +9420,7 @@ function maybeOpenBrowser(url) {
     return false;
   }
 }
-async function parseJson(response) {
+async function parseJson2(response) {
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload) {
     const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
@@ -8250,10 +9429,10 @@ async function parseJson(response) {
   return payload;
 }
 async function fetchJson(fetchImpl, input) {
-  return parseJson(await fetchImpl(input));
+  return parseJson2(await fetchImpl(input));
 }
 async function postJson(fetchImpl, input, body) {
-  return parseJson(
+  return parseJson2(
     await fetchImpl(input, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -8262,7 +9441,7 @@ async function postJson(fetchImpl, input, body) {
   );
 }
 async function waitForCallback(input) {
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     const server = createServer((request, response) => {
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
       if (requestUrl.pathname !== "/callback") {
@@ -8286,7 +9465,7 @@ async function waitForCallback(input) {
         server.close();
         try {
           const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
-          resolve2(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
+          resolve3(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
         } catch (error) {
           reject(error);
         }
@@ -8435,7 +9614,7 @@ function configureProgram(program2, deps) {
   });
 }
 function attachGlobalOptions(program2) {
-  return program2.option("--profile <name>", "Profile name to use from CLI config").option("--base-url <url>", "Override API base URL for this invocation").option("--json", "Output machine-readable JSON", false);
+  return program2.option("--profile <name>", "Profile name to use from CLI config").option("--base-url <url>", "Override API base URL for this invocation").option("--store <mode>", "Choose local or cloud data plane config").option("--ai <mode>", "Choose local or cloud AI plane config").option("--local-db <path>", "Override centralized local Mere SQLite path").option("--projection-url <url>", "Cloudflare Business projection receiver URL").option("--projection-token <token>", "Cloudflare Business projection bearer token").option("--workspace <id>", "Local finance workspace id").option("--json", "Output machine-readable JSON", false);
 }
 function getGlobalOptions(command) {
   return command.optsWithGlobals();
@@ -8504,6 +9683,205 @@ async function runAction(command, deps, handler, execution = {}) {
   }
 }
 
+// packages/cli/src/commands/local-plane.ts
+var APP_ID = "mere-finance";
+function resolveFinancePlaneConfig(command, deps) {
+  const options = getGlobalOptions(command);
+  return resolvePlaneConfigInspection({
+    appId: APP_ID,
+    env: deps.env,
+    data: options.store,
+    ai: options.ai,
+    localDbPath: options.localDb
+  });
+}
+function isLocalDataRoute(command, deps) {
+  return resolveFinancePlaneConfig(command, deps).data === "local";
+}
+function localWorkspace(command, deps) {
+  const options = getGlobalOptions(command);
+  const workspaceId = options.workspace?.trim() || deps.env?.MERE_FINANCE_WORKSPACE?.trim() || deps.env?.FINANCE_WORKSPACE?.trim() || "personal";
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: workspaceId === "personal" ? "Personal Finance" : workspaceId
+  };
+}
+function optionalString(value) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+function optionalOption(options, camel, dashed) {
+  const value = options[camel] ?? options[dashed];
+  return typeof value === "string" ? optionalString(value) : null;
+}
+function projectionActor(options, deps) {
+  return {
+    publishedByUserId: optionalOption(options, "publishedByUserId", "published-by-user-id") ?? deps.env?.MERE_FINANCE_USER_ID?.trim() ?? deps.env?.MERE_USER_ID?.trim() ?? "local-cli",
+    publishedByEmail: optionalOption(options, "publishedByEmail", "published-by-email") ?? deps.env?.MERE_FINANCE_USER_EMAIL?.trim() ?? deps.env?.MERE_USER_EMAIL?.trim() ?? null
+  };
+}
+async function openLocalFinanceStore(command, deps) {
+  const config = resolveFinancePlaneConfig(command, deps);
+  if (config.data !== "local") {
+    throw new Error("This command requires --store local so finance local data stays explicit.");
+  }
+  return LocalFinanceStore.open({
+    config,
+    workspace: localWorkspace(command, deps)
+  });
+}
+async function runLocalAction(command, deps, handler, options = {}) {
+  try {
+    const store = await openLocalFinanceStore(command, deps);
+    try {
+      const result = await handler(store);
+      if (result !== void 0) {
+        const globals = getGlobalOptions(command);
+        printOutput(result, Boolean(globals.json), deps.writers, options.hint);
+      }
+    } finally {
+      store.close();
+    }
+  } catch (error) {
+    handleCommandError(command, deps, error);
+  }
+}
+async function emitLocalSuccess(command, deps, message, payload, hint) {
+  const globals = getGlobalOptions(command);
+  printSuccess(message, Boolean(globals.json), deps.writers, payload, hint);
+}
+function registerLocalPlaneCommands(program2, deps) {
+  program2.command("store").description("Inspect local/cloud data and AI plane selection").command("info").description("Show local/cloud data and AI plane selection").action(async function storeInfo() {
+    const config = resolveFinancePlaneConfig(this, deps);
+    if (config.data === "local") {
+      await runLocalAction(this, deps, async (store) => ({
+        ok: true,
+        app: APP_ID,
+        store: config.data,
+        ai: config.ai,
+        cloudProjection: config.cloudProjection,
+        blended: config.blended,
+        ...store.info(),
+        localAiSupported: false,
+        sources: config.sources
+      }));
+      return;
+    }
+    const globals = getGlobalOptions(this);
+    const info = {
+      ok: true,
+      app: APP_ID,
+      store: config.data,
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      blended: config.blended,
+      dbPath: config.localDbPath,
+      localLedgerStore: "available",
+      localLedgerPersistenceSupported: false,
+      localAiSupported: false,
+      sources: config.sources
+    };
+    if (globals.json) {
+      printOutput(info, true, deps.writers);
+      return;
+    }
+    deps.writers.stdout(
+      formatPlaneConfigReport({
+        kind: "mere.local-plane.config",
+        configs: [config]
+      })
+    );
+    deps.writers.stdout("Hosted ledger APIs remain Cloudflare-owned unless --store local is selected.\n");
+  });
+  program2.command("export").description("Export local finance ledger as a local-plane transfer bundle").option("--output <path>", "Write transfer bundle to a file").action(async function exportLocal(options) {
+    await runLocalAction(this, deps, async (store) => {
+      const bundle = store.exportBundle();
+      if (!options.output) return bundle;
+      const target = resolve2(options.output);
+      await mkdir4(dirname2(target), { recursive: true });
+      await writeFile3(target, JSON.stringify(bundle, null, 2));
+      return {
+        ok: true,
+        path: target,
+        appId: bundle.appId,
+        workspaceId: bundle.workspaceId,
+        payloadSchema: bundle.payloadSchema,
+        payloadSha256: bundle.payloadSha256,
+        accountCount: bundle.payload.accounts.length,
+        transactionCount: bundle.payload.transactions.length
+      };
+    });
+  });
+  program2.command("import").description("Import local finance ledger transfer bundle").requiredOption("--file <path>", "Transfer bundle file").option("--dry-run", "Preview import without writing").action(async function importLocal(options) {
+    await runLocalAction(this, deps, async (store) => {
+      const value = JSON.parse(await readFile4(options.file, "utf8"));
+      return options.dryRun ? store.importPlan(value) : store.importValue(value);
+    });
+  });
+  const ledger = program2.command("ledger").description("Publish selected local ledger summaries to Business");
+  function registerLedgerProjectionCommand(action) {
+    ledger.command(action).description(`${action === "publish" ? "Publish" : "Revoke"} a selected local ledger summary projection`).option("--from <YYYY-MM-DD>", "Only include transactions on or after this date").option("--to <YYYY-MM-DD>", "Only include transactions on or before this date").option("--dry-run", "Build the projection envelope without sending or recording it").option("--projection-url <url>", "Cloudflare Business projection receiver URL").option("--projection-token <token>", "Cloudflare Business projection bearer token").option("--published-by-user-id <id>", "User id to record on the projection").option("--published-by-email <email>", "User email to record on the projection").action(async function ledgerProjection(options) {
+      const commandOptions = { ...options, ...this.optsWithGlobals() };
+      await runLocalAction(this, deps, async (store) => {
+        const config = resolveFinancePlaneConfig(this, deps);
+        const actor = projectionActor(commandOptions, deps);
+        const envelope = store.buildLedgerProjectionEnvelope({
+          action,
+          fromDate: optionalString(commandOptions.from),
+          toDate: optionalString(commandOptions.to),
+          ...actor
+        });
+        if (commandOptions.dryRun) {
+          let receiverUrl;
+          try {
+            receiverUrl = resolveCloudProjectionTarget({
+              appId: APP_ID,
+              env: deps.env,
+              receiverUrl: optionalOption(commandOptions, "projectionUrl", "projection-url") ?? void 0,
+              bearerToken: optionalOption(commandOptions, "projectionToken", "projection-token") ?? void 0
+            }).receiverUrl;
+          } catch {
+            receiverUrl = void 0;
+          }
+          return {
+            ok: true,
+            dryRun: true,
+            store: "local",
+            projection: config.cloudProjection,
+            action,
+            projectionId: envelope.event.projection.id,
+            receiverUrl,
+            event: envelope
+          };
+        }
+        const delivery = await deliverCloudProjectionEvent({
+          appId: APP_ID,
+          env: deps.env,
+          receiverUrl: optionalOption(commandOptions, "projectionUrl", "projection-url") ?? void 0,
+          bearerToken: optionalOption(commandOptions, "projectionToken", "projection-token") ?? void 0,
+          event: envelope,
+          fetchImpl: async (input, init) => deps.fetchImpl(input, init)
+        });
+        store.recordLedgerProjection(envelope);
+        return {
+          ok: true,
+          store: "local",
+          projection: config.cloudProjection,
+          action,
+          projectionId: envelope.event.projection.id,
+          receiverUrl: delivery.receiverUrl,
+          status: delivery.status,
+          receiver: delivery.responseJson,
+          ledger: envelope.event.ledger
+        };
+      });
+    });
+  }
+  registerLedgerProjectionCommand("publish");
+  registerLedgerProjectionCommand("revoke");
+}
+
 // packages/cli/src/commands/accounts.ts
 function buildAccountRequest(options) {
   return {
@@ -8515,11 +9893,22 @@ function buildAccountRequest(options) {
 function registerAccountCommands(program2, deps) {
   const accounts = program2.command("accounts").description("Manage chart of accounts");
   accounts.command("list").action(async function listAccounts() {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => store.listAccounts(), { hint: "accounts" });
+      return;
+    }
     await runAction(this, deps, async (ctx) => apiRequest(ctx, "GET", "/api/accounts"), {
       formatHint: "accounts"
     });
   });
   accounts.command("create").requiredOption("--code <code>", "Account code").requiredOption("--name <name>", "Account name").requiredOption("--type <type>", "ASSET|LIABILITY|EQUITY|REVENUE|EXPENSE").action(async function createAccount(options) {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => {
+        const account = store.upsertAccount({ ...buildAccountRequest(options) });
+        await emitLocalSuccess(this, deps, `Created local account ${account.code}.`, { ok: true, id: account.id, account });
+      });
+      return;
+    }
     await runAction(this, deps, async (ctx) => {
       const response = await apiRequest(ctx, "POST", "/api/accounts", {
         body: buildAccountRequest(options)
@@ -8528,6 +9917,13 @@ function registerAccountCommands(program2, deps) {
     });
   });
   accounts.command("update").requiredOption("--id <id>", "Account id").requiredOption("--code <code>", "Account code").requiredOption("--name <name>", "Account name").requiredOption("--type <type>", "ASSET|LIABILITY|EQUITY|REVENUE|EXPENSE").action(async function updateAccount(options) {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => {
+        const account = store.upsertAccount({ id: options.id, ...buildAccountRequest(options) });
+        await emitLocalSuccess(this, deps, `Updated local account ${account.code}.`, { ok: true, id: account.id, account });
+      });
+      return;
+    }
     await runAction(this, deps, async (ctx) => {
       const response = await apiRequest(
         ctx,
@@ -8541,6 +9937,14 @@ function registerAccountCommands(program2, deps) {
     });
   });
   accounts.command("delete").requiredOption("--id <id>", "Account id").option("--yes", "Confirm account deletion").option("--confirm <id>", "Exact account id to confirm deletion").action(async function deleteAccount(options) {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => {
+        requireDestructiveConfirmation(options, options.id, "delete account");
+        const deleted = store.deleteAccount(options.id);
+        await emitLocalSuccess(this, deps, `Deleted local account ${options.id}.`, { ok: deleted, id: options.id });
+      });
+      return;
+    }
     await runAction(this, deps, async (ctx) => {
       const accountId = parsePositiveIntOrThrow(options.id, "account id");
       requireDestructiveConfirmation(options, String(accountId), "delete account");
@@ -8675,9 +10079,9 @@ function registerBankCommands(program2, deps) {
     command.action(
       async function bankAccountMutate(options) {
         await runAction(this, deps, async (ctx) => {
-          const path2 = name === "create" ? "/api/bank-accounts" : `/api/bank-accounts/${parsePositiveIntOrThrow(options.id ?? "", "bank account id")}`;
+          const path4 = name === "create" ? "/api/bank-accounts" : `/api/bank-accounts/${parsePositiveIntOrThrow(options.id ?? "", "bank account id")}`;
           const method = name === "create" ? "POST" : "PUT";
-          const response = await apiRequest(ctx, method, path2, {
+          const response = await apiRequest(ctx, method, path4, {
             body: buildBankAccountRequest(options)
           });
           emitSuccess(
@@ -8748,7 +10152,13 @@ var COMMANDS = [
   "roles",
   "admin",
   "health",
-  "completion"
+  "store",
+  "export",
+  "import",
+  "ledger",
+  "completion",
+  "commands",
+  "version"
 ];
 function bashCompletion() {
   return `# merefi bash completion
@@ -8819,7 +10229,7 @@ function registerHealthCommands(program2, deps) {
 }
 
 // packages/cli/src/commands/plaintext.ts
-import { writeFile as writeFile3 } from "node:fs/promises";
+import { writeFile as writeFile4 } from "node:fs/promises";
 function buildPlainTextRequest(content) {
   return {
     content,
@@ -8856,7 +10266,7 @@ function registerPlainTextCommands(program2, deps) {
           ...options.includeOpeningBalances ? { include_opening_balances: true } : {}
         });
         if (options.out) {
-          await writeFile3(options.out, output, "utf8");
+          await writeFile4(options.out, output, "utf8");
           emitSuccess(this, deps, `Wrote plain-text export to ${options.out}.`, { outputFile: options.out });
           return;
         }
@@ -9053,9 +10463,38 @@ function buildUpdateTransactionRequest(options) {
     splits: options.split.map(parseSplit)
   };
 }
+function parseLocalSplit(split) {
+  const [accountRef, amountRaw] = split.split(":");
+  if (!accountRef || !amountRaw) {
+    throw new Error(`Invalid split format: ${split}. Expected account:amount`);
+  }
+  return {
+    accountRef: accountRef.trim(),
+    amountCents: parseMoneyToCents(amountRaw)
+  };
+}
+function localTransactionRows(transactions) {
+  return transactions.map((transaction) => ({
+    id: transaction.id,
+    date: transaction.date,
+    memo: transaction.memo,
+    splits: transaction.splits.map((split) => ({
+      account_id: Number.isFinite(Number(split.accountRef)) ? Number(split.accountRef) : 0,
+      account_code: split.accountCode ?? split.accountRef,
+      account_name: split.accountCode ?? split.accountRef,
+      amount: split.amountCents / 100
+    }))
+  }));
+}
 function registerTransactionCommands(program2, deps) {
   const transactions = program2.command("transactions").description("Manage transactions");
   transactions.command("list").action(async function listTransactions() {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => localTransactionRows(store.listTransactions()), {
+        hint: "transactions"
+      });
+      return;
+    }
     await runAction(
       this,
       deps,
@@ -9065,6 +10504,21 @@ function registerTransactionCommands(program2, deps) {
   });
   transactions.command("create").requiredOption("--date <date>", "Transaction date").option("--memo <memo>", "Memo").requiredOption("--split <acct:amount>", "Split definition. Repeat for multiple splits.", collectList, []).option("--auto-tax", "Enable auto tax split").option("--tax-rate <rate>", "Tax rate percent").option("--tax-account <id>", "Tax account id").action(
     async function createTransaction(options) {
+      if (isLocalDataRoute(this, deps)) {
+        await runLocalAction(this, deps, async (store) => {
+          const transaction = store.upsertTransaction({
+            date: parseDateOrThrow(options.date),
+            memo: options.memo,
+            splits: options.split.map(parseLocalSplit)
+          });
+          await emitLocalSuccess(this, deps, "Created local transaction.", {
+            ok: true,
+            id: transaction.id,
+            transaction
+          });
+        });
+        return;
+      }
       await runAction(this, deps, async (ctx) => {
         const response = await apiRequest(ctx, "POST", "/api/tx", {
           body: buildCreateTransactionRequest(options)
@@ -9074,6 +10528,22 @@ function registerTransactionCommands(program2, deps) {
     }
   );
   transactions.command("update").requiredOption("--id <id>", "Transaction id").requiredOption("--date <date>", "Transaction date").option("--memo <memo>", "Memo").requiredOption("--split <acct:amount>", "Split definition. Repeat for multiple splits.", collectList, []).action(async function updateTransaction(options) {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => {
+        const transaction = store.upsertTransaction({
+          id: options.id,
+          date: parseDateOrThrow(options.date),
+          memo: options.memo,
+          splits: options.split.map(parseLocalSplit)
+        });
+        await emitLocalSuccess(this, deps, `Updated local transaction ${transaction.id}.`, {
+          ok: true,
+          id: transaction.id,
+          transaction
+        });
+      });
+      return;
+    }
     await runAction(this, deps, async (ctx) => {
       const response = await apiRequest(
         ctx,
@@ -9087,6 +10557,14 @@ function registerTransactionCommands(program2, deps) {
     });
   });
   transactions.command("delete").requiredOption("--id <id>", "Transaction id").option("--yes", "Confirm transaction deletion").option("--confirm <id>", "Exact transaction id to confirm deletion").action(async function deleteTransaction(options) {
+    if (isLocalDataRoute(this, deps)) {
+      await runLocalAction(this, deps, async (store) => {
+        requireDestructiveConfirmation(options, options.id, "delete transaction");
+        const deleted = store.deleteTransaction(options.id);
+        await emitLocalSuccess(this, deps, `Deleted local transaction ${options.id}.`, { ok: deleted, id: options.id });
+      });
+      return;
+    }
     await runAction(this, deps, async (ctx) => {
       const transactionId = parsePositiveIntOrThrow(options.id, "transaction id");
       requireDestructiveConfirmation(options, String(transactionId), "delete transaction");
@@ -9100,10 +10578,10 @@ function registerTransactionCommands(program2, deps) {
 var CLI_VERSION = "2.0.0";
 
 // packages/cli/src/index.ts
-function manifestCommand(path2, summary, options = {}) {
+function manifestCommand(path4, summary, options = {}) {
   return {
-    id: path2.join("."),
-    path: path2,
+    id: path4.join("."),
+    path: path4,
     summary,
     auth: options.auth ?? "token",
     risk: options.risk ?? "read",
@@ -9125,7 +10603,17 @@ function commandManifest() {
     auth: { kind: "token" },
     baseUrlEnv: ["FINANCE_BASE_URL"],
     sessionPath: "~/.config/merefi/config.json",
-    globalFlags: ["base-url", "profile", "json", "yes", "confirm"],
+    globalFlags: [
+      "base-url",
+      "profile",
+      "store",
+      "ai",
+      "local-db",
+      "projection-url",
+      "projection-token",
+      "workspace",
+      "json"
+    ],
     commands: [
       manifestCommand(["auth", "login"], "Configure token auth.", { auth: "none", risk: "write", flags: ["workspace"] }),
       manifestCommand(["auth", "whoami"], "Show active token identity.", { auditDefault: true }),
@@ -9133,19 +10621,55 @@ function commandManifest() {
       ...["accounts", "transactions", "bank", "reports", "tax", "plaintext", "roles", "admin", "health", "tokens"].flatMap(
         (group) => [manifestCommand([group, "list"], `List ${group}.`), manifestCommand([group, "show"], `Show ${group}.`)]
       ),
-      manifestCommand(["accounts", "create"], "Create account.", { risk: "write", supportsData: true }),
-      manifestCommand(["accounts", "update"], "Update account.", { risk: "write", supportsData: true }),
-      manifestCommand(["accounts", "delete"], "Delete account.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["transactions", "create"], "Create transaction.", { risk: "write", supportsData: true }),
-      manifestCommand(["transactions", "update"], "Update transaction.", { risk: "write", supportsData: true }),
-      manifestCommand(["transactions", "delete"], "Delete transaction.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["bank", "accounts", "delete"], "Delete bank account.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["tokens", "revoke"], "Revoke API token.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["store", "info"], "Show local/cloud data and AI plane selection.", {
+        auth: "none",
+        auditDefault: true
+      }),
+      manifestCommand(["export"], "Export local finance ledger transfer bundle.", {
+        auth: "none",
+        risk: "read",
+        flags: ["output"]
+      }),
+      manifestCommand(["import"], "Import local finance ledger transfer bundle.", {
+        auth: "none",
+        risk: "write",
+        flags: ["file", "dry-run"]
+      }),
+      manifestCommand(["ledger", "publish"], "Publish selected local ledger summary to Business.", {
+        auth: "none",
+        risk: "external",
+        flags: [
+          "from",
+          "to",
+          "dry-run",
+          "published-by-user-id",
+          "published-by-email"
+        ]
+      }),
+      manifestCommand(["ledger", "revoke"], "Revoke selected local ledger summary projection from Business.", {
+        auth: "none",
+        risk: "external",
+        flags: [
+          "from",
+          "to",
+          "dry-run",
+          "published-by-user-id",
+          "published-by-email"
+        ]
+      }),
+      manifestCommand(["accounts", "create"], "Create account.", { risk: "write", flags: ["code", "name", "type"] }),
+      manifestCommand(["accounts", "update"], "Update account.", { risk: "write", flags: ["id", "code", "name", "type"] }),
+      manifestCommand(["accounts", "delete"], "Delete account.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["transactions", "create"], "Create transaction.", { risk: "write", flags: ["date", "memo", "split", "auto-tax", "tax-rate", "tax-account"] }),
+      manifestCommand(["transactions", "update"], "Update transaction.", { risk: "write", flags: ["id", "date", "memo", "split"] }),
+      manifestCommand(["transactions", "delete"], "Delete transaction.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["bank", "accounts", "delete"], "Delete bank account.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
+      manifestCommand(["tokens", "revoke"], "Revoke API token.", { risk: "destructive", requiresYes: true, requiresConfirm: true, flags: ["id"] }),
       manifestCommand(["reports", "trial-balance"], "Trial balance report.", { auditDefault: true }),
       manifestCommand(["reports", "income-statement"], "Income statement report."),
       manifestCommand(["reports", "balance-sheet"], "Balance sheet report."),
-      manifestCommand(["plaintext", "export"], "Export plaintext ledger."),
-      manifestCommand(["plaintext", "import"], "Import plaintext ledger.", { risk: "write" }),
+      manifestCommand(["plaintext", "export"], "Export plaintext ledger.", { flags: ["start-date", "end-date", "include-accounts", "include-opening-balances", "out"] }),
+      manifestCommand(["plaintext", "import"], "Import plaintext ledger.", { risk: "write", flags: ["file"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -9154,6 +10678,12 @@ function commandManifest() {
 function registerManifestCommand(program2, deps) {
   program2.command("commands").description("Print command manifest").option("--json", "Output machine-readable JSON", true).action(() => {
     deps.writers.stdout(`${JSON.stringify(commandManifest(), null, 2)}
+`);
+  });
+}
+function registerVersionCommand(program2, deps) {
+  program2.command("version").description("Print the CLI version").action(() => {
+    deps.writers.stdout(`${CLI_VERSION}
 `);
   });
 }
@@ -9169,8 +10699,10 @@ function registerCommands(program2, deps = createCommandDependencies()) {
   registerRoleCommands(program2, deps);
   registerAdminCommands(program2, deps);
   registerHealthCommands(program2, deps);
+  registerLocalPlaneCommands(program2, deps);
   registerCompletionCommands(program2, deps);
   registerManifestCommand(program2, deps);
+  registerVersionCommand(program2, deps);
   return program2;
 }
 async function run(argv = process.argv, deps = {}) {
@@ -9180,7 +10712,7 @@ async function run(argv = process.argv, deps = {}) {
   });
   const program2 = configureProgram(
     attachGlobalOptions(
-      new Command().name("merefi").description("mere.fi command-line interface v2").version(CLI_VERSION)
+      new Command().name("merefi").description("mere.fi command-line interface v2").version(CLI_VERSION, "-v, --version")
     ),
     resolvedDeps
   );

@@ -1,9 +1,11 @@
+import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 export const PRODUCT_APP_KEYS = [
     'business',
     'finance',
+    'dynasite',
     'projects',
     'agent',
     'today',
@@ -19,7 +21,18 @@ export const PRODUCT_APP_KEYS = [
 ];
 export const APP_KEYS = [...PRODUCT_APP_KEYS];
 function repo(mereRoot, name) {
-    return path.join(mereRoot, name);
+    if (name !== 'business') {
+        const prefixed = path.join(mereRoot, `mere-${name}`);
+        if (existsSync(prefixed))
+            return prefixed;
+    }
+    const direct = path.join(mereRoot, name);
+    if (existsSync(direct))
+        return direct;
+    const prefixed = path.join(mereRoot, `mere-${name}`);
+    if (existsSync(prefixed))
+        return prefixed;
+    return direct;
 }
 function adapter(packageRoot, key) {
     return path.join(packageRoot, 'adapters', key, 'run.js');
@@ -59,6 +72,19 @@ export function createRegistry(mereRoot, packageRoot = repo(mereRoot, 'cli')) {
             pathBins: ['merefi'],
             authKind: 'token',
             packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
+        },
+        {
+            key: 'dynasite',
+            label: 'Dynasite',
+            namespace: 'dynasite',
+            aliases: ['dynasite', 'sites', 'mere-dynasite'],
+            repoDir: repo(mereRoot, 'dynasite'),
+            envCliPath: 'MERE_DYNASITE_CLI',
+            bundledCliPath: adapter(packageRoot, 'dynasite'),
+            localCliPath: path.join(repo(mereRoot, 'dynasite'), 'dist', 'run.js'),
+            pathBins: ['mere-dynasite'],
+            authKind: 'mixed',
+            packageScripts: { build: 'build:cli', check: 'check', smoke: 'status' }
         },
         {
             key: 'projects',

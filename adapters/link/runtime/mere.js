@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
-import { asArray, isRecord } from '../domain/guards.js';
+import { asArray, asRecord, isRecord } from '../domain/guards.js';
 import { normalizeWorkspaceSnapshot } from '../config/starter.js';
 import { stringFlag } from './args.js';
 import { parseJson } from './json.js';
@@ -25,6 +25,32 @@ function runMereJson(flags, args, data) {
     }
     return parseJson(result.stdout, `mere ${finalArgs.join(' ')}`);
 }
+function readOptionalProjectString(record, key, label) {
+    const value = record[key];
+    if (value === undefined || value === null)
+        return undefined;
+    if (typeof value !== 'string')
+        throw new Error(`${label}.${key} must be a string.`);
+    return value.trim() ? value.trim() : undefined;
+}
+function decodeMereProjectRecord(value, label) {
+    const record = asRecord(value, label);
+    const attributes = record.attributes;
+    if (attributes !== undefined && attributes !== null && !isRecord(attributes))
+        throw new Error(`${label}.attributes must be an object.`);
+    const id = readOptionalProjectString(record, 'id', label);
+    const title = readOptionalProjectString(record, 'title', label);
+    const client = readOptionalProjectString(record, 'client', label);
+    const dateStart = readOptionalProjectString(record, 'dateStart', label);
+    return {
+        ...record,
+        ...(id ? { id } : {}),
+        ...(title ? { title } : {}),
+        ...(client ? { client } : {}),
+        ...(isRecord(attributes) ? { attributes } : {}),
+        ...(dateStart ? { dateStart } : {})
+    };
+}
 export async function readSnapshot(flags) {
     const filePath = stringFlag(flags, 'snapshot-file');
     if (filePath) {
@@ -45,7 +71,7 @@ export async function readSnapshot(flags) {
 }
 export function listMereProjects(flags, workspace) {
     return asArray(runMereJson(flags, ['projects', 'project', 'list', '--workspace', workspace]), 'Mere Projects project list')
-        .filter(isRecord);
+        .map((project, index) => decodeMereProjectRecord(project, `Mere Projects project list[${index}]`));
 }
 export function writeMereProject(flags, workspace, payload, existingId) {
     const result = existingId

@@ -1,13 +1,1833 @@
 #!/usr/bin/env node
 var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
+import { createHash, randomUUID } from "node:crypto";
+function isRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function readString(record, key, label) {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label}.${key} is required.`);
+  }
+  return value;
+}
+function readPlaneMode(record, key, label) {
+  const value = readString(record, key, label);
+  if (value !== "cloud" && value !== "local") {
+    throw new Error(`${label}.${key} must be cloud or local.`);
+  }
+  return value;
+}
+function stringifyPayload(payload) {
+  const text = JSON.stringify(payload);
+  if (text === void 0) {
+    throw new Error("Transfer payload must be JSON serializable.");
+  }
+  return text;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function hashPlanePayload(payload) {
+  return createHash("sha256").update(stringifyPayload(payload)).digest("hex");
+}
+function createPlaneTransferBundle(input) {
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId: input.appId,
+    workspaceId: input.workspaceId,
+    exportedAt: input.exportedAt ?? isoNow(),
+    source: {
+      data: input.plane.data,
+      ai: input.plane.ai
+    },
+    cloudProjection: input.plane.cloudProjection,
+    payloadSchema: input.payloadSchema,
+    payloadSha256: hashPlanePayload(input.payload),
+    payload: input.payload
+  };
+}
+function isPlaneTransferBundle(value) {
+  return isRecord(value) && value.kind === PLANE_TRANSFER_KIND;
+}
+function parsePlaneTransferBundle(value, options = {}) {
+  if (!isRecord(value) || value.kind !== PLANE_TRANSFER_KIND) {
+    throw new Error("Transfer bundle kind is invalid.");
+  }
+  if (value.version !== PLANE_TRANSFER_VERSION) {
+    throw new Error(`Transfer bundle version must be ${PLANE_TRANSFER_VERSION.toString()}.`);
+  }
+  const appId = readString(value, "appId", "transfer bundle");
+  const workspaceId = readString(value, "workspaceId", "transfer bundle");
+  const exportedAt = readString(value, "exportedAt", "transfer bundle");
+  const payloadSchema = readString(value, "payloadSchema", "transfer bundle");
+  const payloadSha256 = readString(value, "payloadSha256", "transfer bundle");
+  const cloudProjection = value.cloudProjection;
+  if (cloudProjection !== "cloudflare") {
+    throw new Error("Transfer bundle cloudProjection must be cloudflare.");
+  }
+  if (options.appId && appId !== options.appId) {
+    throw new Error(`Transfer bundle appId ${appId} does not match ${options.appId}.`);
+  }
+  if (options.payloadSchema && payloadSchema !== options.payloadSchema) {
+    throw new Error(`Transfer bundle payloadSchema ${payloadSchema} does not match ${options.payloadSchema}.`);
+  }
+  if (!isRecord(value.source)) {
+    throw new Error("Transfer bundle source is required.");
+  }
+  const source = {
+    data: readPlaneMode(value.source, "data", "transfer bundle source"),
+    ai: readPlaneMode(value.source, "ai", "transfer bundle source")
+  };
+  const payload = value.payload;
+  const actualHash = hashPlanePayload(payload);
+  if (actualHash !== payloadSha256) {
+    throw new Error("Transfer bundle payload checksum does not match.");
+  }
+  return {
+    kind: PLANE_TRANSFER_KIND,
+    version: PLANE_TRANSFER_VERSION,
+    appId,
+    workspaceId,
+    exportedAt,
+    source,
+    cloudProjection,
+    payloadSchema,
+    payloadSha256,
+    payload
+  };
+}
+function unwrapPlaneTransferPayload(value, options = {}) {
+  if (!isPlaneTransferBundle(value)) {
+    return { payload: value, bundle: null };
+  }
+  const bundle = parsePlaneTransferBundle(value, options);
+  return {
+    payload: bundle.payload,
+    bundle
+  };
+}
+function createPlaneTransferImportPlan(input) {
+  const payloadSha256 = input.bundle?.payloadSha256 ?? hashPlanePayload(input.payload);
+  const source = input.bundle?.source ?? null;
+  const destination = input.destination;
+  const warnings = [];
+  if (!input.bundle) {
+    warnings.push("Input is a raw app payload without a local-plane transfer envelope.");
+  }
+  if (source && source.data === destination.data && source.ai === destination.ai) {
+    warnings.push("Source and destination planes are identical.");
+  }
+  return {
+    kind: "mere.local-plane.transfer-plan",
+    action: "import",
+    appId: input.bundle?.appId ?? input.appId,
+    workspaceId: input.bundle?.workspaceId ?? input.workspaceId,
+    payloadSchema: input.bundle?.payloadSchema ?? input.payloadSchema,
+    payloadSha256,
+    source,
+    destination,
+    cloudProjection: input.bundle?.cloudProjection ?? "cloudflare",
+    wrapped: Boolean(input.bundle),
+    warnings
+  };
+}
+function recordPlaneTransfer(db, input) {
+  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  db.prepare(
+    `INSERT INTO mere_plane_transfers (
+         id, app_id, workspace_id, direction,
+         source_data_plane, source_ai_plane, destination_data_plane, destination_ai_plane,
+         payload_schema, payload_sha256, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    input.appId,
+    input.workspaceId,
+    input.direction,
+    input.source?.data ?? null,
+    input.source?.ai ?? null,
+    input.destination?.data ?? null,
+    input.destination?.ai ?? null,
+    input.payloadSchema,
+    input.payloadSha256,
+    isoNow()
+  );
+  return id;
+}
+var PLANE_TRANSFER_KIND, PLANE_TRANSFER_VERSION;
+var init_migration = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts"() {
+    PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
+    PLANE_TRANSFER_VERSION = 1;
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
+function envPrefix(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function readTargetValue(input) {
+  const argument = input.argument?.trim();
+  if (argument) return { value: argument, source: "argument" };
+  for (const value of input.appValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "app-env" };
+  }
+  for (const value of input.globalValues) {
+    const trimmed = value?.trim();
+    if (trimmed) return { value: trimmed, source: "global-env" };
+  }
+  return null;
+}
+function parseResponseJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+function resolveCloudProjectionTarget(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix(input.appId);
+  const receiverUrl = readTargetValue({
+    argument: input.receiverUrl,
+    appValues: [
+      env[`${prefix}_PROJECTION_URL`],
+      env[`${prefix}_BUSINESS_PROJECTION_URL`],
+      env[`${prefix}_WEBHOOK_URL`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_URL,
+      env.MERE_CLOUD_PROJECTION_URL,
+      env.MERE_PROJECTION_URL
+    ]
+  });
+  const bearerToken = readTargetValue({
+    argument: input.bearerToken,
+    appValues: [
+      env[`${prefix}_PROJECTION_TOKEN`],
+      env[`${prefix}_BUSINESS_PROJECTION_TOKEN`],
+      env[`${prefix}_WEBHOOK_TOKEN`]
+    ],
+    globalValues: [
+      env.MERE_BUSINESS_PROJECTION_TOKEN,
+      env.MERE_CLOUD_PROJECTION_TOKEN,
+      env.MERE_PROJECTION_TOKEN
+    ]
+  });
+  if (!receiverUrl) {
+    throw new Error(
+      `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
+    );
+  }
+  if (!bearerToken) {
+    throw new Error(
+      `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
+    );
+  }
+  return {
+    receiverUrl: new URL(receiverUrl.value).toString(),
+    bearerToken: bearerToken.value,
+    sources: {
+      receiverUrl: receiverUrl.source,
+      bearerToken: bearerToken.source
+    }
+  };
+}
+async function deliverCloudProjectionEvent(input) {
+  const target = resolveCloudProjectionTarget(input);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const response = await fetchImpl(target.receiverUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${target.bearerToken}`
+    },
+    body: JSON.stringify(input.event)
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new CloudProjectionDeliveryError(
+      `Cloudflare projection receiver returned ${response.status}.`,
+      response.status,
+      responseText
+    );
+  }
+  return {
+    ok: true,
+    status: response.status,
+    receiverUrl: target.receiverUrl,
+    responseText,
+    responseJson: parseResponseJson(responseText)
+  };
+}
+var CloudProjectionDeliveryError;
+var init_projection = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts"() {
+    CloudProjectionDeliveryError = class extends Error {
+      constructor(message, status = null, responseText = null) {
+        super(message);
+        this.status = status;
+        this.responseText = responseText;
+        this.name = "CloudProjectionDeliveryError";
+      }
+      status;
+      responseText;
+    };
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
+var init_config = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts"() {
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { mkdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+function stateHome(env) {
+  const home = env.HOME?.trim() || os.homedir();
+  return env.XDG_DATA_HOME?.trim() || path.join(home, ".local", "share");
+}
+function expandHome(value, env) {
+  const home = env.HOME?.trim() || os.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+function envPrefix2(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function normalizeMode(value, label) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (normalized === "cloud" || normalized === "local") return normalized;
+  throw new Error(`${label} must be cloud or local.`);
+}
+function defaultLocalPlaneDbPath(env = process.env) {
+  return path.join(stateHome(env), "mere", "local-plane.db");
+}
+function resolveLocalPlaneDbPath(input = {}) {
+  const env = input.env ?? process.env;
+  const prefix = input.appId ? envPrefix2(input.appId) : "";
+  const configured = input.localDbPath ?? (prefix ? env[`${prefix}_LOCAL_DB`] : void 0) ?? (prefix ? env[`${prefix}_LOCAL_PLANE_DB`] : void 0) ?? env.MERE_LOCAL_DB ?? env.MERE_LOCAL_PLANE_DB;
+  return path.resolve(configured?.trim() ? expandHome(configured, env) : defaultLocalPlaneDbPath(env));
+}
+function resolvePlaneConfig(input) {
+  const env = input.env ?? process.env;
+  const prefix = envPrefix2(input.appId);
+  const data = normalizeMode(input.data, "data plane") ?? normalizeMode(env[`${prefix}_DATA_PLANE`], `${prefix}_DATA_PLANE`) ?? normalizeMode(env[`${prefix}_STORE`], `${prefix}_STORE`) ?? normalizeMode(env.MERE_DATA_PLANE, "MERE_DATA_PLANE") ?? "cloud";
+  const ai = normalizeMode(input.ai, "AI plane") ?? normalizeMode(env[`${prefix}_AI_PLANE`], `${prefix}_AI_PLANE`) ?? normalizeMode(env[`${prefix}_AI`], `${prefix}_AI`) ?? normalizeMode(env.MERE_AI_PLANE, "MERE_AI_PLANE") ?? "cloud";
+  return {
+    appId: input.appId,
+    data,
+    ai,
+    localDbPath: resolveLocalPlaneDbPath({
+      appId: input.appId,
+      env,
+      localDbPath: input.localDbPath
+    }),
+    cloudProjection: "cloudflare"
+  };
+}
+function isoNow2() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function json(value) {
+  return JSON.stringify(value ?? {});
+}
+async function loadNodeSqlite() {
+  return import(["node", "sqlite"].join(":"));
+}
+async function openLocalPlaneDatabase(config) {
+  await mkdir(path.dirname(config.localDbPath), { recursive: true });
+  const { DatabaseSync } = await loadNodeSqlite();
+  const db = new DatabaseSync(config.localDbPath);
+  ensureLocalPlaneSchema(db);
+  return {
+    dbPath: config.localDbPath,
+    db,
+    close: () => db.close()
+  };
+}
+function ensureLocalPlaneSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS mere_plane_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_apps (
+      app_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_workspaces (
+      workspace_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_app_workspaces (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES mere_plane_workspaces(workspace_id) ON DELETE CASCADE,
+      data_plane TEXT NOT NULL CHECK (data_plane IN ('cloud', 'local')),
+      ai_plane TEXT NOT NULL CHECK (ai_plane IN ('cloud', 'local')),
+      cloud_projection TEXT NOT NULL DEFAULT 'cloudflare',
+      last_imported_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, workspace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfer_schemas (
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      payload_schema TEXT NOT NULL,
+      display_name TEXT,
+      description TEXT,
+      import_supported INTEGER NOT NULL DEFAULT 1 CHECK (import_supported IN (0, 1)),
+      export_supported INTEGER NOT NULL DEFAULT 1 CHECK (export_supported IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (app_id, payload_schema)
+    );
+
+    CREATE TABLE IF NOT EXISTS mere_plane_ai_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      workspace_id TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('cloud', 'local')),
+      model TEXT,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_text TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_ai_jobs_subject
+      ON mere_plane_ai_jobs(app_id, workspace_id, subject_type, subject_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_transfers (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('export', 'import')),
+      source_data_plane TEXT CHECK (source_data_plane IN ('cloud', 'local')),
+      source_ai_plane TEXT CHECK (source_ai_plane IN ('cloud', 'local')),
+      destination_data_plane TEXT CHECK (destination_data_plane IN ('cloud', 'local')),
+      destination_ai_plane TEXT CHECK (destination_ai_plane IN ('cloud', 'local')),
+      payload_schema TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
+      ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
+  `);
+}
+function registerPlaneApp(db, appId, displayName) {
+  const now = isoNow2();
+  db.prepare(
+    `INSERT INTO mere_plane_apps (app_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         updated_at = excluded.updated_at`
+  ).run(appId, displayName ?? appId, now, now);
+}
+function registerPlaneTransferSchema(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_transfer_schemas (
+         app_id, payload_schema, display_name, description,
+         import_supported, export_supported, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, payload_schema) DO UPDATE SET
+         display_name = excluded.display_name,
+         description = excluded.description,
+         import_supported = excluded.import_supported,
+         export_supported = excluded.export_supported,
+         updated_at = excluded.updated_at`
+  ).run(
+    appId,
+    input.payloadSchema,
+    input.displayName ?? input.payloadSchema,
+    input.description ?? null,
+    input.importSupported === false ? 0 : 1,
+    input.exportSupported === false ? 0 : 1,
+    now,
+    now
+  );
+}
+function upsertPlaneWorkspace(db, appId, input) {
+  const now = isoNow2();
+  registerPlaneApp(db, appId);
+  db.prepare(
+    `INSERT INTO mere_plane_workspaces (workspace_id, slug, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
+         slug = excluded.slug,
+         name = excluded.name,
+         updated_at = excluded.updated_at`
+  ).run(input.workspaceId, input.slug, input.name ?? null, now, now);
+  db.prepare(
+    `INSERT INTO mere_plane_app_workspaces (
+         app_id, workspace_id, data_plane, ai_plane, cloud_projection, last_imported_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, 'cloudflare', ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id) DO UPDATE SET
+         data_plane = excluded.data_plane,
+         ai_plane = excluded.ai_plane,
+         cloud_projection = excluded.cloud_projection,
+         last_imported_at = excluded.last_imported_at,
+         updated_at = excluded.updated_at`
+  ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function countRows(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function appFilterClause(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function getLocalPlaneInventory(db, options = {}) {
+  ensureLocalPlaneSchema(db);
+  const appParams = options.appId ? [options.appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         COUNT(DISTINCT s.payload_schema) AS transfer_schema_count,
+         COUNT(DISTINCT t.id) AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id
+       LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id
+       ${appFilterClause(options.appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfer_schemas AS s
+       ${appFilterClause(options.appId, "s")}
+       ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams);
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause(options.appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = db.prepare(
+    `SELECT *
+       FROM mere_plane_transfers AS t
+       ${appFilterClause(options.appId, "t")}
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT ?`
+  ).all(...appParams, transferLimit);
+  const scopedCount = (table) => options.appId ? countRows(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, options.appId) : countRows(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: options.appId ? apps.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: options.appId ? transferSchemas.length : countRows(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas"),
+      transfers: scopedCount("mere_plane_transfers"),
+      aiJobs: scopedCount("mere_plane_ai_jobs")
+    }
+  };
+}
+var init_src = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts"() {
+    init_migration();
+    init_projection();
+    init_config();
+  }
+});
+
+// packages/core/email-product.ts
+var EMAIL_PRODUCT_EVENT_VERSION, EMAIL_WORKSPACE_BASE_DOMAINS, DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN, EMAIL_BRIDGE_STATUSES, EMAIL_BRIDGE_HEALTH_STATES, EMAIL_WORKSPACE_LIFECYCLE_STATES;
+var init_email_product = __esm({
+  "packages/core/email-product.ts"() {
+    "use strict";
+    EMAIL_PRODUCT_EVENT_VERSION = "2026-03-21";
+    EMAIL_WORKSPACE_BASE_DOMAINS = [
+      "meresmb.com",
+      "mere.email",
+      "bizpei.com",
+      "mailpei.com",
+      "peihub.com"
+    ];
+    DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN = EMAIL_WORKSPACE_BASE_DOMAINS[0];
+    EMAIL_BRIDGE_STATUSES = ["connected", "disconnected"];
+    EMAIL_BRIDGE_HEALTH_STATES = ["healthy", "degraded", "disconnected"];
+    EMAIL_WORKSPACE_LIFECYCLE_STATES = [
+      "trialing",
+      "active",
+      "grace",
+      "deleted"
+    ];
+  }
+});
+
+// packages/core/json.ts
+function defaultInvalidBodyMessage(options) {
+  return options.invalidBodyMessage ?? "Invalid JSON body";
+}
+function parseJsonText(text, options = {}) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new JsonBoundaryError(options.invalidJsonMessage ?? "Invalid JSON", options.status ?? 400);
+  }
+}
+function parseJsonWithSchema(schema, value, options = {}) {
+  const result = schema.safeParse(value);
+  if (result.success) {
+    return result.data;
+  }
+  throw new JsonBoundaryError(
+    result.error.issues[0]?.message ?? defaultInvalidBodyMessage(options),
+    options.status ?? 400
+  );
+}
+var JsonBoundaryError;
+var init_json = __esm({
+  "packages/core/json.ts"() {
+    "use strict";
+    JsonBoundaryError = class extends Error {
+      status;
+      constructor(message, status = 400) {
+        super(message);
+        this.name = "JsonBoundaryError";
+        this.status = status;
+      }
+    };
+  }
+});
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/curator.ts
+function estimateTokens(text) {
+  if (!text) return 0;
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+function stripQuotedReplies(text) {
+  if (!text) return text;
+  let out = text;
+  const onWroteRe = /^[ \t]*On[ \t][^\n]{0,400}\bwrote:\s*$/m;
+  const onWrote = onWroteRe.exec(out);
+  if (onWrote) out = out.slice(0, onWrote.index).trimEnd();
+  const origRe = /^[-=]{3,}\s*(Original Message|Forwarded message)\s*[-=]{3,}\s*$/im;
+  const orig = origRe.exec(out);
+  if (orig) out = out.slice(0, orig.index).trimEnd();
+  const sigRe = /^-- ?\s*$/m;
+  const sig = sigRe.exec(out);
+  if (sig) out = out.slice(0, sig.index).trimEnd();
+  const kept = out.split("\n").filter((line) => !/^\s*>/.test(line));
+  return kept.join("\n").trim();
+}
+function stripImageReferences(text) {
+  if (!text) return text;
+  return text.replace(/\[image:[^\]]*\]/gi, "").replace(/\[cid:[^\]]*\]/gi, "").replace(/\[Inline image[^\]]*\]/gi, "");
+}
+function stripUrlBoilerplate(text) {
+  if (!text) return text;
+  return text.replace(/\s+<(?:https?|ftp):\/\/?[^>\s]*>/gi, "").replace(/\s+<mailto:[^>\s]*>/gi, "");
+}
+function normalizeWhitespace(text) {
+  if (!text) return "";
+  return text.split("\n").map((line) => line.replace(/[ \t]+$/g, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function clipToTokens(text, maxTokens) {
+  if (!text) return "";
+  if (maxTokens <= 0) return "";
+  if (estimateTokens(text) <= maxTokens) return text;
+  const targetChars = Math.max(20, maxTokens * 4);
+  if (text.length <= targetChars) return text;
+  let cut = text.lastIndexOf(" ", targetChars);
+  if (cut < targetChars / 2) cut = targetChars;
+  return `${text.slice(0, cut).trimEnd()} \u2026`;
+}
+function curateText(text, options = {}) {
+  if (!text) return "";
+  const stripQuoted = options.stripQuoted ?? true;
+  const stripImages = options.stripImages ?? true;
+  const stripUrls = options.stripUrls ?? true;
+  const normalizeWs = options.normalizeWs ?? true;
+  let out = text;
+  if (stripImages) out = stripImageReferences(out);
+  if (stripQuoted) out = stripQuotedReplies(out);
+  if (stripUrls) out = stripUrlBoilerplate(out);
+  if (normalizeWs) out = normalizeWhitespace(out);
+  if (options.maxTokens != null) out = clipToTokens(out, options.maxTokens);
+  return out;
+}
+function curateEmailThread(thread, options = {}) {
+  const maxMessages = options.maxMessages ?? 12;
+  const maxTokens = options.maxTokens ?? 1500;
+  const perMessageCap = options.perMessageMaxTokens ?? Math.max(120, Math.floor(maxTokens / 3));
+  const headerStyle = options.headerStyle ?? "minimal";
+  const stripOpts = {
+    stripQuoted: options.stripQuoted,
+    stripImages: options.stripImages,
+    stripUrls: options.stripUrls,
+    normalizeWs: options.normalizeWs
+  };
+  const subjectLine = thread.subject ? `Subject: ${thread.subject}` : "Subject: (no subject)";
+  const headerOverhead = estimateTokens(subjectLine) + 6;
+  let remaining = Math.max(0, maxTokens - headerOverhead);
+  const candidates = thread.messages.slice(-maxMessages);
+  let truncated = candidates.length < thread.messages.length;
+  const segments = [];
+  let fitted = 0;
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    const message = candidates[i];
+    if (!message) continue;
+    const cleanedBody = curateText(message.bodyText ?? "", {
+      ...stripOpts,
+      maxTokens: perMessageCap
+    });
+    const head = headerStyle === "full" ? [
+      `[${(message.direction ?? "").toUpperCase()}] ${message.sentAt ?? ""}`,
+      `From: ${formatFrom2(message)}`,
+      `To: ${(message.toAddresses ?? []).join(", ")}`,
+      message.subject ? `Subject: ${message.subject}` : null
+    ].filter(Boolean).join("\n") : `[${(message.direction ?? "").toUpperCase()}] ${message.sentAt ?? ""} \u2014 ${formatFrom2(message)}`;
+    const block = cleanedBody ? `${head}
+${cleanedBody}` : head;
+    const blockTokens = estimateTokens(block);
+    if (blockTokens > remaining && segments.length > 0) {
+      truncated = true;
+      break;
+    }
+    segments.unshift(block);
+    remaining -= blockTokens;
+    fitted += 1;
+  }
+  const prompt = [subjectLine, "", segments.join("\n\n---\n\n")].join("\n");
+  return {
+    prompt,
+    fittedMessages: fitted,
+    estimatedTokens: estimateTokens(prompt),
+    truncated
+  };
+}
+function formatFrom2(message) {
+  if (message.fromName && message.fromAddress) {
+    return `${message.fromName} <${message.fromAddress}>`;
+  }
+  return message.fromAddress ?? message.fromName ?? "(unknown sender)";
+}
+var init_curator = __esm({
+  "node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/curator.ts"() {
+  }
+});
+
+// cli/local-store.ts
+var local_store_exports = {};
+__export(local_store_exports, {
+  LocalEmailStore: () => LocalEmailStore
+});
+import { randomUUID as randomUUID2 } from "node:crypto";
+function parseStringArray(value) {
+  const parsed = parseJsonText(value);
+  return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
+}
+function bool(value) {
+  return value === 1;
+}
+function int(value) {
+  return value ? 1 : 0;
+}
+function likeValue(value) {
+  return `%${value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+}
+function compactSnippet(value, max = 240) {
+  const compacted = (value ?? "").replace(/\s+/g, " ").trim();
+  if (compacted.length <= max) return compacted;
+  return `${compacted.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
+}
+function makeId(prefix) {
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
+}
+function mapMailbox(row) {
+  return {
+    id: row.id,
+    address: row.address,
+    displayName: row.display_name,
+    type: row.type,
+    visibility: row.visibility,
+    ownerUserId: row.owner_user_id,
+    ownerEmail: row.owner_email
+  };
+}
+function mapThread(row) {
+  return {
+    id: row.id,
+    mailboxId: row.mailbox_id,
+    subject: row.subject,
+    participants: parseStringArray(row.participants_json),
+    lastMessageAt: row.last_message_at,
+    messageCount: row.message_count,
+    isArchived: bool(row.is_archived),
+    isStarred: bool(row.is_starred),
+    isRead: bool(row.is_read),
+    labels: parseStringArray(row.labels_json),
+    snippet: row.snippet,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+function mapAttachment(row) {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    filename: row.filename,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    r2Key: row.r2_key,
+    createdAt: row.created_at
+  };
+}
+function mapExportAttachment(row) {
+  return {
+    ...mapAttachment(row),
+    contentBase64: row.content_base64
+  };
+}
+function mapMessage(row, attachments) {
+  return {
+    id: row.id,
+    threadId: row.thread_id,
+    mailboxId: row.mailbox_id,
+    messageIdHeader: row.message_id_header,
+    inReplyTo: row.in_reply_to,
+    referencesHeader: row.references_header,
+    fromAddress: row.from_address,
+    fromName: row.from_name,
+    toAddresses: parseStringArray(row.to_addresses_json),
+    ccAddresses: parseStringArray(row.cc_addresses_json),
+    bccAddresses: parseStringArray(row.bcc_addresses_json),
+    subject: row.subject,
+    bodyText: row.body_text,
+    bodyHtml: row.body_html,
+    bodyR2Key: row.body_r2_key,
+    direction: row.direction,
+    isRead: bool(row.is_read),
+    isStarred: bool(row.is_starred),
+    sentAt: row.sent_at,
+    providerMessageId: row.provider_message_id,
+    attachmentCount: row.attachment_count,
+    createdAt: row.created_at,
+    attachments
+  };
+}
+function mapPublication(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    mailboxId: row.mailbox_id,
+    threadId: row.thread_id,
+    messageId: row.message_id,
+    scope: row.scope,
+    includeFutureMessages: bool(row.include_future_messages),
+    publishedByUserId: row.published_by_user_id,
+    publishedByEmail: row.published_by_email,
+    publishedAt: row.published_at,
+    revokedAt: row.revoked_at
+  };
+}
+function buildSummaryPrompt(state) {
+  const curated = curateEmailThread(
+    {
+      subject: state.thread.subject,
+      messages: state.messages.map((message) => ({
+        direction: message.direction,
+        sentAt: message.sentAt,
+        fromName: message.fromName,
+        fromAddress: message.fromAddress,
+        toAddresses: message.toAddresses,
+        subject: message.subject,
+        bodyText: message.bodyText
+      }))
+    },
+    { maxTokens: 1500, maxMessages: 12, headerStyle: "minimal" }
+  );
+  return [
+    "Summarize this email thread for the mailbox owner.",
+    "Use concise bullets. Include open questions, promised follow-ups, deadlines, and who owes the next action.",
+    "Do not invent facts that are not present in the messages.",
+    "",
+    curated.prompt
+  ].join("\n");
+}
+var EMAIL_WORKSPACE_PAYLOAD_SCHEMA, LocalEmailStore;
+var init_local_store = __esm({
+  "cli/local-store.ts"() {
+    "use strict";
+    init_src();
+    init_curator();
+    init_email_product();
+    init_json();
+    EMAIL_WORKSPACE_PAYLOAD_SCHEMA = "mere.email.workspace-import.v1";
+    LocalEmailStore = class _LocalEmailStore {
+      constructor(config, dbPath, db) {
+        this.config = config;
+        this.dbPath = dbPath;
+        this.db = db;
+      }
+      config;
+      dbPath;
+      db;
+      static async open(config) {
+        const plane = await openLocalPlaneDatabase(config);
+        registerPlaneApp(plane.db, config.appId, "mere.email");
+        registerPlaneTransferSchema(plane.db, config.appId, {
+          payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA,
+          displayName: "Email workspace transfer",
+          description: "Portable mailbox, thread, message, and attachment metadata for local/cloud migration."
+        });
+        const store = new _LocalEmailStore(config, plane.dbPath, plane.db);
+        store.ensureEmailSchema();
+        return store;
+      }
+      close() {
+        this.db.close();
+      }
+      info() {
+        this.ensureEmailSchema();
+        const count = (sql) => Number(this.db.prepare(sql).get().count);
+        const inventory = getLocalPlaneInventory(this.db);
+        return {
+          ok: true,
+          store: "local",
+          ai: this.config.ai,
+          cloudProjection: this.config.cloudProjection,
+          dbPath: this.dbPath,
+          workspaceCount: count("SELECT COUNT(*) AS count FROM email_local_workspaces"),
+          planeAppCount: inventory.counts.apps,
+          planeWorkspaceCount: inventory.counts.workspaces,
+          transferCount: inventory.counts.transfers,
+          aiJobCount: inventory.counts.aiJobs,
+          mailboxCount: count("SELECT COUNT(*) AS count FROM email_local_mailboxes"),
+          threadCount: count("SELECT COUNT(*) AS count FROM email_local_threads"),
+          messageCount: count("SELECT COUNT(*) AS count FROM email_local_messages")
+        };
+      }
+      listMailboxes(workspaceId) {
+        this.ensureEmailSchema();
+        const rows = this.db.prepare("SELECT * FROM email_local_mailboxes WHERE workspace_id = ? ORDER BY address ASC").all(workspaceId);
+        return rows.map(mapMailbox);
+      }
+      exportWorkspace(workspaceId) {
+        this.ensureEmailSchema();
+        const workspace = this.db.prepare("SELECT * FROM email_local_workspaces WHERE workspace_id = ?").get(workspaceId);
+        if (!workspace) {
+          throw new Error(`Local workspace not found: ${workspaceId}`);
+        }
+        const mailboxes = this.db.prepare("SELECT * FROM email_local_mailboxes WHERE workspace_id = ? ORDER BY address ASC").all(workspaceId).map((mailbox) => ({
+          id: mailbox.id,
+          address: mailbox.address,
+          displayName: mailbox.display_name,
+          type: mailbox.type,
+          visibility: mailbox.visibility,
+          ownerUserId: mailbox.owner_user_id,
+          ownerEmail: mailbox.owner_email
+        }));
+        const threadRows = this.db.prepare("SELECT * FROM email_local_threads WHERE workspace_id = ? ORDER BY last_message_at DESC").all(workspaceId);
+        const threads = threadRows.map((threadRow) => {
+          const messages = this.db.prepare("SELECT * FROM email_local_messages WHERE workspace_id = ? AND thread_id = ? ORDER BY sent_at ASC").all(workspaceId, threadRow.id).map(
+            (message) => mapMessage(message, this.getExportAttachments(workspaceId, message.id))
+          );
+          return {
+            thread: mapThread(threadRow),
+            messages
+          };
+        });
+        const payload = {
+          zerosmbTenantId: workspace.workspace_id,
+          slug: workspace.slug,
+          baseDomain: workspace.base_domain ?? DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN,
+          mailboxes,
+          threads
+        };
+        recordPlaneTransfer(this.db, {
+          appId: this.config.appId,
+          workspaceId,
+          direction: "export",
+          source: { data: this.config.data, ai: this.config.ai },
+          payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA,
+          payloadSha256: hashPlanePayload(payload)
+        });
+        return payload;
+      }
+      importWorkspace(payload, transfer = {}) {
+        this.ensureEmailSchema();
+        const now = isoNow2();
+        const workspaceName = payload.slug;
+        this.db.exec("BEGIN");
+        try {
+          upsertPlaneWorkspace(this.db, this.config.appId, {
+            workspaceId: payload.zerosmbTenantId,
+            slug: payload.slug,
+            name: workspaceName,
+            dataPlane: this.config.data,
+            aiPlane: this.config.ai
+          });
+          this.db.prepare(
+            `INSERT INTO email_local_workspaces (workspace_id, slug, base_domain, imported_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(workspace_id) DO UPDATE SET
+             slug = excluded.slug,
+             base_domain = excluded.base_domain,
+             imported_at = excluded.imported_at,
+             updated_at = excluded.updated_at`
+          ).run(payload.zerosmbTenantId, payload.slug, payload.baseDomain ?? null, now, now);
+          const upsertMailbox = this.db.prepare(
+            `INSERT INTO email_local_mailboxes (
+           id, workspace_id, address, display_name, type, visibility, owner_user_id, owner_email, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           address = excluded.address,
+           display_name = excluded.display_name,
+           type = excluded.type,
+           visibility = excluded.visibility,
+           owner_user_id = excluded.owner_user_id,
+           owner_email = excluded.owner_email,
+           updated_at = excluded.updated_at`
+          );
+          for (const mailbox of payload.mailboxes) {
+            upsertMailbox.run(
+              mailbox.id,
+              payload.zerosmbTenantId,
+              mailbox.address,
+              mailbox.displayName,
+              mailbox.type,
+              mailbox.visibility ?? "shared",
+              mailbox.ownerUserId ?? null,
+              mailbox.ownerEmail ?? null,
+              now
+            );
+          }
+          const upsertThread = this.db.prepare(
+            `INSERT INTO email_local_threads (
+           id, workspace_id, mailbox_id, subject, participants_json, last_message_at, message_count,
+           is_archived, is_starred, is_read, labels_json, snippet, created_at, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           mailbox_id = excluded.mailbox_id,
+           subject = excluded.subject,
+           participants_json = excluded.participants_json,
+           last_message_at = excluded.last_message_at,
+           message_count = excluded.message_count,
+           is_archived = excluded.is_archived,
+           is_starred = excluded.is_starred,
+           is_read = excluded.is_read,
+           labels_json = excluded.labels_json,
+           snippet = excluded.snippet,
+           updated_at = excluded.updated_at`
+          );
+          const upsertMessage = this.db.prepare(
+            `INSERT INTO email_local_messages (
+           id, workspace_id, thread_id, mailbox_id, message_id_header, in_reply_to, references_header,
+           from_address, from_name, to_addresses_json, cc_addresses_json, bcc_addresses_json, subject,
+           body_text, body_html, body_r2_key, direction, is_read, is_starred, sent_at,
+           provider_message_id, attachment_count, created_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           thread_id = excluded.thread_id,
+           mailbox_id = excluded.mailbox_id,
+           message_id_header = excluded.message_id_header,
+           in_reply_to = excluded.in_reply_to,
+           references_header = excluded.references_header,
+           from_address = excluded.from_address,
+           from_name = excluded.from_name,
+           to_addresses_json = excluded.to_addresses_json,
+           cc_addresses_json = excluded.cc_addresses_json,
+           bcc_addresses_json = excluded.bcc_addresses_json,
+           subject = excluded.subject,
+           body_text = excluded.body_text,
+           body_html = excluded.body_html,
+           body_r2_key = excluded.body_r2_key,
+           direction = excluded.direction,
+           is_read = excluded.is_read,
+           is_starred = excluded.is_starred,
+           sent_at = excluded.sent_at,
+           provider_message_id = excluded.provider_message_id,
+           attachment_count = excluded.attachment_count`
+          );
+          const upsertAttachment = this.db.prepare(
+            `INSERT INTO email_local_attachments (
+           id, workspace_id, message_id, filename, mime_type, size_bytes, r2_key, content_base64, created_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           message_id = excluded.message_id,
+           filename = excluded.filename,
+           mime_type = excluded.mime_type,
+           size_bytes = excluded.size_bytes,
+           r2_key = excluded.r2_key,
+           content_base64 = excluded.content_base64,
+           created_at = excluded.created_at`
+          );
+          let messageCount = 0;
+          for (const item of payload.threads) {
+            upsertThread.run(
+              item.thread.id,
+              payload.zerosmbTenantId,
+              item.thread.mailboxId,
+              item.thread.subject,
+              json(item.thread.participants),
+              item.thread.lastMessageAt,
+              item.thread.messageCount,
+              int(item.thread.isArchived),
+              int(item.thread.isStarred),
+              int(item.thread.isRead),
+              json(item.thread.labels),
+              item.thread.snippet,
+              item.thread.createdAt,
+              item.thread.updatedAt
+            );
+            for (const message of item.messages) {
+              messageCount += 1;
+              upsertMessage.run(
+                message.id,
+                payload.zerosmbTenantId,
+                message.threadId,
+                message.mailboxId,
+                message.messageIdHeader,
+                message.inReplyTo,
+                message.referencesHeader,
+                message.fromAddress,
+                message.fromName,
+                json(message.toAddresses),
+                json(message.ccAddresses),
+                json(message.bccAddresses),
+                message.subject,
+                message.bodyText,
+                message.bodyHtml,
+                message.bodyR2Key,
+                message.direction,
+                int(message.isRead),
+                int(message.isStarred),
+                message.sentAt,
+                message.providerMessageId,
+                message.attachmentCount,
+                message.createdAt
+              );
+              this.db.prepare("DELETE FROM email_local_attachments WHERE workspace_id = ? AND message_id = ?").run(payload.zerosmbTenantId, message.id);
+              for (const attachment of message.attachments) {
+                upsertAttachment.run(
+                  attachment.id,
+                  payload.zerosmbTenantId,
+                  message.id,
+                  attachment.filename,
+                  attachment.mimeType,
+                  attachment.sizeBytes,
+                  attachment.r2Key,
+                  attachment.contentBase64 ?? null,
+                  attachment.createdAt
+                );
+              }
+            }
+          }
+          recordPlaneTransfer(this.db, {
+            appId: this.config.appId,
+            workspaceId: payload.zerosmbTenantId,
+            direction: "import",
+            source: transfer.source,
+            destination: { data: this.config.data, ai: this.config.ai },
+            payloadSchema: transfer.payloadSchema ?? EMAIL_WORKSPACE_PAYLOAD_SCHEMA,
+            payloadSha256: transfer.payloadSha256 ?? hashPlanePayload(payload)
+          });
+          this.db.exec("COMMIT");
+          return {
+            ok: true,
+            store: "local",
+            workspaceId: payload.zerosmbTenantId,
+            slug: payload.slug,
+            mailboxCount: payload.mailboxes.length,
+            threadCount: payload.threads.length,
+            messageCount
+          };
+        } catch (error) {
+          this.db.exec("ROLLBACK");
+          throw error;
+        }
+      }
+      search(workspaceId, query, limit = 10) {
+        this.ensureEmailSchema();
+        const trimmed = query.trim();
+        if (!trimmed) return [];
+        const needle = likeValue(trimmed.toLowerCase());
+        const threadRows = this.db.prepare(
+          `SELECT DISTINCT t.*
+         FROM email_local_threads AS t
+         LEFT JOIN email_local_messages AS m
+           ON m.thread_id = t.id AND m.workspace_id = t.workspace_id
+         WHERE t.workspace_id = ?
+           AND (
+             LOWER(t.subject) LIKE ? ESCAPE '\\'
+             OR LOWER(t.snippet) LIKE ? ESCAPE '\\'
+             OR LOWER(m.subject) LIKE ? ESCAPE '\\'
+             OR LOWER(COALESCE(m.body_text, '')) LIKE ? ESCAPE '\\'
+             OR LOWER(m.from_address) LIKE ? ESCAPE '\\'
+             OR LOWER(m.to_addresses_json) LIKE ? ESCAPE '\\'
+           )
+         ORDER BY t.last_message_at DESC
+         LIMIT ?`
+        ).all(workspaceId, needle, needle, needle, needle, needle, needle, limit);
+        return threadRows.map((threadRow) => {
+          const matches = this.db.prepare(
+            `SELECT *
+           FROM email_local_messages
+           WHERE workspace_id = ?
+             AND thread_id = ?
+             AND (
+               LOWER(subject) LIKE ? ESCAPE '\\'
+               OR LOWER(COALESCE(body_text, '')) LIKE ? ESCAPE '\\'
+               OR LOWER(from_address) LIKE ? ESCAPE '\\'
+               OR LOWER(to_addresses_json) LIKE ? ESCAPE '\\'
+             )
+           ORDER BY sent_at DESC
+           LIMIT 3`
+          ).all(workspaceId, threadRow.id, needle, needle, needle, needle);
+          return {
+            thread: mapThread(threadRow),
+            mailboxId: threadRow.mailbox_id,
+            matches: matches.map((message) => ({
+              messageId: message.id,
+              fromAddress: message.from_address,
+              subject: message.subject,
+              sentAt: message.sent_at,
+              snippet: compactSnippet(message.body_text ?? message.subject)
+            }))
+          };
+        });
+      }
+      listLatestThreads(workspaceId, options = {}) {
+        this.ensureEmailSchema();
+        const limit = options.limit ?? 1;
+        const rows = options.mailboxId ? this.db.prepare(
+          `SELECT *
+             FROM email_local_threads
+             WHERE workspace_id = ?
+               AND mailbox_id = ?
+               AND (? = 1 OR is_archived = 0)
+             ORDER BY last_message_at DESC
+             LIMIT ?`
+        ).all(workspaceId, options.mailboxId, options.includeArchived ? 1 : 0, limit) : this.db.prepare(
+          `SELECT *
+             FROM email_local_threads
+             WHERE workspace_id = ?
+               AND (? = 1 OR is_archived = 0)
+             ORDER BY last_message_at DESC
+             LIMIT ?`
+        ).all(workspaceId, options.includeArchived ? 1 : 0, limit);
+        return rows.map((row) => this.getThread(workspaceId, row.id));
+      }
+      listThreads(workspaceId, options = {}) {
+        this.ensureEmailSchema();
+        const limit = options.limit ?? 25;
+        const offset = options.offset ?? 0;
+        const rows = options.mailboxId ? this.db.prepare(
+          `SELECT *
+             FROM email_local_threads
+             WHERE workspace_id = ?
+               AND mailbox_id = ?
+               AND (? = 1 OR is_archived = 0)
+             ORDER BY last_message_at DESC
+             LIMIT ? OFFSET ?`
+        ).all(workspaceId, options.mailboxId, options.includeArchived ? 1 : 0, limit, offset) : this.db.prepare(
+          `SELECT *
+             FROM email_local_threads
+             WHERE workspace_id = ?
+               AND (? = 1 OR is_archived = 0)
+             ORDER BY last_message_at DESC
+             LIMIT ? OFFSET ?`
+        ).all(workspaceId, options.includeArchived ? 1 : 0, limit, offset);
+        return rows.map(mapThread);
+      }
+      getThread(workspaceId, threadId) {
+        this.ensureEmailSchema();
+        const thread = this.db.prepare("SELECT * FROM email_local_threads WHERE workspace_id = ? AND id = ?").get(workspaceId, threadId);
+        if (!thread) {
+          throw new Error(`Local thread not found: ${threadId}`);
+        }
+        const mailbox = this.db.prepare("SELECT * FROM email_local_mailboxes WHERE workspace_id = ? AND id = ?").get(workspaceId, thread.mailbox_id);
+        if (!mailbox) {
+          throw new Error(`Local mailbox not found: ${thread.mailbox_id}`);
+        }
+        const messages = this.db.prepare("SELECT * FROM email_local_messages WHERE workspace_id = ? AND thread_id = ? ORDER BY sent_at ASC").all(workspaceId, threadId);
+        return {
+          mailbox: mapMailbox(mailbox),
+          thread: mapThread(thread),
+          messages: messages.map((message) => mapMessage(message, this.getAttachments(workspaceId, message.id)))
+        };
+      }
+      async summarizeThread(workspaceId, threadId, generate) {
+        if (this.config.ai !== "local") {
+          throw new Error("Local thread summaries require --ai local.");
+        }
+        const state = this.getThread(workspaceId, threadId);
+        const prompt = buildSummaryPrompt(state);
+        const jobId = makeId("aij");
+        const now = isoNow2();
+        this.db.prepare(
+          `INSERT INTO mere_plane_ai_jobs (
+           id, app_id, workspace_id, subject_type, subject_id, mode, model, status, input_json, created_at, updated_at
+         )
+         VALUES (?, ?, ?, 'email_thread', ?, 'local', NULL, 'running', ?, ?, ?)`
+        ).run(jobId, this.config.appId, workspaceId, threadId, json({ prompt }), now, now);
+        try {
+          const output = await generate(prompt);
+          this.db.prepare(
+            `UPDATE mere_plane_ai_jobs
+           SET status = 'done', model = ?, output_text = ?, updated_at = ?
+           WHERE id = ?`
+          ).run(output.model, output.text, isoNow2(), jobId);
+          return {
+            ok: true,
+            store: "local",
+            ai: "local",
+            model: output.model,
+            jobId,
+            threadId,
+            summary: output.text
+          };
+        } catch (error) {
+          this.db.prepare(
+            `UPDATE mere_plane_ai_jobs
+           SET status = 'failed', error = ?, updated_at = ?
+           WHERE id = ?`
+          ).run(error instanceof Error ? error.message : String(error), isoNow2(), jobId);
+          throw error;
+        }
+      }
+      getPublication(workspaceId, publicationId) {
+        this.ensureEmailSchema();
+        const row = this.db.prepare("SELECT * FROM email_local_publications WHERE workspace_id = ? AND id = ?").get(workspaceId, publicationId);
+        return row ? mapPublication(row) : null;
+      }
+      findPublicationForSelection(workspaceId, selection) {
+        this.ensureEmailSchema();
+        const messageId = selection.messageId ?? null;
+        const scope = messageId ? "message" : "thread";
+        const row = this.db.prepare(
+          `SELECT *
+         FROM email_local_publications
+         WHERE workspace_id = ?
+           AND thread_id = ?
+           AND scope = ?
+           AND ((? IS NULL AND message_id IS NULL) OR message_id = ?)
+           AND include_future_messages = ?
+         ORDER BY
+           CASE WHEN revoked_at IS NULL THEN 0 ELSE 1 END ASC,
+           updated_at DESC
+         LIMIT 1`
+        ).get(
+          workspaceId,
+          selection.threadId,
+          scope,
+          messageId,
+          messageId,
+          int(selection.includeFutureMessages)
+        );
+        return row ? mapPublication(row) : null;
+      }
+      recordPublicationProjection(workspaceId, publication) {
+        this.ensureEmailSchema();
+        const now = isoNow2();
+        this.db.prepare(
+          `INSERT INTO email_local_publications (
+           id, workspace_id, mailbox_id, thread_id, message_id, scope, include_future_messages,
+           published_by_user_id, published_by_email, published_at, revoked_at, last_projected_at, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           mailbox_id = excluded.mailbox_id,
+           thread_id = excluded.thread_id,
+           message_id = excluded.message_id,
+           scope = excluded.scope,
+           include_future_messages = excluded.include_future_messages,
+           published_by_user_id = excluded.published_by_user_id,
+           published_by_email = excluded.published_by_email,
+           published_at = excluded.published_at,
+           revoked_at = excluded.revoked_at,
+           last_projected_at = excluded.last_projected_at,
+           updated_at = excluded.updated_at`
+        ).run(
+          publication.id,
+          workspaceId,
+          publication.mailboxId,
+          publication.threadId,
+          publication.messageId ?? null,
+          publication.scope,
+          int(publication.includeFutureMessages),
+          publication.publishedByUserId,
+          publication.publishedByEmail ?? null,
+          publication.publishedAt,
+          publication.revokedAt ?? null,
+          now,
+          now
+        );
+      }
+      getAttachments(workspaceId, messageId) {
+        return this.db.prepare("SELECT * FROM email_local_attachments WHERE workspace_id = ? AND message_id = ? ORDER BY created_at ASC").all(workspaceId, messageId).map(mapAttachment);
+      }
+      getExportAttachments(workspaceId, messageId) {
+        return this.db.prepare("SELECT * FROM email_local_attachments WHERE workspace_id = ? AND message_id = ? ORDER BY created_at ASC").all(workspaceId, messageId).map(mapExportAttachment);
+      }
+      ensureEmailSchema() {
+        this.db.exec(`
+      CREATE TABLE IF NOT EXISTS email_local_workspaces (
+        workspace_id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL,
+        base_domain TEXT,
+        imported_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS email_local_mailboxes (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        address TEXT NOT NULL,
+        display_name TEXT,
+        type TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT 'shared',
+        owner_user_id TEXT,
+        owner_email TEXT,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS email_local_threads (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        mailbox_id TEXT NOT NULL,
+        subject TEXT NOT NULL DEFAULT '',
+        participants_json TEXT NOT NULL DEFAULT '[]',
+        last_message_at TEXT NOT NULL,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        is_starred INTEGER NOT NULL DEFAULT 0,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        labels_json TEXT NOT NULL DEFAULT '[]',
+        snippet TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS email_local_messages (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        mailbox_id TEXT NOT NULL,
+        message_id_header TEXT,
+        in_reply_to TEXT,
+        references_header TEXT,
+        from_address TEXT NOT NULL,
+        from_name TEXT,
+        to_addresses_json TEXT NOT NULL DEFAULT '[]',
+        cc_addresses_json TEXT NOT NULL DEFAULT '[]',
+        bcc_addresses_json TEXT NOT NULL DEFAULT '[]',
+        subject TEXT NOT NULL DEFAULT '',
+        body_text TEXT,
+        body_html TEXT,
+        body_r2_key TEXT,
+        direction TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        is_starred INTEGER NOT NULL DEFAULT 0,
+        sent_at TEXT NOT NULL,
+        provider_message_id TEXT,
+        attachment_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS email_local_attachments (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        mime_type TEXT,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        r2_key TEXT NOT NULL,
+        content_base64 TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS email_local_publications (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        mailbox_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        message_id TEXT,
+        scope TEXT NOT NULL CHECK (scope IN ('message', 'thread')),
+        include_future_messages INTEGER NOT NULL DEFAULT 0,
+        published_by_user_id TEXT NOT NULL,
+        published_by_email TEXT,
+        published_at TEXT NOT NULL,
+        revoked_at TEXT,
+        last_projected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_email_local_threads_workspace
+        ON email_local_threads(workspace_id, last_message_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_email_local_messages_thread
+        ON email_local_messages(workspace_id, thread_id, sent_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_email_local_attachments_message
+        ON email_local_attachments(workspace_id, message_id);
+      CREATE INDEX IF NOT EXISTS idx_email_local_publications_thread
+        ON email_local_publications(workspace_id, thread_id, updated_at DESC);
+    `);
+      }
+    };
+  }
+});
+
 // cli/mere-email.ts
-import { mkdir as mkdir2, readFile as readFile3, writeFile as writeFile2 } from "node:fs/promises";
+init_src();
+init_projection();
+import { createHash as createHash3 } from "node:crypto";
+import { mkdir as mkdir3, readFile as readFile3, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { access, chmod, mkdtemp, rm } from "node:fs/promises";
+import { createHash as createHash2 } from "node:crypto";
+import https from "node:https";
+import os2 from "node:os";
+import path2 from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+var DEFAULT_DMG_URL = "https://mere.run/releases/mere-run.dmg";
+var DEFAULT_INSTALL_BIN = path2.join(os2.homedir(), ".local", "bin", "mere.run");
+var DEFAULT_CHAT_MODEL = "text-chat-q35-nano";
+var GLOBAL_CANDIDATES = ["/usr/local/bin/mere.run", "/opt/homebrew/bin/mere.run"];
+async function isExecutable(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function which(binary, env) {
+  const pathValue = env.PATH ?? process.env.PATH ?? "";
+  for (const segment of pathValue.split(path2.delimiter)) {
+    if (!segment) continue;
+    const candidate = path2.join(segment, binary);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+function envPrefix3(appId) {
+  if (!appId) return null;
+  const prefix = appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+  return prefix || null;
+}
+function configuredBin(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_BIN`] : void 0) ?? env.MERE_RUN_BIN ?? env.MERE_LOCAL_PLANE_MERE_RUN_BIN ?? null;
+}
+function configuredInstallBin(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_INSTALL_BIN`] : void 0) ?? env.MERE_RUN_INSTALL_BIN ?? env.MERE_LOCAL_PLANE_MERE_RUN_INSTALL_BIN ?? DEFAULT_INSTALL_BIN;
+}
+function configuredDmgUrl(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_DOWNLOAD_URL`] : void 0) ?? env.MERE_RUN_DOWNLOAD_URL ?? env.MERE_LOCAL_PLANE_MERE_RUN_DOWNLOAD_URL ?? DEFAULT_DMG_URL;
+}
+function configuredDmgSha256(env, appId) {
+  const prefix = envPrefix3(appId);
+  return (prefix ? env[`${prefix}_MERE_RUN_DOWNLOAD_SHA256`] : void 0) ?? env.MERE_RUN_DOWNLOAD_SHA256 ?? env.MERE_LOCAL_PLANE_MERE_RUN_DOWNLOAD_SHA256 ?? null;
+}
+function requireDmgSha256(env, appId) {
+  const expectedSha256 = configuredDmgSha256(env, appId);
+  if (!expectedSha256) {
+    const prefix = envPrefix3(appId);
+    const label = prefix ? `${prefix}_MERE_RUN_DOWNLOAD_SHA256` : "MERE_RUN_DOWNLOAD_SHA256";
+    throw new Error(`Auto-installing mere.run requires ${label}.`);
+  }
+  return expectedSha256;
+}
+async function download(url, dest) {
+  await new Promise((resolve, reject) => {
+    const file = createWriteStream(dest);
+    https.get(url, (response) => {
+      if (response.statusCode && response.statusCode >= 400) {
+        reject(new Error(`Download failed with status ${response.statusCode.toString()}`));
+        return;
+      }
+      response.pipe(file);
+      file.on("finish", () => {
+        file.close();
+        resolve();
+      });
+    }).on("error", reject);
+  });
+}
+async function sha256File(filePath) {
+  const hash = createHash2("sha256");
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+  return hash.digest("hex");
+}
+async function installFromDmg(env, appId) {
+  const installBin = configuredInstallBin(env, appId);
+  const expectedSha256 = requireDmgSha256(env, appId);
+  mkdirSync(path2.dirname(installBin), { recursive: true });
+  const tmp = await mkdtemp(path2.join(os2.tmpdir(), "mere-local-plane-run-"));
+  const dmg = path2.join(tmp, "mere-run.dmg");
+  const mount = path2.join(tmp, "mount");
+  mkdirSync(mount);
+  try {
+    await download(configuredDmgUrl(env, appId), dmg);
+    const actualSha256 = await sha256File(dmg);
+    if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+      throw new Error("Downloaded mere.run DMG failed SHA-256 verification.");
+    }
+    const attach = spawnSync("hdiutil", ["attach", dmg, "-mountpoint", mount, "-nobrowse", "-readonly", "-quiet"], {
+      encoding: "utf8"
+    });
+    if (attach.status !== 0) {
+      throw new Error(attach.stderr || attach.stdout || "Unable to mount mere.run DMG.");
+    }
+    const installer = path2.join(mount, "install.sh");
+    const install = spawnSync(installer, {
+      encoding: "utf8",
+      env: { ...process.env, ...env, MERERUN_INSTALL_BIN_DEST: installBin }
+    });
+    spawnSync("hdiutil", ["detach", mount, "-quiet"], { encoding: "utf8" });
+    if (install.status !== 0) {
+      throw new Error(install.stderr || install.stdout || "mere.run installer failed.");
+    }
+    await chmod(installBin, 493).catch(() => void 0);
+    return installBin;
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+async function resolveMereRunBin(env = process.env, appId) {
+  const explicit = configuredBin(env, appId);
+  if (explicit) {
+    if (!await isExecutable(explicit)) {
+      throw new Error(`mere.run binary is not executable: ${explicit}`);
+    }
+    return explicit;
+  }
+  const onPath = which("mere.run", env);
+  if (onPath) return onPath;
+  for (const candidate of GLOBAL_CANDIDATES) {
+    if (await isExecutable(candidate)) return candidate;
+  }
+  const cached = configuredInstallBin(env, appId);
+  if (await isExecutable(cached)) return cached;
+  return installFromDmg(env, appId);
+}
+async function runMereRun(args, options = {}) {
+  const bin = await resolveMereRunBin(options.env ?? process.env, options.appId);
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, {
+      env: { ...process.env, ...options.env ?? {} },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`mere.run timed out after ${String(options.timeoutMs ?? 24e4)}ms`));
+    }, options.timeoutMs ?? 24e4);
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || stdout.trim() || `mere.run exited with ${String(code)}`));
+      }
+    });
+  });
+}
+async function generateText(prompt, options = {}) {
+  return runMereRun(
+    [
+      "text",
+      "chat",
+      "--model",
+      options.model ?? DEFAULT_CHAT_MODEL,
+      "--prompt",
+      prompt,
+      "--max-tokens",
+      String(options.maxTokens ?? 384),
+      "--temperature",
+      "0",
+      "--top-p",
+      "1",
+      "--quiet"
+    ],
+    {
+      env: options.env,
+      appId: options.appId,
+      timeoutMs: options.timeoutMs ?? 3e5
+    }
+  );
+}
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
 var external_exports = {};
@@ -275,8 +2095,8 @@ var ZodIssueCode = util.arrayToEnum([
   "not_finite"
 ]);
 var quotelessJson = (obj) => {
-  const json = JSON.stringify(obj, null, 2);
-  return json.replace(/"([^"]+)":/g, "$1:");
+  const json2 = JSON.stringify(obj, null, 2);
+  return json2.replace(/"([^"]+)":/g, "$1:");
 };
 var ZodError = class _ZodError extends Error {
   get errors() {
@@ -487,8 +2307,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -604,11 +2424,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -4050,25 +5870,8 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// packages/core/email-product.ts
-var EMAIL_WORKSPACE_BASE_DOMAINS = [
-  "meresmb.com",
-  "mere.email",
-  "bizpei.com",
-  "mailpei.com",
-  "peihub.com"
-];
-var DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN = EMAIL_WORKSPACE_BASE_DOMAINS[0];
-var EMAIL_BRIDGE_STATUSES = ["connected", "disconnected"];
-var EMAIL_BRIDGE_HEALTH_STATES = ["healthy", "degraded", "disconnected"];
-var EMAIL_WORKSPACE_LIFECYCLE_STATES = [
-  "trialing",
-  "active",
-  "grace",
-  "deleted"
-];
-
 // packages/core/contracts/internal.ts
+init_email_product();
 var nonEmptyString = (label) => external_exports.string().trim().min(1, `${label} is required.`);
 var optionalNullableString = external_exports.string().trim().nullable().optional();
 var mailboxLocalPartSchema = external_exports.string().trim().min(1, "mailboxLocalPart is required.").max(64, "mailboxLocalPart must be 64 characters or fewer.").regex(
@@ -4122,7 +5925,10 @@ var EmailImportMailboxSchema = external_exports.object({
   id: nonEmptyString("id"),
   address: nonEmptyString("address"),
   displayName: external_exports.string().trim().nullable(),
-  type: nonEmptyString("type")
+  type: nonEmptyString("type"),
+  visibility: external_exports.enum(["shared", "personal"]).default("shared"),
+  ownerUserId: external_exports.string().trim().nullable().optional(),
+  ownerEmail: external_exports.string().trim().nullable().optional()
 });
 var EmailImportThreadSchema = external_exports.object({
   id: nonEmptyString("id"),
@@ -4315,43 +6121,17 @@ var EmailWorkspaceImportStatusSchema = external_exports.object({
   completedAt: external_exports.string().trim().nullable()
 });
 
-// packages/core/json.ts
-var JsonBoundaryError = class extends Error {
-  status;
-  constructor(message, status = 400) {
-    super(message);
-    this.name = "JsonBoundaryError";
-    this.status = status;
-  }
-};
-function defaultInvalidBodyMessage(options) {
-  return options.invalidBodyMessage ?? "Invalid JSON body";
-}
-function parseJsonText(text, options = {}) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new JsonBoundaryError(options.invalidJsonMessage ?? "Invalid JSON", options.status ?? 400);
-  }
-}
-function parseJsonWithSchema(schema, value, options = {}) {
-  const result = schema.safeParse(value);
-  if (result.success) {
-    return result.data;
-  }
-  throw new JsonBoundaryError(
-    result.error.issues[0]?.message ?? defaultInvalidBodyMessage(options),
-    options.status ?? 400
-  );
-}
+// cli/mere-email.ts
+init_email_product();
+init_json();
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/session.ts
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-function stateHome(env) {
-  const homeDir = env.HOME?.trim() || os.homedir();
-  return env.XDG_STATE_HOME?.trim() || path.join(homeDir, ".local", "state");
+import { chmod as chmod2, mkdir as mkdir2, readFile, rm as rm2, writeFile } from "node:fs/promises";
+import os3 from "node:os";
+import path3 from "node:path";
+function stateHome2(env) {
+  const homeDir = env.HOME?.trim() || os3.homedir();
+  return env.XDG_STATE_HOME?.trim() || path3.join(homeDir, ".local", "state");
 }
 function normalizeBaseUrl(raw) {
   const url = new URL(raw);
@@ -4361,10 +6141,10 @@ function normalizeBaseUrl(raw) {
   return url.toString().replace(/\/$/, "");
 }
 function resolveCliPaths(appName, env = process.env) {
-  const stateDir = path.join(stateHome(env), appName);
+  const stateDir = path3.join(stateHome2(env), appName);
   return {
     stateDir,
-    sessionFile: path.join(stateDir, "session.json")
+    sessionFile: path3.join(stateDir, "session.json")
   };
 }
 async function loadCliSession(input) {
@@ -4390,17 +6170,17 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir(paths.stateDir, { recursive: true });
+  await mkdir2(paths.stateDir, { recursive: true });
   await writeFile(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
 `, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+  await chmod2(paths.sessionFile, 384).catch(() => void 0);
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;
   const appNames = [input.appName, ...input.legacyAppNames ?? []];
   for (const appName of appNames) {
     const paths = resolveCliPaths(appName, env);
-    await rm(paths.sessionFile, { force: true });
+    await rm2(paths.sessionFile, { force: true });
   }
 }
 function resolveWorkspaceSelection(workspaces, selector) {
@@ -4447,8 +6227,13 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
+// cli/client.ts
+init_email_product();
+init_json();
+
 // packages/core/internal-rpc.ts
-function isRecord(value) {
+init_json();
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function buildBearerHeaders(token, headers = {}) {
@@ -4457,8 +6242,8 @@ function buildBearerHeaders(token, headers = {}) {
   return next;
 }
 function parseRpcErrorPayload(value) {
-  if (!isRecord(value)) return null;
-  if (!isRecord(value.error)) return null;
+  if (!isRecord2(value)) return null;
+  if (!isRecord2(value.error)) return null;
   if (typeof value.error.code !== "string" || typeof value.error.message !== "string") {
     return null;
   }
@@ -4482,11 +6267,11 @@ function normalizeBaseUrl2(baseUrl) {
   const url = new URL(baseUrl);
   return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function expectRecord(value, label) {
-  if (!isRecord2(value)) {
+  if (!isRecord3(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value;
@@ -4545,7 +6330,10 @@ function parseMailbox(value) {
     id: expectString(record.id, "mailbox.id"),
     address: expectString(record.address, "mailbox.address"),
     displayName: expectNullableString(record.displayName, "mailbox.displayName"),
-    type: expectString(record.type, "mailbox.type")
+    type: expectString(record.type, "mailbox.type"),
+    visibility: record.visibility === "personal" ? "personal" : "shared",
+    ownerUserId: expectNullableString(record.ownerUserId, "mailbox.ownerUserId"),
+    ownerEmail: expectNullableString(record.ownerEmail, "mailbox.ownerEmail")
   };
 }
 function parseThread(value) {
@@ -4669,6 +6457,14 @@ function parseThreadState(value) {
     messages: expectArray(record.messages, "messages").map(parseMessage)
   };
 }
+function parseThreadList(value) {
+  const record = expectRecord(value, "thread list payload");
+  return {
+    mailboxId: expectString(record.mailboxId, "thread list mailboxId"),
+    threads: expectArray(record.threads, "threads").map(parseThread),
+    latestThreadAt: expectNullableString(record.latestThreadAt, "latestThreadAt")
+  };
+}
 function parseThreadActionResult(value) {
   const record = expectRecord(value, "thread action payload");
   return {
@@ -4734,7 +6530,7 @@ async function parseErrorMessage(response) {
     if (rpcError) {
       return rpcError.message;
     }
-    if (isRecord2(payload) && typeof payload.error === "string") {
+    if (isRecord3(payload) && typeof payload.error === "string") {
       return payload.error;
     }
     return text;
@@ -4823,6 +6619,19 @@ var EmailCliClient = class {
         body: JSON.stringify(input)
       },
       { parser: parseSearchResultsPayload }
+    );
+  }
+  async listThreads(workspaceId, input = {}) {
+    const params = new URLSearchParams();
+    if (input.mailboxId) params.set("mailboxId", input.mailboxId);
+    if (input.limit != null) params.set("limit", input.limit.toString());
+    if (input.offset != null) params.set("offset", input.offset.toString());
+    if (input.archived) params.set("archived", "true");
+    const suffix = params.toString() ? `agent-mail/threads?${params.toString()}` : "agent-mail/threads";
+    return this.request(
+      this.workspacePath(workspaceId, suffix),
+      {},
+      { parser: parseThreadList }
     );
   }
   async showThread(workspaceId, threadId) {
@@ -4994,10 +6803,10 @@ var EmailCliClient = class {
     );
   }
   workspacePath(workspaceId, suffix) {
-    return `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
+    return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
-  isAgentMailPath(path2) {
-    return path2.includes("/agent-mail/");
+  isAgentMailPath(path4) {
+    return path4.includes("/agent-mail/");
   }
   agentHeaders() {
     return new Headers({
@@ -5008,14 +6817,14 @@ var EmailCliClient = class {
       "x-mere-tool-key": "mere-email-cli"
     });
   }
-  async request(path2, init, options) {
+  async request(path4, init, options) {
     const requiresToken = options.requiresToken ?? true;
     if (requiresToken && !this.token) {
       throw new CliError("This command requires `mere-email auth login` or MERE_EMAIL_TOKEN.");
     }
     const headers = this.token ? buildBearerHeaders(this.token, init.headers) : new Headers(init.headers);
     headers.set("accept", "application/json");
-    if (this.isAgentMailPath(path2)) {
+    if (this.isAgentMailPath(path4)) {
       const agentHeaders = this.agentHeaders();
       for (const [key, value] of agentHeaders.entries()) {
         headers.set(key, value);
@@ -5024,7 +6833,7 @@ var EmailCliClient = class {
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
-    const response = await this.fetchImpl(new URL(path2, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path4, this.baseUrl), {
       ...init,
       headers
     });
@@ -5038,7 +6847,7 @@ var EmailCliClient = class {
     if (options.useRpcEnvelope === false) {
       return options.parser(payload);
     }
-    if (!isRecord2(payload)) {
+    if (!isRecord3(payload)) {
       throw new CliError("RPC response envelope is invalid.");
     }
     if (payload.ok !== true || !Object.prototype.hasOwnProperty.call(payload, "data")) {
@@ -5179,6 +6988,22 @@ function renderSearchResults(results) {
       String(result.thread.messageCount),
       formatThreadFlags(result.thread),
       truncate(result.matches[0]?.snippet || result.thread.snippet || "\u2014", 48)
+    ])
+  );
+}
+function renderThreadList(threads) {
+  if (threads.length === 0) {
+    return "No threads found.";
+  }
+  return formatTable(
+    ["THREAD", "SUBJECT", "LAST MESSAGE", "COUNT", "FLAGS", "SNIPPET"],
+    threads.map((thread) => [
+      thread.id,
+      truncate(thread.subject || "(no subject)", 36),
+      formatTimestamp(thread.lastMessageAt),
+      String(thread.messageCount),
+      formatThreadFlags(thread),
+      truncate(thread.snippet || "\u2014", 48)
     ])
   );
 }
@@ -5351,7 +7176,7 @@ async function buildSendInputFromCliOptions(options) {
 }
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
-import { spawn } from "node:child_process";
+import { spawn as spawn2 } from "node:child_process";
 import { createServer } from "node:http";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/contract.ts
@@ -5362,21 +7187,23 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
-      const child2 = spawn("open", [url], { detached: true, stdio: "ignore" });
+      const child2 = spawn2("open", [url], { detached: true, stdio: "ignore" });
       child2.unref();
       return true;
     }
     if (process.platform === "win32") {
-      const child2 = spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
+      const child2 = spawn2("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
       child2.unref();
       return true;
     }
-    const child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
+    const child = spawn2("xdg-open", [url], { detached: true, stdio: "ignore" });
     child.unref();
     return true;
   } catch {
@@ -5413,6 +7240,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -5451,6 +7290,9 @@ async function waitForCallback(input) {
           if (input.workspace?.trim()) {
             startUrl.searchParams.set("workspace", input.workspace.trim());
           }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
           const started = await fetchJson(input.fetchImpl, startUrl);
           const opened = maybeOpenBrowser(started.authorizeUrl);
           input.notify(
@@ -5477,6 +7319,7 @@ async function loginWithBrowser(input) {
     fetchImpl: input.fetchImpl ?? fetch,
     notify: input.notify,
     workspace: input.workspace,
+    inviteCode: input.inviteCode,
     productLabel: input.productLabel
   });
   return createLocalSession(payload, {
@@ -5562,6 +7405,11 @@ var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
   token: "string",
   workspace: "string",
+  store: "string",
+  ai: "string",
+  "local-db": "string",
+  "projection-url": "string",
+  "projection-token": "string",
   json: "boolean",
   help: "boolean",
   version: "boolean",
@@ -5570,6 +7418,7 @@ var GLOBAL_FLAG_SPEC = {
   confirm: "string"
 };
 var activeSession = null;
+var EMAIL_WORKSPACE_PAYLOAD_SCHEMA2 = "mere.email.workspace-import.v1";
 var HELP_TEXT = `mere-email CLI
 
 Usage:
@@ -5579,8 +7428,14 @@ Global flags:
   --base-url URL       Override MERE_EMAIL_BASE_URL
   --token TOKEN        Override MERE_EMAIL_TOKEN
   --workspace ID       Override MERE_EMAIL_WORKSPACE_ID
+  --store local|cloud  Choose local or cloud data plane
+  --ai local|cloud     Choose local or cloud AI plane
+  --local-db PATH      Override the centralized local Mere SQLite database
+  --projection-url URL Business projection receiver URL for explicit publish/revoke
+  --projection-token T Business projection bearer token for explicit publish/revoke
   --json               Write machine-readable JSON
   --version            Show the CLI version
+  -v                   Show the CLI version
   --no-interactive     Do not attempt interactive prompts
   --yes                Required for destructive automation
   --confirm ID         Exact target required with --yes for destructive commands
@@ -5588,6 +7443,7 @@ Global flags:
 
 Commands:
   completion [bash|zsh|fish]
+  store info
 
   auth login
   auth whoami
@@ -5601,10 +7457,17 @@ Commands:
   workspace sync [--lifecycle-state STATE] [--trial-ends-at ISO|null] [--grace-ends-at ISO|null] [--activated-at ISO|null] [--deletion-scheduled-at ISO|null]
   workspace disconnect
 
+  sync pull [--limit N] [--mailbox-id ID] [--include-archived]
+
   mailboxes list
 
+  threads list [--limit N] [--offset N] [--mailbox-id ID] [--include-archived]
+  threads latest [--limit N] [--mailbox-id ID] [--include-archived]
   threads search <query> [--limit N]
   threads show <thread-id>
+  threads summarize <thread-id>
+  threads publish <thread-id> [--message-id ID] [--include-future] [--dry-run]
+  threads revoke <thread-id> [--message-id ID] [--include-future] [--dry-run]
   threads read <thread-id>
   threads star <thread-id>
   threads archive <thread-id>
@@ -5623,7 +7486,7 @@ Commands:
   send --to addr --subject "..." [--body "..."] [--attach /path/to/file] [--to addr2] [--cc addr] [--bcc addr] [--mailbox-id ID] [--from-name NAME] [--reply-thread-id ID]
 
   export
-  import --file payload.json
+  import --file transfer-or-payload.json [--dry-run]
   import status [--run-id ID]
 
   inbound --file payload.json
@@ -5632,6 +7495,14 @@ Environment:
   MERE_EMAIL_BASE_URL      Worker URL, for example https://mere.email or http://localhost:8787
   MERE_EMAIL_TOKEN         Bearer token override for internal/service access
   MERE_EMAIL_WORKSPACE_ID  Default ZeroSMB workspace / tenant id
+  MERE_EMAIL_STORE         Default data plane: cloud or local
+  MERE_EMAIL_AI_PLANE      Default AI plane: cloud or local
+  MERE_EMAIL_LOCAL_DB      App-specific local database path override
+  MERE_LOCAL_DB            Shared local database path override
+  MERE_EMAIL_PROJECTION_URL    Business projection receiver URL
+  MERE_EMAIL_PROJECTION_TOKEN  Business projection bearer token
+  MERE_BUSINESS_PROJECTION_URL Shared Business projection receiver URL
+  MERE_BUSINESS_PROJECTION_TOKEN Shared Business projection bearer token
 
 Notes:
   Base domains: ${EMAIL_WORKSPACE_BASE_DOMAINS.join(", ")}
@@ -5646,6 +7517,11 @@ function helpJson() {
       "--base-url": "Override MERE_EMAIL_BASE_URL",
       "--token": "Override MERE_EMAIL_TOKEN",
       "--workspace": "Override MERE_EMAIL_WORKSPACE_ID",
+      "--store": "Choose local or cloud data plane",
+      "--ai": "Choose local or cloud AI plane",
+      "--local-db": "Override local Mere SQLite database",
+      "--projection-url": "Business projection receiver URL for explicit publish/revoke",
+      "--projection-token": "Business projection bearer token for explicit publish/revoke",
       "--json": "Write machine-readable JSON",
       "--version": "Show the CLI version",
       "--no-interactive": "Do not attempt interactive prompts",
@@ -5655,6 +7531,7 @@ function helpJson() {
     },
     commands: {
       completion: ["bash", "zsh", "fish"],
+      store: ["info"],
       auth: ["login", "whoami", "logout"],
       workspace: [
         "list",
@@ -5665,29 +7542,38 @@ function helpJson() {
         "sync",
         "disconnect"
       ],
+      sync: ["pull"],
       mailboxes: ["list"],
-      threads: ["search", "show", "read", "star", "archive"],
+      threads: ["list", "latest", "search", "show", "summarize", "publish", "revoke", "read", "star", "archive"],
       drafts: ["create", "show", "discard"],
       attachments: ["list", "download"],
       domains: ["search", "register", "show"],
       send: "send outbound email, optionally with attachments",
-      export: "export workspace data as JSON",
-      import: ["start import from file", "status"],
+      export: "export workspace data as a local-plane transfer bundle",
+      import: ["start import from transfer bundle or raw payload file", "dry-run import plan", "status"],
       inbound: "simulate inbound mail ingress from file"
     },
     environment: {
       MERE_EMAIL_BASE_URL: "Base worker URL",
       MERE_EMAIL_TOKEN: "Bearer token override for internal/service access",
-      MERE_EMAIL_WORKSPACE_ID: "Default ZeroSMB tenant / workspace id"
+      MERE_EMAIL_WORKSPACE_ID: "Default ZeroSMB tenant / workspace id",
+      MERE_EMAIL_STORE: "Default data plane",
+      MERE_EMAIL_AI_PLANE: "Default AI plane",
+      MERE_EMAIL_LOCAL_DB: "App-specific local database path",
+      MERE_LOCAL_DB: "Shared local database path",
+      MERE_EMAIL_PROJECTION_URL: "Business projection receiver URL",
+      MERE_EMAIL_PROJECTION_TOKEN: "Business projection bearer token",
+      MERE_BUSINESS_PROJECTION_URL: "Shared Business projection receiver URL",
+      MERE_BUSINESS_PROJECTION_TOKEN: "Shared Business projection bearer token"
     },
     baseDomains: EMAIL_WORKSPACE_BASE_DOMAINS,
     lifecycleStates: EMAIL_WORKSPACE_LIFECYCLE_STATES
   };
 }
-function manifestCommand(path2, summary, options = {}) {
+function manifestCommand(path4, summary, options = {}) {
   return {
-    id: path2.join("."),
-    path: path2,
+    id: path4.join("."),
+    path: path4,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -5695,8 +7581,8 @@ function manifestCommand(path2, summary, options = {}) {
     supportsData: options.supportsData ?? false,
     requiresYes: options.requiresYes ?? false,
     requiresConfirm: options.requiresConfirm ?? false,
-    positionals: [],
-    flags: [],
+    positionals: options.positionals ?? [],
+    flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
   };
 }
@@ -5709,21 +7595,28 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_EMAIL_BASE_URL"],
     sessionPath: "~/.local/state/mere-email/session.json",
-    globalFlags: ["base-url", "workspace", "json", "yes", "confirm", "data", "data-file"],
+    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm"],
     commands: [
+      manifestCommand(["store", "info"], "Show local/cloud plane selection.", { auth: "none", auditDefault: true }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "current"], "Show current workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
-      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", supportsData: true }),
-      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "write", supportsData: true }),
+      manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace.", { risk: "write" }),
+      manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", flags: ["slug", "base-domain", "mailbox-address", "name", "organization-id", "callback-url", "callback-bearer-token", "lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
+      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "write", flags: ["lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
       manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "write", flags: ["limit", "mailbox-id", "include-archived"] }),
       manifestCommand(["mailboxes", "list"], "List mailboxes.", { auditDefault: true }),
-      manifestCommand(["threads", "search"], "Search threads."),
+      manifestCommand(["threads", "list"], "List threads with pagination.", { flags: ["limit", "offset", "mailbox-id", "include-archived"] }),
+      manifestCommand(["threads", "latest"], "Show latest threads.", { flags: ["limit", "mailbox-id", "include-archived"] }),
+      manifestCommand(["threads", "search"], "Search threads.", { flags: ["limit"] }),
       manifestCommand(["threads", "show"], "Show thread."),
+      manifestCommand(["threads", "summarize"], "Summarize a local thread with mere.run.", { risk: "write", flags: ["model"] }),
+      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
       manifestCommand(["threads", "read"], "Mark thread read.", { risk: "write" }),
       manifestCommand(["threads", "star"], "Star thread.", { risk: "write" }),
       manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", requiresYes: true }),
@@ -5731,15 +7624,15 @@ function commandManifest() {
       manifestCommand(["drafts", "show"], "Show draft."),
       manifestCommand(["drafts", "discard"], "Discard draft.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["attachments", "list"], "List attachments."),
-      manifestCommand(["attachments", "download"], "Download attachment."),
+      manifestCommand(["attachments", "download"], "Download attachment.", { flags: ["output"] }),
       manifestCommand(["domains", "search"], "Search domains."),
-      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, requiresYes: true }),
+      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, requiresYes: true, flags: ["domain", "organization-id", "period"] }),
       manifestCommand(["domains", "show"], "Show domain registration."),
-      manifestCommand(["send"], "Send email.", { risk: "external", supportsData: true, requiresYes: true }),
-      manifestCommand(["export"], "Export workspace data."),
-      manifestCommand(["import"], "Import workspace data.", { risk: "write", supportsData: true }),
-      manifestCommand(["import", "status"], "Show import status."),
-      manifestCommand(["inbound"], "Simulate inbound mail.", { risk: "write", supportsData: true }),
+      manifestCommand(["send"], "Send email.", { risk: "external", requiresYes: true, flags: ["to", "cc", "bcc", "attach", "mailbox-id", "from-name", "reply-thread-id", "subject", "body"] }),
+      manifestCommand(["export"], "Export workspace data as a local-plane transfer bundle."),
+      manifestCommand(["import"], "Import workspace data from a transfer bundle or raw payload file via --file; pass --dry-run to plan only.", { risk: "write", flags: ["file", "dry-run"] }),
+      manifestCommand(["import", "status"], "Show import status.", { flags: ["run-id"] }),
+      manifestCommand(["inbound"], "Simulate inbound mail ingress from --file.", { risk: "write", flags: ["file"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
       manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
     ]
@@ -5761,6 +7654,8 @@ var COMPLETION_WORDS = [
   "inbound",
   "mailboxes",
   "send",
+  "store",
+  "sync",
   "threads",
   "workspace"
 ];
@@ -5842,6 +7737,11 @@ function splitGlobalFlags(argv) {
   let index = 0;
   while (index < argv.length) {
     const token = argv[index];
+    if (token === "-v") {
+      globalTokens.push("--version");
+      index += 1;
+      continue;
+    }
     if (!token.startsWith("--")) {
       break;
     }
@@ -5980,7 +7880,12 @@ function resolveExternalToken(options, env) {
   return trimOption(asString(options.token)) ?? trimOption(env.MERE_EMAIL_TOKEN);
 }
 function resolveWorkspaceOptional(options, env) {
-  return trimOption(asString(options.workspace)) ?? trimOption(env.MERE_EMAIL_WORKSPACE_ID) ?? activeSession?.defaultWorkspaceId ?? void 0;
+  const workspaceId = trimOption(asString(options.workspace)) ?? trimOption(env.MERE_EMAIL_WORKSPACE_ID) ?? activeSession?.defaultWorkspaceId ?? void 0;
+  if (!workspaceId) return void 0;
+  const sessionWorkspace = activeSession?.workspaces.find(
+    (candidate) => candidate.id === workspaceId || candidate.slug === workspaceId || candidate.host === workspaceId
+  );
+  return sessionWorkspace?.id ?? workspaceId;
 }
 function resolveWorkspace(options, env) {
   const workspaceId = resolveWorkspaceOptional(options, env);
@@ -5997,6 +7902,307 @@ function createClient(io, options) {
     token: resolveToken(options, io.env),
     fetchImpl: io.fetchImpl
   });
+}
+function resolveEmailPlaneConfig(options, env) {
+  return resolvePlaneConfig({
+    appId: "mere-email",
+    env,
+    data: readOptionalStringOption(options, "store"),
+    ai: readOptionalStringOption(options, "ai"),
+    localDbPath: readOptionalStringOption(options, "local-db")
+  });
+}
+function resolveDataMode(options, env) {
+  return resolveEmailPlaneConfig(options, env).data;
+}
+function wrapEmailWorkspaceTransfer(payload, config) {
+  return createPlaneTransferBundle({
+    appId: config.appId,
+    workspaceId: payload.zerosmbTenantId,
+    plane: config,
+    payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
+    payload
+  });
+}
+function parseEmailWorkspaceTransfer(value) {
+  const unwrapped = unwrapPlaneTransferPayload(value, {
+    appId: "mere-email",
+    payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2
+  });
+  const payload = parseJsonWithSchema(
+    EmailWorkspaceImportRequestSchema,
+    unwrapped.payload,
+    { invalidBodyMessage: "Import payload is invalid." }
+  );
+  return {
+    payload,
+    bundle: unwrapped.bundle
+  };
+}
+function countImportMessages(payload) {
+  return payload.threads.reduce((count, item) => count + item.messages.length, 0);
+}
+function planEmailWorkspaceImport(payload, bundle, config) {
+  return {
+    ok: true,
+    dryRun: true,
+    store: config.data,
+    ai: config.ai,
+    cloudProjection: config.cloudProjection,
+    transferPlan: createPlaneTransferImportPlan({
+      appId: config.appId,
+      workspaceId: payload.zerosmbTenantId,
+      payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
+      payload,
+      bundle,
+      destination: { data: config.data, ai: config.ai }
+    }),
+    counts: {
+      mailboxes: payload.mailboxes.length,
+      threads: payload.threads.length,
+      messages: countImportMessages(payload)
+    }
+  };
+}
+function resolveWorkspaceSlug(workspaceId) {
+  const workspace = activeSession?.workspaces.find(
+    (candidate) => candidate.id === workspaceId || candidate.slug === workspaceId || candidate.host === workspaceId
+  );
+  return workspace?.slug ?? workspaceId;
+}
+function inferBaseDomain(mailboxes) {
+  const address = mailboxes.find((mailbox) => mailbox.address.includes("@"))?.address;
+  const domain = address?.slice(address.lastIndexOf("@") + 1).trim().toLowerCase();
+  return domain && domain.includes(".") ? domain : DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN;
+}
+function countSyncedMessages(threads) {
+  return threads.reduce((count, state) => count + state.messages.length, 0);
+}
+async function listRemoteThreadsForTraversal(client, workspaceId, input) {
+  if (!input.includeArchived) {
+    return (await client.listThreads(workspaceId, {
+      mailboxId: input.mailboxId,
+      limit: input.limit,
+      offset: input.offset
+    })).threads;
+  }
+  const desired = input.limit + input.offset;
+  const listOneArchiveState = async (archived) => {
+    const threads = [];
+    let offset = 0;
+    while (threads.length < desired) {
+      const pageLimit = Math.min(100, desired - threads.length);
+      const page = await client.listThreads(workspaceId, {
+        mailboxId: input.mailboxId,
+        limit: pageLimit,
+        offset,
+        archived
+      });
+      threads.push(...page.threads);
+      if (page.threads.length < pageLimit) break;
+      offset += page.threads.length;
+    }
+    return threads;
+  };
+  const [activeThreads, archivedThreads] = await Promise.all([
+    listOneArchiveState(false),
+    listOneArchiveState(true)
+  ]);
+  const threadById = new Map(
+    [...activeThreads, ...archivedThreads].map((thread) => [thread.id, thread])
+  );
+  return [...threadById.values()].sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt)).slice(input.offset, input.offset + input.limit);
+}
+function buildWorkspacePullPayload(workspaceId, mailboxes, threads) {
+  const mailboxById = new Map(mailboxes.map((mailbox) => [mailbox.id, mailbox]));
+  for (const state of threads) {
+    mailboxById.set(state.mailbox.id, state.mailbox);
+  }
+  const normalizedMailboxes = [...mailboxById.values()].map((mailbox) => ({
+    id: mailbox.id,
+    address: mailbox.address,
+    displayName: mailbox.displayName,
+    type: mailbox.type,
+    visibility: mailbox.visibility ?? "shared",
+    ownerUserId: mailbox.ownerUserId ?? null,
+    ownerEmail: mailbox.ownerEmail ?? null
+  }));
+  return {
+    zerosmbTenantId: workspaceId,
+    slug: resolveWorkspaceSlug(workspaceId),
+    baseDomain: inferBaseDomain(normalizedMailboxes),
+    mailboxes: normalizedMailboxes,
+    threads: threads.map((state) => ({
+      thread: state.thread,
+      messages: state.messages
+    }))
+  };
+}
+async function openLocalEmailStore(options, io) {
+  const { LocalEmailStore: LocalEmailStore2 } = await Promise.resolve().then(() => (init_local_store(), local_store_exports));
+  return LocalEmailStore2.open(resolveEmailPlaneConfig(options, io.env));
+}
+function renderStoreInfo(info) {
+  return [
+    `data: ${info.store}`,
+    `ai: ${info.ai}`,
+    `cloud projection: ${info.cloudProjection}`,
+    info.baseUrl ? `base url: ${info.baseUrl}` : null,
+    info.dbPath ? `local db: ${info.dbPath}` : null,
+    info.workspaceCount != null ? `workspaces: ${info.workspaceCount.toString()}` : null,
+    info.planeAppCount != null ? `plane apps: ${info.planeAppCount.toString()}` : null,
+    info.planeWorkspaceCount != null ? `plane workspaces: ${info.planeWorkspaceCount.toString()}` : null,
+    info.transferCount != null ? `transfers: ${info.transferCount.toString()}` : null,
+    info.aiJobCount != null ? `ai jobs: ${info.aiJobCount.toString()}` : null,
+    info.mailboxCount != null ? `mailboxes: ${info.mailboxCount.toString()}` : null,
+    info.threadCount != null ? `threads: ${info.threadCount.toString()}` : null,
+    info.messageCount != null ? `messages: ${info.messageCount.toString()}` : null
+  ].filter((line) => Boolean(line)).join("\n");
+}
+function renderLocalImport(result) {
+  return formatKeyValue([
+    ["workspace", result.workspaceId],
+    ["slug", result.slug],
+    ["mailboxes", result.mailboxCount.toString()],
+    ["threads", result.threadCount.toString()],
+    ["messages", result.messageCount.toString()]
+  ]);
+}
+function renderRemoteToLocalSync(result) {
+  return formatKeyValue([
+    ["source", result.source],
+    ["store", result.store],
+    ["workspace", result.workspaceId],
+    ["slug", result.slug],
+    ["local db", result.dbPath],
+    ["mailboxes pulled", result.mailboxCount.toString()],
+    ["threads pulled", result.threadCount.toString()],
+    ["messages pulled", result.messageCount.toString()],
+    ["local mailboxes", result.planeMailboxCount.toString()],
+    ["local threads", result.planeThreadCount.toString()],
+    ["local messages", result.planeMessageCount.toString()],
+    ["limit", result.limit.toString()],
+    ["archived", result.includeArchived ? "included" : "active only"]
+  ]);
+}
+function renderLocalSummary(result) {
+  return [`thread: ${result.threadId}`, `model: ${result.model}`, "", result.summary].join("\n");
+}
+function renderLatestThreads(states) {
+  if (states.length === 0) {
+    return "No threads found.";
+  }
+  if (states.length === 1) {
+    return renderThread(states[0]);
+  }
+  return states.map((state, index) => [
+    `Thread ${index + 1}`,
+    formatKeyValue([
+      ["id", state.thread.id],
+      ["subject", state.thread.subject || "(no subject)"],
+      ["last message", state.thread.lastMessageAt],
+      ["messages", state.thread.messageCount.toString()],
+      ["snippet", state.thread.snippet || "\u2014"]
+    ])
+  ].join("\n")).join("\n\n");
+}
+function renderLocalPublication(result) {
+  return formatKeyValue([
+    ["action", result.action ?? "publish"],
+    ["thread", result.threadId],
+    ["publication", result.publicationId],
+    ["messages", result.messageCount.toString()],
+    ["dry run", result.dryRun ? "yes" : "no"],
+    ...result.receiverUrl ? [["receiver", result.receiverUrl]] : [],
+    ...result.status != null ? [["status", result.status.toString()]] : []
+  ]);
+}
+function mergedOptions(globalOptions, options) {
+  return { ...globalOptions, ...options };
+}
+function stablePublicationId(input) {
+  const hash = createHash3("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
+  return `pub_${hash}`;
+}
+function selectedPublicationMessages(state, messageId) {
+  if (!messageId) {
+    return state.messages;
+  }
+  const message = state.messages.find((entry) => entry.id === messageId);
+  if (!message) {
+    throw new CliError(`Local message not found: ${messageId}`);
+  }
+  return [message];
+}
+function buildLocalPublicationPayload(input) {
+  const messages = selectedPublicationMessages(input.state, input.messageId);
+  if (messages.length === 0) {
+    throw new CliError("Cannot publish a thread with no messages.");
+  }
+  const messageIds = messages.map((message) => message.id);
+  const publication = {
+    id: input.publicationId ?? stablePublicationId({
+      workspaceId: input.workspaceId,
+      threadId: input.state.thread.id,
+      messageIds: input.messageId || !input.includeFutureMessages ? messageIds : [],
+      includeFutureMessages: input.includeFutureMessages
+    }),
+    scope: input.messageId ? "message" : "thread",
+    mailboxId: input.state.mailbox.id,
+    threadId: input.state.thread.id,
+    messageId: input.messageId ?? null,
+    includeFutureMessages: input.includeFutureMessages,
+    publishedByUserId: input.publishedByUserId,
+    publishedByEmail: input.publishedByEmail,
+    publishedAt: input.publishedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    revokedAt: input.revokedAt ?? null
+  };
+  return {
+    publication,
+    messageCount: messages.length,
+    envelope: {
+      version: EMAIL_PRODUCT_EVENT_VERSION,
+      event: {
+        type: "mail.publication.upserted",
+        zerosmbTenantId: input.workspaceId,
+        mailbox: input.state.mailbox,
+        thread: input.state.thread,
+        publication,
+        messages
+      }
+    }
+  };
+}
+function buildLocalPublicationEnvelope(input) {
+  return buildLocalPublicationPayload({ ...input, revokedAt: null });
+}
+function buildLocalPublicationRevocationEnvelope(input) {
+  const revokedAt = input.revokedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+  const built = buildLocalPublicationPayload({
+    workspaceId: input.workspaceId,
+    state: input.state,
+    publicationId: input.existingPublication?.id,
+    messageId: input.messageId,
+    includeFutureMessages: input.includeFutureMessages,
+    publishedByUserId: input.existingPublication?.publishedByUserId ?? input.publishedByUserId,
+    publishedByEmail: input.existingPublication?.publishedByEmail ?? input.publishedByEmail,
+    publishedAt: input.existingPublication?.publishedAt ?? revokedAt,
+    revokedAt
+  });
+  return {
+    publication: built.publication,
+    messageCount: built.messageCount,
+    envelope: {
+      version: EMAIL_PRODUCT_EVENT_VERSION,
+      event: {
+        type: "mail.publication.revoked",
+        zerosmbTenantId: input.workspaceId,
+        mailbox: input.state.mailbox,
+        thread: input.state.thread,
+        publication: built.publication
+      }
+    }
+  };
 }
 function renderSessionSummary(session) {
   const workspaceLabel = session.workspaces.length > 0 ? session.workspaces.map(
@@ -6034,8 +8240,8 @@ function writeText(io, value) {
   io.stdout(`${value}
 `);
 }
-function writeHelp(io, json) {
-  if (json) {
+function writeHelp(io, json2) {
+  if (json2) {
     writeJson(io, helpJson());
     return;
   }
@@ -6050,7 +8256,7 @@ function writeResult(io, globalOptions, value, render) {
 }
 async function writeBytesFile(outputPath, bytes) {
   const target = resolvePath2(outputPath);
-  await mkdir2(dirname(target), { recursive: true });
+  await mkdir3(dirname(target), { recursive: true });
   await writeFile2(target, bytes);
   return target;
 }
@@ -6420,6 +8626,131 @@ async function handleAuthCommand(io, globalOptions, action, args) {
       throw new CliError("Unknown auth command. Expected login, whoami, or logout.");
   }
 }
+async function handleStoreCommand(io, globalOptions, action, args) {
+  if (action !== "info") {
+    throw new CliError("Unknown store command. Expected info.");
+  }
+  const { options, positionals } = parseCommandFlags(args, {});
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  requireNoPositionals(positionals);
+  const config = resolveEmailPlaneConfig(globalOptions, io.env);
+  if (config.data === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      writeResult(io, globalOptions, store.info(), renderStoreInfo);
+    } finally {
+      store.close();
+    }
+    return;
+  }
+  writeResult(
+    io,
+    globalOptions,
+    {
+      ok: true,
+      store: "cloud",
+      ai: config.ai,
+      cloudProjection: config.cloudProjection,
+      baseUrl: resolveBaseUrl(globalOptions, io.env)
+    },
+    renderStoreInfo
+  );
+}
+async function handleSyncPull(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    limit: "string",
+    "mailbox-id": "string",
+    "include-archived": "boolean"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  requireNoPositionals(positionals);
+  if (resolveDataMode(globalOptions, io.env) !== "local") {
+    throw new CliError("sync pull writes remote mail into local-plane; pass --store local.", 2);
+  }
+  const workspaceId = resolveWorkspace(globalOptions, io.env);
+  const limit = parseIntegerOption(readOptionalStringOption(options, "limit"), "--limit", {
+    min: 1,
+    max: 500
+  }) ?? 50;
+  const includeArchived = asBoolean(options["include-archived"]);
+  const mailboxId = readOptionalStringOption(options, "mailbox-id");
+  const client = createClient(io, globalOptions);
+  const remoteMailboxes = await client.listMailboxes(workspaceId);
+  const selectedMailboxes = mailboxId ? remoteMailboxes.filter((mailbox) => mailbox.id === mailboxId) : remoteMailboxes;
+  if (mailboxId && selectedMailboxes.length === 0) {
+    throw new CliError(`Remote mailbox not found: ${mailboxId}`);
+  }
+  const pulledThreads = [];
+  const seenThreadIds = /* @__PURE__ */ new Set();
+  for (const mailbox of selectedMailboxes) {
+    let pulledForMailbox = 0;
+    for (const archived of includeArchived ? [false, true] : [false]) {
+      let offset = 0;
+      while (pulledForMailbox < limit) {
+        const pageLimit = Math.min(100, limit - pulledForMailbox);
+        const page = await client.listThreads(workspaceId, {
+          mailboxId: mailbox.id,
+          limit: pageLimit,
+          offset,
+          archived
+        });
+        for (const thread of page.threads) {
+          if (seenThreadIds.has(thread.id)) continue;
+          const state = await client.showThread(workspaceId, thread.id);
+          pulledThreads.push(state);
+          seenThreadIds.add(thread.id);
+          pulledForMailbox += 1;
+        }
+        if (page.threads.length < pageLimit || page.threads.length === 0) break;
+        offset += page.threads.length;
+      }
+    }
+  }
+  const payload = buildWorkspacePullPayload(workspaceId, selectedMailboxes, pulledThreads);
+  const store = await openLocalEmailStore(globalOptions, io);
+  try {
+    const importResult = store.importWorkspace(payload, {
+      source: { data: "cloud", ai: "cloud" },
+      payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2
+    });
+    const info = store.info();
+    writeResult(
+      io,
+      globalOptions,
+      {
+        ok: true,
+        source: "cloud",
+        store: "local",
+        workspaceId: importResult.workspaceId,
+        slug: importResult.slug,
+        dbPath: info.dbPath,
+        limit,
+        includeArchived,
+        mailboxCount: selectedMailboxes.length,
+        threadCount: pulledThreads.length,
+        messageCount: countSyncedMessages(pulledThreads),
+        planeMailboxCount: info.mailboxCount,
+        planeThreadCount: info.threadCount,
+        planeMessageCount: info.messageCount
+      },
+      renderRemoteToLocalSync
+    );
+  } finally {
+    store.close();
+  }
+}
+async function handleSyncCommand(io, globalOptions, action, args) {
+  if (action !== "pull") {
+    throw new CliError("Unknown sync command. Expected pull.");
+  }
+  await handleSyncPull(io, globalOptions, args);
+}
 async function handleMailboxesList(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {});
   if (asBoolean(options.help)) {
@@ -6428,6 +8759,16 @@ async function handleMailboxesList(io, globalOptions, args) {
   }
   requireNoPositionals(positionals);
   const workspaceId = resolveWorkspace(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.listMailboxes(workspaceId);
+      writeResult(io, globalOptions, result2, renderMailboxes);
+    } finally {
+      store.close();
+    }
+    return;
+  }
   const result = await createClient(io, globalOptions).listMailboxes(workspaceId);
   writeResult(io, globalOptions, result, renderMailboxes);
 }
@@ -6436,6 +8777,51 @@ async function handleMailboxesCommand(io, globalOptions, action, args) {
     throw new CliError("Unknown mailboxes command. Expected list.");
   }
   await handleMailboxesList(io, globalOptions, args);
+}
+async function handleThreadsList(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    limit: "string",
+    offset: "string",
+    "mailbox-id": "string",
+    "include-archived": "boolean"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  requireNoPositionals(positionals);
+  const limit = parseIntegerOption(readOptionalStringOption(options, "limit"), "--limit", {
+    min: 1,
+    max: 100
+  }) ?? 25;
+  const offset = parseIntegerOption(readOptionalStringOption(options, "offset"), "--offset", {
+    min: 0
+  }) ?? 0;
+  const mailboxId = readOptionalStringOption(options, "mailbox-id");
+  const includeArchived = asBoolean(options["include-archived"]);
+  const workspaceId = resolveWorkspace(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.listThreads(workspaceId, {
+        limit,
+        offset,
+        mailboxId,
+        includeArchived
+      });
+      writeResult(io, globalOptions, result2, renderThreadList);
+    } finally {
+      store.close();
+    }
+    return;
+  }
+  const result = await listRemoteThreadsForTraversal(createClient(io, globalOptions), workspaceId, {
+    limit,
+    offset,
+    mailboxId,
+    includeArchived
+  });
+  writeResult(io, globalOptions, result, renderThreadList);
 }
 async function handleThreadsSearch(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {
@@ -6454,11 +8840,72 @@ async function handleThreadsSearch(io, globalOptions, args) {
     max: 25
   });
   const workspaceId = resolveWorkspace(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.search(workspaceId, query, limit ?? 10);
+      writeResult(io, globalOptions, result2, renderSearchResults);
+    } finally {
+      store.close();
+    }
+    return;
+  }
   const result = await createClient(io, globalOptions).searchThreads(workspaceId, {
     query,
     ...limit != null ? { limit } : {}
   });
   writeResult(io, globalOptions, result, renderSearchResults);
+}
+async function handleThreadsLatest(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    limit: "string",
+    "mailbox-id": "string",
+    "include-archived": "boolean"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  requireNoPositionals(positionals);
+  const limit = parseIntegerOption(readOptionalStringOption(options, "limit"), "--limit", {
+    min: 1,
+    max: 25
+  }) ?? 1;
+  const mailboxId = readOptionalStringOption(options, "mailbox-id");
+  const includeArchived = asBoolean(options["include-archived"]);
+  const workspaceId = resolveWorkspace(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.listLatestThreads(workspaceId, {
+        limit,
+        mailboxId,
+        includeArchived
+      });
+      writeResult(io, globalOptions, result2, renderLatestThreads);
+    } finally {
+      store.close();
+    }
+    return;
+  }
+  const client = createClient(io, globalOptions);
+  const pages = await Promise.all(
+    (includeArchived ? [false, true] : [false]).map(
+      (archived) => client.listThreads(workspaceId, {
+        mailboxId,
+        limit,
+        archived
+      })
+    )
+  );
+  const threadById = new Map(
+    pages.flatMap((page) => page.threads).map((thread) => [thread.id, thread])
+  );
+  const threads = [...threadById.values()].sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt)).slice(0, limit);
+  const result = await Promise.all(
+    threads.map((thread) => client.showThread(workspaceId, thread.id))
+  );
+  writeResult(io, globalOptions, result, renderLatestThreads);
 }
 async function handleThreadsShow(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {});
@@ -6468,8 +8915,257 @@ async function handleThreadsShow(io, globalOptions, args) {
   }
   const threadId = requireSinglePositional(positionals, "<thread-id>");
   const workspaceId = resolveWorkspace(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.getThread(workspaceId, threadId);
+      writeResult(io, globalOptions, result2, renderThread);
+    } finally {
+      store.close();
+    }
+    return;
+  }
   const result = await createClient(io, globalOptions).showThread(workspaceId, threadId);
   writeResult(io, globalOptions, result, renderThread);
+}
+async function handleThreadsSummarize(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    model: "string"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  const threadId = requireSinglePositional(positionals, "<thread-id>");
+  const config = resolveEmailPlaneConfig(globalOptions, io.env);
+  if (config.data !== "local") {
+    throw new CliError("threads summarize currently requires --store local.");
+  }
+  if (config.ai !== "local") {
+    throw new CliError("threads summarize requires --ai local.");
+  }
+  const workspaceId = resolveWorkspace(globalOptions, io.env);
+  const model = readOptionalStringOption(options, "model") ?? "text-chat-q35-nano";
+  const store = await openLocalEmailStore(globalOptions, io);
+  try {
+    const result = await store.summarizeThread(workspaceId, threadId, async (prompt) => ({
+      model,
+      text: await generateText(prompt, {
+        env: io.env,
+        appId: config.appId,
+        model,
+        maxTokens: 512
+      })
+    }));
+    writeResult(io, globalOptions, result, renderLocalSummary);
+  } finally {
+    store.close();
+  }
+}
+async function handleThreadsPublish(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    "message-id": "string",
+    "include-future": "boolean",
+    "dry-run": "boolean",
+    "projection-url": "string",
+    "projection-token": "string",
+    "published-by-user-id": "string",
+    "published-by-email": "string"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  const threadId = requireSinglePositional(positionals, "<thread-id>");
+  const commandOptions = mergedOptions(globalOptions, options);
+  const config = resolveEmailPlaneConfig(commandOptions, io.env);
+  if (config.data !== "local") {
+    throw new CliError("threads publish requires --store local so private mail stays local unless explicitly projected.");
+  }
+  const messageId = readOptionalStringOption(options, "message-id");
+  const includeFutureMessages = asBoolean(options["include-future"]);
+  if (messageId && includeFutureMessages) {
+    throw new CliError("--include-future is only valid when publishing a whole thread.");
+  }
+  const workspaceId = resolveWorkspace(commandOptions, io.env);
+  const store = await openLocalEmailStore(commandOptions, io);
+  try {
+    const state = store.getThread(workspaceId, threadId);
+    const publishedByUserId = readOptionalStringOption(options, "published-by-user-id") ?? activeSession?.user.userId ?? io.env.MERE_USER_ID?.trim() ?? "local-cli";
+    const publishedByEmail = readOptionalStringOption(options, "published-by-email") ?? activeSession?.user.primaryEmail ?? io.env.MERE_USER_EMAIL?.trim() ?? null;
+    const publication = buildLocalPublicationEnvelope({
+      workspaceId,
+      state,
+      messageId,
+      includeFutureMessages,
+      publishedByUserId,
+      publishedByEmail
+    });
+    if (asBoolean(options["dry-run"])) {
+      let receiverUrl;
+      try {
+        receiverUrl = resolveCloudProjectionTarget({
+          appId: config.appId,
+          env: io.env,
+          receiverUrl: readOptionalStringOption(commandOptions, "projection-url"),
+          bearerToken: readOptionalStringOption(commandOptions, "projection-token")
+        }).receiverUrl;
+      } catch {
+        receiverUrl = void 0;
+      }
+      writeResult(
+        io,
+        globalOptions,
+        {
+          ok: true,
+          dryRun: true,
+          store: "local",
+          projection: config.cloudProjection,
+          threadId,
+          publicationId: publication.publication.id,
+          messageCount: publication.messageCount,
+          receiverUrl,
+          event: publication.envelope
+        },
+        renderLocalPublication
+      );
+      return;
+    }
+    const delivery = await deliverCloudProjectionEvent({
+      appId: config.appId,
+      env: io.env,
+      receiverUrl: readOptionalStringOption(commandOptions, "projection-url"),
+      bearerToken: readOptionalStringOption(commandOptions, "projection-token"),
+      event: publication.envelope,
+      fetchImpl: io.fetchImpl
+    });
+    store.recordPublicationProjection(workspaceId, publication.publication);
+    writeResult(
+      io,
+      globalOptions,
+      {
+        ok: true,
+        store: "local",
+        projection: config.cloudProjection,
+        action: "publish",
+        threadId,
+        publicationId: publication.publication.id,
+        messageCount: publication.messageCount,
+        receiverUrl: delivery.receiverUrl,
+        status: delivery.status,
+        receiver: delivery.responseJson
+      },
+      renderLocalPublication
+    );
+  } finally {
+    store.close();
+  }
+}
+async function handleThreadsRevoke(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {
+    "message-id": "string",
+    "include-future": "boolean",
+    "dry-run": "boolean",
+    "projection-url": "string",
+    "projection-token": "string",
+    "published-by-user-id": "string",
+    "published-by-email": "string"
+  });
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  const threadId = requireSinglePositional(positionals, "<thread-id>");
+  const commandOptions = mergedOptions(globalOptions, options);
+  const config = resolveEmailPlaneConfig(commandOptions, io.env);
+  if (config.data !== "local") {
+    throw new CliError("threads revoke requires --store local so private mail stays local unless explicitly projected.");
+  }
+  const messageId = readOptionalStringOption(options, "message-id");
+  const includeFutureMessages = asBoolean(options["include-future"]);
+  if (messageId && includeFutureMessages) {
+    throw new CliError("--include-future is only valid when revoking a whole thread publication.");
+  }
+  const workspaceId = resolveWorkspace(commandOptions, io.env);
+  const store = await openLocalEmailStore(commandOptions, io);
+  try {
+    const state = store.getThread(workspaceId, threadId);
+    const publishedByUserId = readOptionalStringOption(options, "published-by-user-id") ?? activeSession?.user.userId ?? io.env.MERE_USER_ID?.trim() ?? "local-cli";
+    const publishedByEmail = readOptionalStringOption(options, "published-by-email") ?? activeSession?.user.primaryEmail ?? io.env.MERE_USER_EMAIL?.trim() ?? null;
+    const existingPublication = store.findPublicationForSelection(workspaceId, {
+      threadId: state.thread.id,
+      messageId,
+      includeFutureMessages
+    });
+    const publication = buildLocalPublicationRevocationEnvelope({
+      workspaceId,
+      state,
+      messageId,
+      includeFutureMessages,
+      publishedByUserId,
+      publishedByEmail,
+      existingPublication
+    });
+    if (asBoolean(options["dry-run"])) {
+      let receiverUrl;
+      try {
+        receiverUrl = resolveCloudProjectionTarget({
+          appId: config.appId,
+          env: io.env,
+          receiverUrl: readOptionalStringOption(commandOptions, "projection-url"),
+          bearerToken: readOptionalStringOption(commandOptions, "projection-token")
+        }).receiverUrl;
+      } catch {
+        receiverUrl = void 0;
+      }
+      writeResult(
+        io,
+        globalOptions,
+        {
+          ok: true,
+          dryRun: true,
+          store: "local",
+          projection: config.cloudProjection,
+          action: "revoke",
+          threadId,
+          publicationId: publication.publication.id,
+          messageCount: publication.messageCount,
+          receiverUrl,
+          event: publication.envelope
+        },
+        renderLocalPublication
+      );
+      return;
+    }
+    const delivery = await deliverCloudProjectionEvent({
+      appId: config.appId,
+      env: io.env,
+      receiverUrl: readOptionalStringOption(commandOptions, "projection-url"),
+      bearerToken: readOptionalStringOption(commandOptions, "projection-token"),
+      event: publication.envelope,
+      fetchImpl: io.fetchImpl
+    });
+    store.recordPublicationProjection(workspaceId, publication.publication);
+    writeResult(
+      io,
+      globalOptions,
+      {
+        ok: true,
+        store: "local",
+        projection: config.cloudProjection,
+        action: "revoke",
+        threadId,
+        publicationId: publication.publication.id,
+        messageCount: publication.messageCount,
+        receiverUrl: delivery.receiverUrl,
+        status: delivery.status,
+        receiver: delivery.responseJson
+      },
+      renderLocalPublication
+    );
+  } finally {
+    store.close();
+  }
 }
 async function handleThreadsAction(io, globalOptions, args, action) {
   const { options, positionals } = parseCommandFlags(args, {
@@ -6490,14 +9186,29 @@ async function handleThreadsAction(io, globalOptions, args, action) {
 }
 async function handleThreadsCommand(io, globalOptions, action, args) {
   if (!action) {
-    throw new CliError("Missing threads command. Expected search, show, read, star, or archive.");
+    throw new CliError("Missing threads command. Expected list, latest, search, show, summarize, publish, revoke, read, star, or archive.");
   }
   switch (action) {
+    case "list":
+      await handleThreadsList(io, globalOptions, args);
+      return;
+    case "latest":
+      await handleThreadsLatest(io, globalOptions, args);
+      return;
     case "search":
       await handleThreadsSearch(io, globalOptions, args);
       return;
     case "show":
       await handleThreadsShow(io, globalOptions, args);
+      return;
+    case "summarize":
+      await handleThreadsSummarize(io, globalOptions, args);
+      return;
+    case "publish":
+      await handleThreadsPublish(io, globalOptions, args);
+      return;
+    case "revoke":
+      await handleThreadsRevoke(io, globalOptions, args);
       return;
     case "read":
       await handleThreadsAction(io, globalOptions, args, "mark_read");
@@ -6509,7 +9220,7 @@ async function handleThreadsCommand(io, globalOptions, action, args) {
       await handleThreadsAction(io, globalOptions, args, "archive");
       return;
     default:
-      throw new CliError("Unknown threads command. Expected search, show, read, star, or archive.");
+      throw new CliError("Unknown threads command. Expected list, latest, search, show, summarize, publish, revoke, read, star, or archive.");
   }
 }
 async function handleAttachmentsList(io, globalOptions, args) {
@@ -6549,17 +9260,17 @@ async function handleAttachmentsDownload(io, globalOptions, args) {
   const attachmentId = requireSinglePositional(positionals, "<attachment-id>");
   const outputPath = readRequiredStringOption(options, "output");
   const workspaceId = resolveWorkspace(globalOptions, io.env);
-  const download = await createClient(io, globalOptions).downloadAttachment(workspaceId, attachmentId);
-  const path2 = await writeBytesFile(outputPath, download.bytes);
+  const download2 = await createClient(io, globalOptions).downloadAttachment(workspaceId, attachmentId);
+  const path4 = await writeBytesFile(outputPath, download2.bytes);
   writeResult(
     io,
     globalOptions,
     {
       attachmentId,
-      path: path2,
-      filename: download.filename,
-      contentType: download.contentType,
-      bytes: download.bytes.byteLength
+      path: path4,
+      filename: download2.filename,
+      contentType: download2.contentType,
+      bytes: download2.bytes.byteLength
     },
     (value) => `Saved ${value.filename ?? attachmentId} (${value.bytes} bytes) to ${value.path}`
   );
@@ -6746,32 +9457,60 @@ async function handleExport(io, globalOptions, args) {
   }
   requireNoPositionals(positionals);
   const workspaceId = resolveWorkspace(globalOptions, io.env);
+  const config = resolveEmailPlaneConfig(globalOptions, io.env);
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      writeJson(io, wrapEmailWorkspaceTransfer(store.exportWorkspace(workspaceId), config));
+    } finally {
+      store.close();
+    }
+    return;
+  }
   const result = await createClient(io, globalOptions).exportWorkspace(workspaceId);
-  writeJson(io, result);
+  writeJson(io, wrapEmailWorkspaceTransfer(result, config));
 }
 async function handleImport(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {
-    file: "string"
+    file: "string",
+    "dry-run": "boolean"
   });
   if (asBoolean(options.help)) {
     writeHelp(io, asBoolean(globalOptions.json));
     return;
   }
   requireNoPositionals(positionals);
-  const workspaceId = resolveWorkspace(globalOptions, io.env);
-  const rawPayload = await readJsonFile(readRequiredStringOption(options, "file"));
-  const payload = parseJsonWithSchema(
-    EmailWorkspaceImportRequestSchema,
-    rawPayload,
-    { invalidBodyMessage: "Import payload is invalid." }
+  const workspaceId = resolveWorkspaceOptional(globalOptions, io.env);
+  const { payload, bundle } = parseEmailWorkspaceTransfer(
+    await readJsonFile(readRequiredStringOption(options, "file"))
   );
-  if (payload.zerosmbTenantId !== workspaceId) {
+  if (workspaceId && payload.zerosmbTenantId !== workspaceId) {
     throw new CliError(
       `Import payload tenant ${payload.zerosmbTenantId} does not match workspace ${workspaceId}.`
     );
   }
+  const config = resolveEmailPlaneConfig(globalOptions, io.env);
+  if (asBoolean(options["dry-run"])) {
+    writeJson(io, planEmailWorkspaceImport(payload, bundle, config));
+    return;
+  }
+  if (resolveDataMode(globalOptions, io.env) === "local") {
+    const store = await openLocalEmailStore(globalOptions, io);
+    try {
+      const result2 = store.importWorkspace(payload, {
+        source: bundle?.source,
+        payloadSchema: bundle?.payloadSchema,
+        payloadSha256: bundle?.payloadSha256
+      });
+      writeResult(io, globalOptions, result2, renderLocalImport);
+    } finally {
+      store.close();
+    }
+    return;
+  }
+  const remoteWorkspaceId = workspaceId ?? resolveWorkspace(globalOptions, io.env);
   const result = await createClient(io, globalOptions).importWorkspace(
-    workspaceId,
+    remoteWorkspaceId,
     payload
   );
   writeResult(io, globalOptions, result, renderImportStatus);
@@ -6824,6 +9563,10 @@ async function runCli(argv, io) {
       writeText(io, await cliVersion());
       return 0;
     }
+    if (rest[0] === "version") {
+      writeText(io, await cliVersion());
+      return 0;
+    }
     if (rest[0] === "completion") {
       writeText(io, completionScript(rest[1]));
       return 0;
@@ -6838,8 +9581,10 @@ async function runCli(argv, io) {
     }
     activeSession = await loadSession(io.env);
     const [group, action, ...remaining] = rest;
+    const localDataMode = resolveDataMode(globalOptions, io.env) === "local";
     const isWorkspaceMetadataCommand = group === "workspace" && ["list", "current", "use"].includes(action ?? "");
-    if (group !== "auth" && !isWorkspaceMetadataCommand && activeSession && !resolveExternalToken(globalOptions, io.env)) {
+    const isSyncPullCommand = group === "sync" && action === "pull";
+    if (group !== "auth" && group !== "store" && !isWorkspaceMetadataCommand && activeSession && (!localDataMode || isSyncPullCommand) && !resolveExternalToken(globalOptions, io.env)) {
       activeSession = await ensureWorkspaceSession(activeSession, {
         workspace: resolveWorkspaceOptional(globalOptions, io.env),
         fetchImpl: io.fetchImpl
@@ -6849,6 +9594,12 @@ async function runCli(argv, io) {
     switch (group) {
       case "auth":
         await handleAuthCommand(io, globalOptions, action, remaining);
+        break;
+      case "store":
+        await handleStoreCommand(io, globalOptions, action, remaining);
+        break;
+      case "sync":
+        await handleSyncCommand(io, globalOptions, action, remaining);
         break;
       case "workspace":
         await handleWorkspaceCommand(io, globalOptions, action, remaining);

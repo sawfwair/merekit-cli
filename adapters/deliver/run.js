@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-const VERSION = 'mere-deliver 0.1.0';
+const VERSION = '0.1.0';
 const DEFAULT_BASE_URL = 'https://share.mere.ink';
 const API_PREFIX = '/api/cli/v1';
 const SESSION_PATH = '~/.local/state/mere-deliver/session.json';
@@ -14,6 +14,7 @@ const PASSWORD_HASH_SCHEME = 'pbkdf2-sha256';
 const PASSWORD_HASH_ITERATIONS = 100_000;
 const STATUSES = new Set(['active', 'disabled', 'archived']);
 const MODES = new Set(['structured', 'custom_html']);
+const BOOLEAN_FLAGS = new Set(['dry-run', 'help', 'json', 'version', 'yes']);
 
 /**
  * @typedef {string | boolean | undefined} FlagValue
@@ -53,12 +54,16 @@ Usage:
   mere-deliver commands --json
   mere-deliver completion bash|zsh|fish
   mere-deliver db info [--base-url URL] [--json]
+  mere-deliver store info [--store local|cloud] [--ai local|cloud] [--local-db PATH] [--json]
+  mere-deliver export --store local [--output FILE] [--json]
+  mere-deliver import --store local --file FILE [--dry-run] [--json]
   mere-deliver auth login --token TOKEN [--base-url URL] [--json]
   mere-deliver auth whoami [--base-url URL] [--token TOKEN] [--json]
   mere-deliver auth logout [--json]
   mere-deliver hash-password [password] [--json]
   mere-deliver packages list [--status active|disabled|archived|all] [--workspace ID] [--limit N] [--base-url URL] [--token TOKEN] [--json]
   mere-deliver packages get <slug> [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver packages publish|revoke <slug> --store local --projection-url URL --projection-token TOKEN [--dry-run] [--json]
   mere-deliver packages upsert <slug> --title TITLE --password PASSWORD [--customer-name NAME] [--workspace ID] [--sign-url URL] [--base-url URL] [--token TOKEN] [--json]
   mere-deliver packages set-status <slug> --status active|disabled|archived [--base-url URL] [--token TOKEN] [--json]
   mere-deliver packages set-sign-url <slug> [--sign-url URL] [--base-url URL] [--token TOKEN] [--json]
@@ -67,11 +72,18 @@ Usage:
   mere-deliver same-page upsert <slug> --mode structured --payload-json JSON [--base-url URL] [--token TOKEN] [--json]
   mere-deliver same-page upsert <slug> --mode custom_html --custom-html-file FILE [--base-url URL] [--token TOKEN] [--json]
   mere-deliver same-page delete <slug> --yes --confirm <slug> [--base-url URL] [--token TOKEN] [--json]
+  mere-deliver files|recipients|access-grants|login-attempts|audit-events list|get|show|upsert --store local [--data JSON] [--data-file FILE] [--json]
   mere-deliver url <slug> [--base-url URL] [--json]
 
 Auth:
   Set MERE_DELIVER_API_TOKEN or run auth login --token TOKEN.
-  Set MERE_DELIVER_BASE_URL to target a non-production hosted Deliver API.`;
+  Set MERE_DELIVER_BASE_URL to target a non-production hosted Deliver API.
+
+Local archive:
+  --store local supports package/page/file/recipient/access/login-attempt/audit
+  metadata plus selected package-summary projection only. Worker delivery, D1 password verification, signed sessions,
+  rate limiting, static asset bytes, companion PDF bytes, public URLs, deploys,
+  and Business projection receiving remain hosted.`;
 
 /**
  * @param {string[]} pathParts
@@ -96,10 +108,17 @@ function command(pathParts, summary, options = {}) {
 }
 
 const API_FLAGS = ['base-url', 'token', 'json'];
+const PLANE_FLAGS = ['workspace', 'store', 'ai', 'local-db', 'json'];
+const LOCAL_QUERY_FLAGS = [...PLANE_FLAGS];
+const LOCAL_DATA_FLAGS = [...PLANE_FLAGS, 'data', 'data-file'];
+const PROJECTION_FLAGS = ['projection-url', 'projection-token', 'published-by-user-id', 'published-by-email', 'dry-run'];
 const MANIFEST_COMMANDS = [
 	command(['commands'], 'Print the machine-readable mere-deliver command manifest.', { auth: 'none', flags: ['json'] }),
 	command(['completion'], 'Print shell completion for mere-deliver.', { auth: 'none', supportsJson: false, positionals: ['shell'] }),
 	command(['db', 'info'], 'Show the hosted Deliver API target and local auth state.', { auth: 'none', flags: ['base-url', 'json'], auditDefault: true }),
+	command(['store', 'info'], 'Inspect local/cloud data and AI plane selection.', { auth: 'none', flags: PLANE_FLAGS, auditDefault: true }),
+	command(['export'], 'Export local Deliver records as a portable transfer bundle.', { auth: 'none', risk: 'read', flags: [...PLANE_FLAGS, 'output'] }),
+	command(['import'], 'Import a local Deliver archive transfer bundle.', { auth: 'none', risk: 'write', flags: [...PLANE_FLAGS, 'file', 'dry-run'] }),
 	command(['auth', 'login'], 'Store a Deliver API token for hosted package administration.', { auth: 'none', risk: 'external', flags: API_FLAGS }),
 	command(['auth', 'whoami'], 'Show the hosted Deliver API identity for the active token.', { flags: API_FLAGS, auditDefault: true }),
 	command(['auth', 'logout'], 'Clear the stored Deliver API token.', { auth: 'none', risk: 'write', flags: ['json'] }),
@@ -109,6 +128,18 @@ const MANIFEST_COMMANDS = [
 		auditDefault: true
 	}),
 	command(['packages', 'get'], 'Show one delivery package by slug.', { flags: API_FLAGS, positionals: ['slug'] }),
+	command(['packages', 'publish'], 'Publish selected local package summary to Business.', {
+		auth: 'none',
+		risk: 'external',
+		flags: [...PLANE_FLAGS, ...PROJECTION_FLAGS],
+		positionals: ['slug']
+	}),
+	command(['packages', 'revoke'], 'Revoke selected local package summary from Business.', {
+		auth: 'none',
+		risk: 'external',
+		flags: [...PLANE_FLAGS, ...PROJECTION_FLAGS],
+		positionals: ['slug']
+	}),
 	command(['packages', 'upsert'], 'Create or replace a delivery package row.', {
 		risk: 'write',
 		supportsData: true,
@@ -146,6 +177,26 @@ const MANIFEST_COMMANDS = [
 		flags: [...API_FLAGS, 'yes', 'confirm'],
 		positionals: ['slug']
 	}),
+	command(['files', 'list'], 'List local file-reference records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['files', 'get'], 'Show one local file-reference record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['files', 'show'], 'Show one local file-reference record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['files', 'upsert'], 'Upsert a local file-reference record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['recipients', 'list'], 'List local recipient records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['recipients', 'get'], 'Show one local recipient record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['recipients', 'show'], 'Show one local recipient record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['recipients', 'upsert'], 'Upsert a local recipient record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['access-grants', 'list'], 'List local access-grant records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['access-grants', 'get'], 'Show one local access-grant record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['access-grants', 'show'], 'Show one local access-grant record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['access-grants', 'upsert'], 'Upsert a local access-grant record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['login-attempts', 'list'], 'List local login-attempt records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['login-attempts', 'get'], 'Show one local login-attempt record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['login-attempts', 'show'], 'Show one local login-attempt record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['login-attempts', 'upsert'], 'Upsert a local login-attempt record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
+	command(['audit-events', 'list'], 'List local audit-event records.', { auth: 'none', flags: LOCAL_QUERY_FLAGS }),
+	command(['audit-events', 'get'], 'Show one local audit-event record.', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['audit-events', 'show'], 'Show one local audit-event record (alias for get).', { auth: 'none', flags: LOCAL_QUERY_FLAGS, positionals: ['id'] }),
+	command(['audit-events', 'upsert'], 'Upsert a local audit-event record.', { auth: 'none', risk: 'write', supportsData: true, flags: LOCAL_DATA_FLAGS }),
 	command(['url'], 'Print the share URL for one delivery package slug.', { auth: 'none', flags: ['base-url', 'json'], positionals: ['slug'] })
 ];
 
@@ -160,7 +211,7 @@ function manifest() {
 		baseUrlEnv: ['MERE_DELIVER_BASE_URL'],
 		tokenEnv: ['MERE_DELIVER_API_TOKEN'],
 		sessionPath: SESSION_PATH,
-		globalFlags: API_FLAGS,
+		globalFlags: [...API_FLAGS, 'workspace', 'store', 'ai', 'local-db', 'yes', 'confirm'],
 		commands: MANIFEST_COMMANDS
 	};
 }
@@ -175,6 +226,10 @@ function parseArgs(argv) {
 	const flags = {};
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
+		if (arg === '-v') {
+			flags.version = true;
+			continue;
+		}
 		if (!arg?.startsWith('--')) {
 			if (arg) positionals.push(arg);
 			continue;
@@ -185,6 +240,10 @@ function parseArgs(argv) {
 			continue;
 		}
 		const name = arg.slice(2);
+		if (BOOLEAN_FLAGS.has(name)) {
+			flags[name] = true;
+			continue;
+		}
 		const next = argv[index + 1];
 		if (next && !next.startsWith('--')) {
 			flags[name] = next;
@@ -766,16 +825,105 @@ function runUrl(positionals, flags) {
 }
 
 /**
+ * @param {unknown} result
+ * @param {Flags} flags
+ */
+function outputLocalResult(result, flags) {
+	if (result === '' || result === undefined) return;
+	if (boolFlag(flags, 'json') || typeof result !== 'string') writeJson(result);
+	else writeText(result);
+}
+
+/**
+ * @param {string | undefined} group
+ * @returns {string | null}
+ */
+function localRecordType(group) {
+	switch (group) {
+		case 'package':
+		case 'packages':
+			return 'packages';
+		case 'page':
+		case 'pages':
+		case 'same-page':
+			return 'pages';
+		case 'file':
+		case 'files':
+			return 'files';
+		case 'recipient':
+		case 'recipients':
+			return 'recipients';
+		case 'access':
+		case 'access-grant':
+		case 'access-grants':
+			return 'accessGrants';
+		case 'login':
+		case 'login-attempt':
+		case 'login-attempts':
+			return 'loginAttempts';
+		case 'audit':
+		case 'audit-event':
+		case 'audit-events':
+			return 'auditEvents';
+		default:
+			return null;
+	}
+}
+
+/**
+ * @param {string[]} positionals
+ * @param {Flags} flags
+ * @returns {Promise<boolean>}
+ */
+async function handleLocalDataCommand(positionals, flags) {
+	const group = positionals[0];
+	const action = positionals[1];
+	const wantsLocalSurface = group === 'store' || group === 'export' || group === 'import' || stringFlag(flags, 'store') === 'local';
+	if (!wantsLocalSurface) return false;
+	const local = await import('./local-plane.js');
+	const localData = local.isLocalDataRoute(flags);
+	let result;
+
+	if (group === 'store') {
+		if (action !== 'info') throw new CliError('Unknown store command: expected info.');
+		result = await local.handleLocalStoreInfo(flags);
+	} else if (group === 'export') {
+		result = await local.handleLocalExport(flags);
+	} else if (group === 'import') {
+		result = await local.handleLocalImport(flags);
+	} else if (localData) {
+		const type = localRecordType(group);
+		if (!type) {
+			throw new CliError(
+				`--store local is not supported for ${group ?? '(missing)'}. Supported local commands are store info, packages list|get|show|upsert|publish|revoke, same-page, files, recipients, access-grants, login-attempts, audit-events, export, and import. ${local.hostedDeliverBoundary()}`
+			);
+		}
+		result = await local.handleLocalRecordGroup(type, action ?? 'list', positionals.slice(2), flags);
+	} else {
+		return false;
+	}
+
+	outputLocalResult(result, flags);
+	return true;
+}
+
+/**
  * @param {string | undefined} shell
  * @returns {string}
  */
 function renderCompletion(shell) {
-	const top = ['auth', 'commands', 'completion', 'db', 'hash-password', 'packages', 'same-page', 'url'];
+	const top = ['access-grants', 'audit-events', 'auth', 'commands', 'completion', 'db', 'export', 'files', 'hash-password', 'import', 'login-attempts', 'packages', 'recipients', 'same-page', 'store', 'url'];
 	const second = {
 		auth: ['login', 'logout', 'whoami'],
 		db: ['info'],
-		packages: ['delete', 'get', 'list', 'set-sign-url', 'set-status', 'upsert'],
+		store: ['info'],
+		packages: ['delete', 'get', 'list', 'publish', 'revoke', 'set-sign-url', 'set-status', 'upsert'],
 		'same-page': ['delete', 'get', 'upsert'],
+		files: ['get', 'list', 'show', 'upsert'],
+		recipients: ['get', 'list', 'show', 'upsert'],
+		'access-grants': ['get', 'list', 'show', 'upsert'],
+		'login-attempts': ['get', 'list', 'show', 'upsert'],
+		'audit-events': ['get', 'list', 'show', 'upsert'],
 		completion: ['bash', 'fish', 'zsh']
 	};
 	switch ((shell ?? 'bash').trim()) {
@@ -830,6 +978,7 @@ async function main(argv) {
 		writeText(renderCompletion(positionals[1]));
 		return;
 	}
+	if (await handleLocalDataCommand(positionals, flags)) return;
 	if (positionals[0] === 'db' && positionals[1] === 'info') return runDbInfo(flags);
 	if (positionals[0] === 'auth') return await runAuth(positionals[1], flags);
 	if (positionals[0] === 'hash-password') return await runHashPassword(positionals, flags);
