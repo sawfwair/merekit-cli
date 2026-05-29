@@ -299,6 +299,7 @@ var init_config = __esm({
 });
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -352,6 +353,9 @@ function isoNow2() {
 }
 function json(value) {
   return JSON.stringify(value ?? {});
+}
+function makePlaneId(prefix) {
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
 }
 async function loadNodeSqlite() {
   return import(["node", "sqlite"].join(":"));
@@ -538,6 +542,179 @@ function upsertPlaneWorkspace(db, appId, input) {
          last_imported_at = excluded.last_imported_at,
          updated_at = excluded.updated_at`
   ).run(appId, input.workspaceId, input.dataPlane, input.aiPlane, now, now, now);
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function stringField(record, key) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function nestedRecord(record, key) {
+  const value = record[key];
+  return isRecord2(value) ? value : null;
+}
+function hashJson(value) {
+  const text = JSON.stringify(value);
+  if (text === void 0) {
+    throw new Error("Projection envelope must be JSON serializable.");
+  }
+  return createHash2("sha256").update(text).digest("hex");
+}
+function defaultAppIdForProjection(product, eventType) {
+  if (product?.trim()) return product.trim();
+  if (eventType.startsWith("mail.")) return "mere-email";
+  if (eventType.startsWith("network.")) return "mere-network";
+  if (eventType.startsWith("project.") || eventType.startsWith("proposal.") || eventType.startsWith("file.") || eventType.startsWith("profile.")) {
+    return "mere-projects";
+  }
+  return "mere-business";
+}
+function inferExternalObject(event) {
+  const projection = nestedRecord(event, "projection");
+  const publication = nestedRecord(event, "publication");
+  const thread = nestedRecord(event, "thread");
+  const call = nestedRecord(event, "call");
+  if (projection && stringField(projection, "callId")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(projection, "callId") };
+  }
+  if (publication && stringField(publication, "id")) {
+    return { externalObjectType: "mail_publication", externalObjectId: stringField(publication, "id") };
+  }
+  if (thread && stringField(thread, "id")) {
+    return { externalObjectType: "mail_thread", externalObjectId: stringField(thread, "id") };
+  }
+  if (call && stringField(call, "id")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(call, "id") };
+  }
+  return { externalObjectType: null, externalObjectId: null };
+}
+function normalizeProjectionEnvelope(input) {
+  if (!isRecord2(input.envelope)) {
+    throw new Error("Projection envelope must be a JSON object.");
+  }
+  const receivedAt = input.receivedAt ?? isoNow2();
+  const envelope = input.envelope;
+  const event = nestedRecord(envelope, "event") ?? envelope;
+  const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
+  if (!eventType) throw new Error("Projection envelope eventType is required.");
+  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
+  const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
+  const appId = input.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
+  const sourceEventId = stringField(envelope, "eventId") ?? stringField(event, "eventId") ?? stringField(event, "id") ?? stringField(envelope, "dedupeKey") ?? `sha256:${hashJson(input.envelope).slice(0, 32)}`;
+  const inferredExternal = inferExternalObject(event);
+  const externalObjectType = stringField(envelope, "externalObjectType") ?? stringField(event, "externalObjectType") ?? inferredExternal.externalObjectType;
+  const externalObjectId = stringField(envelope, "externalObjectId") ?? stringField(event, "externalObjectId") ?? inferredExternal.externalObjectId;
+  const occurredAt = stringField(envelope, "occurredAt") ?? stringField(event, "occurredAt") ?? stringField(event, "updatedAt") ?? stringField(nestedRecord(event, "publication") ?? {}, "publishedAt") ?? stringField(nestedRecord(event, "projection") ?? {}, "publishedAt") ?? receivedAt;
+  const envelopeJson = json(input.envelope);
+  return {
+    appId,
+    workspaceId,
+    product,
+    sourceEventId,
+    eventType,
+    externalObjectType,
+    externalObjectId,
+    occurredAt,
+    canonicalUrl: stringField(envelope, "canonicalUrl") ?? stringField(event, "canonicalUrl"),
+    dedupeKey: stringField(envelope, "dedupeKey"),
+    source: input.source ?? "manual",
+    receivedAt,
+    envelopeSha256: createHash2("sha256").update(envelopeJson).digest("hex"),
+    envelopeJson
+  };
+}
+function toLocalProjectionEvent(row) {
+  return {
+    id: row.id,
+    appId: row.app_id,
+    workspaceId: row.workspace_id,
+    product: row.product,
+    sourceEventId: row.source_event_id,
+    eventType: row.event_type,
+    externalObjectType: row.external_object_type,
+    externalObjectId: row.external_object_id,
+    occurredAt: row.occurred_at,
+    canonicalUrl: row.canonical_url,
+    dedupeKey: row.dedupe_key,
+    source: row.source,
+    envelopeSha256: row.envelope_sha256,
+    envelope: JSON.parse(row.envelope_json),
+    receivedAt: row.received_at,
+    createdAt: row.created_at
+  };
+}
+function recordLocalProjectionEnvelope(db, input) {
+  ensureLocalPlaneSchema(db);
+  const normalized = normalizeProjectionEnvelope(input);
+  registerPlaneApp(db, normalized.appId);
+  upsertPlaneWorkspace(db, normalized.appId, {
+    workspaceId: normalized.workspaceId,
+    slug: normalized.workspaceId,
+    name: null,
+    dataPlane: "local",
+    aiPlane: "cloud"
+  });
+  const existing = db.prepare(
+    `SELECT id
+       FROM mere_plane_projection_events
+       WHERE app_id = ? AND workspace_id = ? AND source_event_id = ?
+       LIMIT 1`
+  ).get(normalized.appId, normalized.workspaceId, normalized.sourceEventId);
+  const id = existing?.id ?? makePlaneId("lpe");
+  const createdAt = existing ? null : normalized.receivedAt;
+  db.prepare(
+    `INSERT INTO mere_plane_projection_events (
+         id, app_id, workspace_id, product, source_event_id, event_type,
+         external_object_type, external_object_id, occurred_at, canonical_url,
+         dedupe_key, source, envelope_sha256, envelope_json, received_at, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id, source_event_id) DO UPDATE SET
+         product = excluded.product,
+         event_type = excluded.event_type,
+         external_object_type = excluded.external_object_type,
+         external_object_id = excluded.external_object_id,
+         occurred_at = excluded.occurred_at,
+         canonical_url = excluded.canonical_url,
+         dedupe_key = excluded.dedupe_key,
+         source = excluded.source,
+         envelope_sha256 = excluded.envelope_sha256,
+         envelope_json = excluded.envelope_json,
+         received_at = excluded.received_at`
+  ).run(
+    id,
+    normalized.appId,
+    normalized.workspaceId,
+    normalized.product,
+    normalized.sourceEventId,
+    normalized.eventType,
+    normalized.externalObjectType,
+    normalized.externalObjectId,
+    normalized.occurredAt,
+    normalized.canonicalUrl,
+    normalized.dedupeKey,
+    normalized.source,
+    normalized.envelopeSha256,
+    normalized.envelopeJson,
+    normalized.receivedAt,
+    createdAt ?? normalized.receivedAt
+  );
+  const event = getLocalProjectionEvent(db, id);
+  if (!event) throw new Error(`Local projection event ${id} was not recorded.`);
+  return { inserted: !existing, event };
+}
+function getLocalProjectionEvent(db, idOrSourceEventId) {
+  ensureLocalPlaneSchema(db);
+  const row = db.prepare(
+    `SELECT *
+       FROM mere_plane_projection_events
+       WHERE id = ? OR source_event_id = ? OR dedupe_key = ?
+       ORDER BY received_at DESC
+       LIMIT 1`
+  ).get(idOrSourceEventId, idOrSourceEventId, idOrSourceEventId);
+  return row ? toLocalProjectionEvent(row) : null;
 }
 function countRows(db, sql, ...params) {
   return Number(db.prepare(sql).get(...params)?.count ?? 0);
@@ -860,7 +1037,7 @@ var local_store_exports = {};
 __export(local_store_exports, {
   LocalEmailStore: () => LocalEmailStore
 });
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 function parseStringArray(value) {
   const parsed = parseJsonText(value);
   return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
@@ -880,7 +1057,7 @@ function compactSnippet(value, max = 240) {
   return `${compacted.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
 }
 function makeId(prefix) {
-  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
+  return `${prefix}_${randomUUID3().replaceAll("-", "").slice(0, 24)}`;
 }
 function mapMailbox(row) {
   return {
@@ -1474,7 +1651,7 @@ var init_local_store = __esm({
         );
         return row ? mapPublication(row) : null;
       }
-      recordPublicationProjection(workspaceId, publication) {
+      recordPublicationProjection(workspaceId, publication, envelope) {
         this.ensureEmailSchema();
         const now = isoNow2();
         this.db.prepare(
@@ -1511,6 +1688,11 @@ var init_local_store = __esm({
           now,
           now
         );
+        recordLocalProjectionEnvelope(this.db, {
+          appId: this.config.appId,
+          source: "local-publish",
+          envelope
+        });
       }
       getAttachments(workspaceId, messageId) {
         return this.db.prepare("SELECT * FROM email_local_attachments WHERE workspace_id = ? AND message_id = ? ORDER BY created_at ASC").all(workspaceId, messageId).map(mapAttachment);
@@ -1628,14 +1810,14 @@ var init_local_store = __esm({
 // cli/mere-email.ts
 init_src();
 init_projection();
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { mkdir as mkdir3, readFile as readFile3, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { access, chmod, mkdtemp, rm } from "node:fs/promises";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import https from "node:https";
 import os2 from "node:os";
 import path2 from "node:path";
@@ -1710,7 +1892,7 @@ async function download(url, dest) {
   });
 }
 async function sha256File(filePath) {
-  const hash = createHash2("sha256");
+  const hash = createHash3("sha256");
   await new Promise((resolve, reject) => {
     const stream = createReadStream(filePath);
     stream.on("data", (chunk) => hash.update(chunk));
@@ -6233,7 +6415,7 @@ init_json();
 
 // packages/core/internal-rpc.ts
 init_json();
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function buildBearerHeaders(token, headers = {}) {
@@ -6242,8 +6424,8 @@ function buildBearerHeaders(token, headers = {}) {
   return next;
 }
 function parseRpcErrorPayload(value) {
-  if (!isRecord2(value)) return null;
-  if (!isRecord2(value.error)) return null;
+  if (!isRecord3(value)) return null;
+  if (!isRecord3(value.error)) return null;
   if (typeof value.error.code !== "string" || typeof value.error.message !== "string") {
     return null;
   }
@@ -6267,11 +6449,11 @@ function normalizeBaseUrl2(baseUrl) {
   const url = new URL(baseUrl);
   return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
 }
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function expectRecord(value, label) {
-  if (!isRecord3(value)) {
+  if (!isRecord4(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value;
@@ -6530,7 +6712,7 @@ async function parseErrorMessage(response) {
     if (rpcError) {
       return rpcError.message;
     }
-    if (isRecord3(payload) && typeof payload.error === "string") {
+    if (isRecord4(payload) && typeof payload.error === "string") {
       return payload.error;
     }
     return text;
@@ -6847,7 +7029,7 @@ var EmailCliClient = class {
     if (options.useRpcEnvelope === false) {
       return options.parser(payload);
     }
-    if (!isRecord3(payload)) {
+    if (!isRecord4(payload)) {
       throw new CliError("RPC response envelope is invalid.");
     }
     if (payload.ok !== true || !Object.prototype.hasOwnProperty.call(payload, "data")) {
@@ -8121,7 +8303,7 @@ function mergedOptions(globalOptions, options) {
   return { ...globalOptions, ...options };
 }
 function stablePublicationId(input) {
-  const hash = createHash3("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
+  const hash = createHash4("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
   return `pub_${hash}`;
 }
 function selectedPublicationMessages(state, messageId) {
@@ -9039,7 +9221,7 @@ async function handleThreadsPublish(io, globalOptions, args) {
       event: publication.envelope,
       fetchImpl: io.fetchImpl
     });
-    store.recordPublicationProjection(workspaceId, publication.publication);
+    store.recordPublicationProjection(workspaceId, publication.publication, publication.envelope);
     writeResult(
       io,
       globalOptions,
@@ -9145,7 +9327,7 @@ async function handleThreadsRevoke(io, globalOptions, args) {
       event: publication.envelope,
       fetchImpl: io.fetchImpl
     });
-    store.recordPublicationProjection(workspaceId, publication.publication);
+    store.recordPublicationProjection(workspaceId, publication.publication, publication.envelope);
     writeResult(
       io,
       globalOptions,
