@@ -405,7 +405,7 @@ var init_config = __esm({
 });
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir as mkdir2 } from "node:fs/promises";
 import path3 from "node:path";
 function isoNow2() {
@@ -515,6 +515,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {
@@ -621,6 +647,179 @@ function updatePlaneAiJob(db, input) {
   }
   params.push(input.id);
   db.prepare(`UPDATE mere_plane_ai_jobs SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+}
+function isRecord2(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+function stringField(record, key) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function nestedRecord(record, key) {
+  const value = record[key];
+  return isRecord2(value) ? value : null;
+}
+function hashJson(value) {
+  const text = JSON.stringify(value);
+  if (text === void 0) {
+    throw new Error("Projection envelope must be JSON serializable.");
+  }
+  return createHash2("sha256").update(text).digest("hex");
+}
+function defaultAppIdForProjection(product, eventType) {
+  if (product?.trim()) return product.trim();
+  if (eventType.startsWith("mail.")) return "mere-email";
+  if (eventType.startsWith("network.")) return "mere-network";
+  if (eventType.startsWith("project.") || eventType.startsWith("proposal.") || eventType.startsWith("file.") || eventType.startsWith("profile.")) {
+    return "mere-projects";
+  }
+  return "mere-business";
+}
+function inferExternalObject(event) {
+  const projection = nestedRecord(event, "projection");
+  const publication = nestedRecord(event, "publication");
+  const thread = nestedRecord(event, "thread");
+  const call = nestedRecord(event, "call");
+  if (projection && stringField(projection, "callId")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(projection, "callId") };
+  }
+  if (publication && stringField(publication, "id")) {
+    return { externalObjectType: "mail_publication", externalObjectId: stringField(publication, "id") };
+  }
+  if (thread && stringField(thread, "id")) {
+    return { externalObjectType: "mail_thread", externalObjectId: stringField(thread, "id") };
+  }
+  if (call && stringField(call, "id")) {
+    return { externalObjectType: "network_call", externalObjectId: stringField(call, "id") };
+  }
+  return { externalObjectType: null, externalObjectId: null };
+}
+function normalizeProjectionEnvelope(input) {
+  if (!isRecord2(input.envelope)) {
+    throw new Error("Projection envelope must be a JSON object.");
+  }
+  const receivedAt = input.receivedAt ?? isoNow2();
+  const envelope = input.envelope;
+  const event = nestedRecord(envelope, "event") ?? envelope;
+  const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
+  if (!eventType) throw new Error("Projection envelope eventType is required.");
+  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
+  const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
+  const appId = input.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
+  const sourceEventId = stringField(envelope, "eventId") ?? stringField(event, "eventId") ?? stringField(event, "id") ?? stringField(envelope, "dedupeKey") ?? `sha256:${hashJson(input.envelope).slice(0, 32)}`;
+  const inferredExternal = inferExternalObject(event);
+  const externalObjectType = stringField(envelope, "externalObjectType") ?? stringField(event, "externalObjectType") ?? inferredExternal.externalObjectType;
+  const externalObjectId = stringField(envelope, "externalObjectId") ?? stringField(event, "externalObjectId") ?? inferredExternal.externalObjectId;
+  const occurredAt = stringField(envelope, "occurredAt") ?? stringField(event, "occurredAt") ?? stringField(event, "updatedAt") ?? stringField(nestedRecord(event, "publication") ?? {}, "publishedAt") ?? stringField(nestedRecord(event, "projection") ?? {}, "publishedAt") ?? receivedAt;
+  const envelopeJson = json(input.envelope);
+  return {
+    appId,
+    workspaceId,
+    product,
+    sourceEventId,
+    eventType,
+    externalObjectType,
+    externalObjectId,
+    occurredAt,
+    canonicalUrl: stringField(envelope, "canonicalUrl") ?? stringField(event, "canonicalUrl"),
+    dedupeKey: stringField(envelope, "dedupeKey"),
+    source: input.source ?? "manual",
+    receivedAt,
+    envelopeSha256: createHash2("sha256").update(envelopeJson).digest("hex"),
+    envelopeJson
+  };
+}
+function toLocalProjectionEvent(row) {
+  return {
+    id: row.id,
+    appId: row.app_id,
+    workspaceId: row.workspace_id,
+    product: row.product,
+    sourceEventId: row.source_event_id,
+    eventType: row.event_type,
+    externalObjectType: row.external_object_type,
+    externalObjectId: row.external_object_id,
+    occurredAt: row.occurred_at,
+    canonicalUrl: row.canonical_url,
+    dedupeKey: row.dedupe_key,
+    source: row.source,
+    envelopeSha256: row.envelope_sha256,
+    envelope: JSON.parse(row.envelope_json),
+    receivedAt: row.received_at,
+    createdAt: row.created_at
+  };
+}
+function recordLocalProjectionEnvelope(db, input) {
+  ensureLocalPlaneSchema(db);
+  const normalized = normalizeProjectionEnvelope(input);
+  registerPlaneApp(db, normalized.appId);
+  upsertPlaneWorkspace(db, normalized.appId, {
+    workspaceId: normalized.workspaceId,
+    slug: normalized.workspaceId,
+    name: null,
+    dataPlane: "local",
+    aiPlane: "cloud"
+  });
+  const existing = db.prepare(
+    `SELECT id
+       FROM mere_plane_projection_events
+       WHERE app_id = ? AND workspace_id = ? AND source_event_id = ?
+       LIMIT 1`
+  ).get(normalized.appId, normalized.workspaceId, normalized.sourceEventId);
+  const id = existing?.id ?? makePlaneId("lpe");
+  const createdAt = existing ? null : normalized.receivedAt;
+  db.prepare(
+    `INSERT INTO mere_plane_projection_events (
+         id, app_id, workspace_id, product, source_event_id, event_type,
+         external_object_type, external_object_id, occurred_at, canonical_url,
+         dedupe_key, source, envelope_sha256, envelope_json, received_at, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id, workspace_id, source_event_id) DO UPDATE SET
+         product = excluded.product,
+         event_type = excluded.event_type,
+         external_object_type = excluded.external_object_type,
+         external_object_id = excluded.external_object_id,
+         occurred_at = excluded.occurred_at,
+         canonical_url = excluded.canonical_url,
+         dedupe_key = excluded.dedupe_key,
+         source = excluded.source,
+         envelope_sha256 = excluded.envelope_sha256,
+         envelope_json = excluded.envelope_json,
+         received_at = excluded.received_at`
+  ).run(
+    id,
+    normalized.appId,
+    normalized.workspaceId,
+    normalized.product,
+    normalized.sourceEventId,
+    normalized.eventType,
+    normalized.externalObjectType,
+    normalized.externalObjectId,
+    normalized.occurredAt,
+    normalized.canonicalUrl,
+    normalized.dedupeKey,
+    normalized.source,
+    normalized.envelopeSha256,
+    normalized.envelopeJson,
+    normalized.receivedAt,
+    createdAt ?? normalized.receivedAt
+  );
+  const event = getLocalProjectionEvent(db, id);
+  if (!event) throw new Error(`Local projection event ${id} was not recorded.`);
+  return { inserted: !existing, event };
+}
+function getLocalProjectionEvent(db, idOrSourceEventId) {
+  ensureLocalPlaneSchema(db);
+  const row = db.prepare(
+    `SELECT *
+       FROM mere_plane_projection_events
+       WHERE id = ? OR source_event_id = ? OR dedupe_key = ?
+       ORDER BY received_at DESC
+       LIMIT 1`
+  ).get(idOrSourceEventId, idOrSourceEventId, idOrSourceEventId);
+  return row ? toLocalProjectionEvent(row) : null;
 }
 function countRows(db, sql, ...params) {
   return Number(db.prepare(sql).get(...params)?.count ?? 0);
@@ -783,7 +982,7 @@ function parseJson2(value, fallback) {
 function jsonText(value) {
   return JSON.stringify(value ?? null);
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 function readString2(value, label, fallback) {
@@ -810,7 +1009,7 @@ function readBoolean(value, fallback) {
   return fallback;
 }
 function readRecord(value, fallback) {
-  return isRecord2(value) ? value : fallback;
+  return isRecord3(value) ? value : fallback;
 }
 function readStringList(value, fallback) {
   const raw = value === void 0 ? fallback : value;
@@ -1116,7 +1315,7 @@ function normalizeProfileInput(input, existing) {
   };
 }
 function normalizeTransferPayload(value) {
-  if (!isRecord2(value) || value.kind !== PROJECTS_PROJECTS_PAYLOAD_SCHEMA || value.version !== 1) {
+  if (!isRecord3(value) || value.kind !== PROJECTS_PROJECTS_PAYLOAD_SCHEMA || value.version !== 1) {
     throw new Error(`Projects transfer payload must be ${PROJECTS_PROJECTS_PAYLOAD_SCHEMA} version 1.`);
   }
   if (!Array.isArray(value.projects)) {
@@ -1125,22 +1324,22 @@ function normalizeTransferPayload(value) {
   return {
     kind: PROJECTS_PROJECTS_PAYLOAD_SCHEMA,
     version: 1,
-    projects: value.projects.map((entry) => normalizeProjectInput(isRecord2(entry) ? entry : {})),
+    projects: value.projects.map((entry) => normalizeProjectInput(isRecord3(entry) ? entry : {})),
     contacts: Array.isArray(value.contacts) ? value.contacts.map((entry) => {
-      const record = isRecord2(entry) ? entry : {};
+      const record = isRecord3(entry) ? entry : {};
       return normalizeContactInput(readString2(record.projectId, "projectId"), record);
     }) : [],
     knowledgeEntries: Array.isArray(value.knowledgeEntries) ? value.knowledgeEntries.map((entry) => {
-      const record = isRecord2(entry) ? entry : {};
+      const record = isRecord3(entry) ? entry : {};
       return normalizeKnowledgeInput(readString2(record.projectId, "projectId"), record);
     }) : [],
     links: Array.isArray(value.links) ? value.links.map((entry) => {
-      const record = isRecord2(entry) ? entry : {};
+      const record = isRecord3(entry) ? entry : {};
       return normalizeLinkInput(readString2(record.projectId, "projectId"), record);
     }) : [],
-    proposals: Array.isArray(value.proposals) ? value.proposals.map((entry) => normalizeProposalInput(isRecord2(entry) ? entry : {})) : [],
-    files: Array.isArray(value.files) ? value.files.map((entry) => normalizeFileInput(isRecord2(entry) ? entry : {})) : [],
-    pastPerformanceProfiles: Array.isArray(value.pastPerformanceProfiles) ? value.pastPerformanceProfiles.map((entry) => normalizeProfileInput(isRecord2(entry) ? entry : {})) : []
+    proposals: Array.isArray(value.proposals) ? value.proposals.map((entry) => normalizeProposalInput(isRecord3(entry) ? entry : {})) : [],
+    files: Array.isArray(value.files) ? value.files.map((entry) => normalizeFileInput(isRecord3(entry) ? entry : {})) : [],
+    pastPerformanceProfiles: Array.isArray(value.pastPerformanceProfiles) ? value.pastPerformanceProfiles.map((entry) => normalizeProfileInput(isRecord3(entry) ? entry : {})) : []
   };
 }
 var PROJECTS_APP_ID, PROJECTS_PROJECTS_PAYLOAD_SCHEMA, PROJECT_KINDS, PROJECT_ROLES, PROJECT_STATUSES, PROJECT_CONTACT_KINDS, PROJECT_KNOWLEDGE_ENTRY_TYPES, PROPOSAL_STAGES, PROFILE_VISIBILITIES, LocalProjectsStore;
@@ -1939,6 +2138,11 @@ var init_local_store = __esm({
           now,
           now
         );
+        recordLocalProjectionEnvelope(this.db, {
+          appId: PROJECTS_APP_ID,
+          source: "local-publish",
+          envelope: input.envelope
+        });
       }
       getProjectBundle(projectId) {
         const project = this.getProject(projectId);
@@ -2153,7 +2357,7 @@ var init_local_store = __esm({
 });
 
 // cli/projects.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
@@ -2169,6 +2373,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.1_@sveltejs+vite-p_4e3f892a742bb9c5a510ac2c0515d785/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -2322,6 +2528,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl2.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl2.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl2.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl2.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -2418,7 +2636,7 @@ init_config();
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import https from "node:https";
 import os3 from "node:os";
 import path4 from "node:path";
@@ -2493,7 +2711,7 @@ async function download(url, dest) {
   });
 }
 async function sha256File(filePath) {
-  const hash = createHash2("sha256");
+  const hash = createHash3("sha256");
   await new Promise((resolve2, reject) => {
     const stream = createReadStream(filePath);
     stream.on("data", (chunk) => hash.update(chunk));
@@ -3419,7 +3637,7 @@ function positiveNumberOption(value, label) {
   return parsed;
 }
 function stableId(prefix, parts) {
-  const hash = createHash3("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
+  const hash = createHash4("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
   return `${prefix}_${hash}`;
 }
 function readCanonicalUrl(project, parsed) {
