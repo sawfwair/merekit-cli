@@ -122,6 +122,7 @@ Bundle publish and rollback are external operations and require `--yes`.
 After a site exists, use the workspace-aware Business commands first:
 
 ```sh
+mere docs search "site cms edit" --app business --json
 mere business site status --workspace WORKSPACE_ID --json
 mere business site cms get --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --json
 mere business site cms edit --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --data-file cms-edit.json --json
@@ -133,7 +134,7 @@ mere business site revisions revert --workspace WORKSPACE_ID --site-id DYNASITE_
 mere business site publish --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --environment live --yes --json
 ```
 
-`site cms edit` accepts exactly one of `--edit-json`, `--data`, or `--data-file`; prefer `--data-file` for anything larger than a tiny focused edit. Supported assist actions are `regenerateHero`, `improveAbout`, `suggestProjectTitles`, `rewriteSeo`, `critiqueDraft`, and `fillMissingPageBody`.
+`site cms edit` accepts exactly one of `--edit-json`, `--data`, or `--data-file`; prefer `--data-file` for anything larger than a tiny focused edit. Supported assist actions are `regenerateHero`, `improveAbout`, `suggestProjectTitles`, `rewriteSeo`, `critiqueDraft`, and `fillMissingPageBody`. If an agent is unsure about payload shape or action choice, use `mere docs search ... --app business` before mutating the draft.
 
 Publish is an external operation and requires `--yes`.
 

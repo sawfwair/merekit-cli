@@ -8,7 +8,7 @@ mere apps manifest --app APP --json
 
 ## Root Commands
 
-- `mere --help`, `mere help [agent|onboard|safety|skills|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
+- `mere --help`, `mere help [agent|docs|onboard|safety|skills|mcp]`, `mere --version`, `mere completion [bash|zsh|fish]`
 - `mere onboard [--interactive] [--waitlist-email EMAIL | --invite-code CODE | --workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR] [--finance-profile NAME] [--finance-base-url URL] [--json]`
 - `mere agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR] [--allow-writes] [--json]`
 - `mere apps list|manifest|doctor [--app APP] [--json]`
@@ -18,6 +18,7 @@ mere apps manifest --app APP --json
 - `mere setup mere-run models [--app APP] [--model MODEL] [--force] [--json]`
 - `mere setup mere-run model pull MODEL [--force] [--json]`
 - `mere auth login|whoami|logout|status (--app APP|--all) [--json]`
+- `mere docs login|status|index|list|read|search|logout [--app APP] [--source SOURCE] [--limit N] [--base-url URL] [--json]`
 - `mere finance profiles list|current|use|login [--json]`
 - `mere skills list|show|install|publish`
 - `mere ops doctor|smoke|audit|workspace-snapshot [--app APP] [--workspace ID] [--json]`
@@ -31,6 +32,7 @@ The root CLI keeps discovery and execution in normal commands:
 - Readiness: `mere onboard --json`, generated `ONBOARDING.md`, and exact remediation commands.
 - Snapshot and diagnostics: `mere apps list`, `mere ops doctor`, `mere auth status`, and `mere ops workspace-snapshot` with a human summary by default and clean JSON with `--json`.
 - Command discovery: `mere apps manifest --json`, with commands nested under `apps[].surfaces`.
+- Hosted docs: `mere docs search QUERY --app APP --limit 10 --json`, `mere docs index --app APP --json`, and `mere docs read DOC_ID --json`.
 - Skills: `mere skills list`, `mere skills show NAME`, and `mere skills install NAME --target codex`.
 - Execution: delegated app commands remain normal CLI commands, with `--yes`, `--confirm`, data, and write-mode gates visible in shell history.
 
@@ -76,7 +78,7 @@ After that first pass, stay in normal CLI commands: run a safe snapshot, inspect
 
 `onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
 
-`docs login`, `docs search`, and `docs read` let agents use authenticated Mere platform and app docs through the hosted docs API. The docs site remains broker-protected; the root CLI stores only a docs-scoped app session, and automation can provide `MERE_DOCS_TOKEN` when a support runner already has one.
+`docs login`, `docs index`/`docs list`, `docs search`, and `docs read` let agents use authenticated Mere platform and app docs through the hosted docs API. The docs site remains broker-protected; the root CLI stores only a docs-scoped app session, and automation can provide `MERE_DOCS_TOKEN` when a support runner already has one. Use `MERE_DOCS_BASE_URL` or `--base-url URL` only for preview docs workers. See [Hosted Product Docs](/product-docs).
 
 ## Installable Package
 
