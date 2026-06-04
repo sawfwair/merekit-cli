@@ -1,111 +1,111 @@
 {
   "schemaVersion": 1,
-  "builtAt": "2026-05-28T09:43:54.552Z",
+  "builtAt": "2026-06-04T16:56:40.732Z",
   "adapters": [
     {
       "app": "business",
       "sourceRepoPath": "business",
       "sourceArtifactPath": "business/packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "finance",
-      "sourceRepoPath": "mere-finance",
-      "sourceArtifactPath": "mere-finance/packages/cli/bin/merefi.ts",
+      "sourceRepoPath": "finance",
+      "sourceArtifactPath": "finance/packages/cli/bin/merefi.ts",
       "adapterPath": "adapters/finance/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "dynasite",
-      "sourceRepoPath": "mere-dynasite",
-      "sourceArtifactPath": "mere-dynasite/dist/run.js",
+      "sourceRepoPath": "dynasite",
+      "sourceArtifactPath": "dynasite/dist/run.js",
       "adapterPath": "adapters/dynasite/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "projects",
-      "sourceRepoPath": "mere-projects",
-      "sourceArtifactPath": "mere-projects/dist/run.js",
+      "sourceRepoPath": "projects",
+      "sourceArtifactPath": "projects/dist/run.js",
       "adapterPath": "adapters/projects/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "agent",
-      "sourceRepoPath": "mere-agent",
-      "sourceArtifactPath": "mere-agent/cli-dist/run.js",
+      "sourceRepoPath": "agent",
+      "sourceArtifactPath": "agent/cli-dist/run.js",
       "adapterPath": "adapters/agent/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "today",
-      "sourceRepoPath": "mere-today",
-      "sourceArtifactPath": "mere-today/dist/run.js",
+      "sourceRepoPath": "today",
+      "sourceArtifactPath": "today/dist/run.js",
       "adapterPath": "adapters/today/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "zone",
-      "sourceRepoPath": "mere-zone",
-      "sourceArtifactPath": "mere-zone/dist/run.js",
+      "sourceRepoPath": "zone",
+      "sourceArtifactPath": "zone/dist/run.js",
       "adapterPath": "adapters/zone/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "video",
-      "sourceRepoPath": "mere-video",
-      "sourceArtifactPath": "mere-video/dist/run.js",
+      "sourceRepoPath": "video",
+      "sourceArtifactPath": "video/dist/run.js",
       "adapterPath": "adapters/video/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "network",
-      "sourceRepoPath": "mere-network",
-      "sourceArtifactPath": "mere-network/dist/run.js",
+      "sourceRepoPath": "network",
+      "sourceArtifactPath": "network/dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "email",
-      "sourceRepoPath": "mere-email",
-      "sourceArtifactPath": "mere-email/dist/run.js",
+      "sourceRepoPath": "email",
+      "sourceArtifactPath": "email/dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "gives",
-      "sourceRepoPath": "mere-gives",
-      "sourceArtifactPath": "mere-gives/dist/run.js",
+      "sourceRepoPath": "gives",
+      "sourceArtifactPath": "gives/dist/run.js",
       "adapterPath": "adapters/gives/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "works",
-      "sourceRepoPath": "mere-works",
-      "sourceArtifactPath": "mere-works/dist/run.js",
+      "sourceRepoPath": "works",
+      "sourceArtifactPath": "works/dist/run.js",
       "adapterPath": "adapters/works/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "media",
-      "sourceRepoPath": "mere-media",
-      "sourceArtifactPath": "mere-media/dist/run.js",
+      "sourceRepoPath": "media",
+      "sourceArtifactPath": "media/dist/run.js",
       "adapterPath": "adapters/media/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "deliver",
-      "sourceRepoPath": "mere-deliver",
-      "sourceArtifactPath": "mere-deliver/cli/run.js",
+      "sourceRepoPath": "deliver",
+      "sourceArtifactPath": "deliver/cli/run.js",
       "adapterPath": "adapters/deliver/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {
       "app": "link",
       "sourceRepoPath": "merekit-link",
       "sourceArtifactPath": "merekit-link/dist/run.js",
       "adapterPath": "adapters/link/run.js",
-      "builtAt": "2026-05-28T09:43:54.552Z"
+      "builtAt": "2026-06-04T16:56:40.732Z"
     }
   ]
 }

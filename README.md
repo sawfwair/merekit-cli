@@ -271,6 +271,18 @@ mere link sync projects --config mere.link.yaml --json
 
 Browser-auth apps keep their own app-local sessions. Finance intentionally uses scoped token profiles, and `mere finance profiles login NAME --base-url https://<tenant>.mere.finance --json` provides the root-owned profile setup plus product auth handoff.
 
+Authenticated platform and app docs are available through the root docs session:
+
+```sh
+mere docs login
+mere docs search "site cms assist" --app business --json
+mere docs index --app dynasite --json
+mere docs read business/site-cms --json
+mere docs read product/local-data-and-ai --source platform
+```
+
+The docs site stays protected by Mere World broker auth. `mere docs login` stores a docs-scoped app session under root state; automation can provide `MERE_DOCS_TOKEN` for one-off reads. The CLI talks to the hosted docs API and does not require local app repositories.
+
 Root context stores workspace defaults only:
 
 ```sh

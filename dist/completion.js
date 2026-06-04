@@ -5,6 +5,7 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         'auth',
         'completion',
         'context',
+        'docs',
         'finance',
         'help',
         'mcp',
@@ -23,8 +24,9 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
         auth: ['login', 'logout', 'status', 'whoami'],
         completion: ['bash', 'fish', 'zsh'],
         context: ['clear', 'get', 'set-workspace'],
+        docs: ['index', 'list', 'login', 'logout', 'read', 'search', 'status'],
         finance: ['profiles'],
-        help: ['agent', 'mcp', 'onboard', 'safety', 'skills'],
+        help: ['agent', 'docs', 'mcp', 'onboard', 'safety', 'skills'],
         mcp: ['serve'],
         onboard: ['--app', '--base-domain', '--business-mode', '--existing-website-url', '--finance-base-url', '--finance-profile', '--interactive', '--invite-code', '--json', '--name', '--no-interactive', '--no-wait', '--output', '--slug', '--target', '--waitlist-email', '--workspace'],
         ops: ['audit', 'doctor', 'smoke', 'workspace-snapshot'],
@@ -34,6 +36,10 @@ export function renderCompletion(shell, registry, dynamicCommands = {}) {
     };
     const thirdCommands = {
         'auth login': ['--all', '--app', '--base-url', '--invite-code', '--json', '--profile', '--workspace'],
+        'docs index': ['--app', '--base-url', '--json', '--source'],
+        'docs login': ['--base-url', '--json', '--no-browser'],
+        'docs read': ['--app', '--base-url', '--json', '--source'],
+        'docs search': ['--app', '--base-url', '--json', '--limit', '--source'],
         'finance profiles': ['current', 'list', 'login', 'use'],
         'setup mere-run': ['model', 'models']
     };

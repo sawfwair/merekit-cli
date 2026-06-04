@@ -559,6 +559,7 @@ var CLI_OPERATION_NAMES = [
   "site.save-draft",
   "site.approve",
   "site.regenerate",
+  "site.rebuild",
   "site.request-changes",
   "site.cms.get",
   "site.cms.edit",
@@ -5613,9 +5614,10 @@ function rpcCommand(definition) {
     schema: definition.schema,
     auth: "workspace",
     risk: definition.risk,
+    supportsData: definition.supportsData,
     destructive: definition.destructive,
     confirmationTarget: definition.confirmationTarget ? (input2) => definition.confirmationTarget?.(input2) ?? null : void 0,
-    execute: (runtime, input2) => runtime.invoke(definition.op, definition.buildInput(input2)),
+    execute: async (runtime, input2) => runtime.invoke(definition.op, await definition.buildInput(input2)),
     format: definition.format
   };
 }
@@ -5808,6 +5810,25 @@ function parseJsonObjectText(value, optionName) {
     throw usageError(`Option --${optionName} must be a JSON object.`);
   }
   return parsed;
+}
+async function parseJsonObjectFile(filePath, optionName) {
+  if (!filePath) return void 0;
+  let text;
+  try {
+    text = await readFile2(resolvePath2(filePath), "utf8");
+  } catch (error) {
+    throw usageError(
+      `Option --${optionName} could not be read: ${error instanceof Error ? error.message : "unknown error"}.`
+    );
+  }
+  return parseJsonObjectText(text, optionName);
+}
+async function parseCmsEditPayload(input2) {
+  const payload = parseJsonObjectText(input2.editJson, "edit-json") ?? parseJsonObjectText(input2.dataJson, "data") ?? await parseJsonObjectFile(input2.dataFile, "data-file");
+  if (!payload) {
+    throw usageError("Provide one of --edit-json, --data, or --data-file.");
+  }
+  return payload;
 }
 function parseJsonArrayTexts(values, optionName) {
   if (!values || values.length === 0) return void 0;
@@ -7829,7 +7850,7 @@ next: ${payload.nextUrl}` : ""}`;
   }),
   rpcCommand({
     path: ["site", "regenerate"],
-    summary: "Regenerate a website brief. Resets reviewStatus to needs_review.",
+    summary: "Reparse the website brief from intake text. Resets reviewStatus to needs_review.",
     options: [
       stringOption("business-name", "businessName", "Business name.", { required: true }),
       stringOption("current-website-url", "currentWebsiteUrl", "Existing website URL."),
@@ -7846,6 +7867,23 @@ next: ${payload.nextUrl}` : ""}`;
     }),
     op: "site.regenerate",
     buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["site", "rebuild"],
+    summary: "Generate a fresh Dynasite draft from the approved website brief.",
+    options: [
+      stringOption("site-archetype", "siteArchetype", "Optional Dynasite archetype override."),
+      stringOption("template", "template", "Optional Dynasite template override."),
+      stringOption("theme-preset", "themePreset", "Optional Dynasite theme preset override.")
+    ],
+    schema: external_exports.object({
+      siteArchetype: optionalString,
+      template: optionalString,
+      themePreset: optionalString
+    }),
+    op: "site.rebuild",
+    buildInput: (input2) => input2,
+    risk: "external"
   }),
   rpcCommand({
     path: ["site", "request-changes"],
@@ -7871,28 +7909,47 @@ next: ${payload.nextUrl}` : ""}`;
     summary: "Apply a JSON CMS edit to the linked Dynasite draft.",
     options: [
       stringOption("site-id", "siteId", "Dynasite site id."),
-      stringOption("edit-json", "editJson", "CMS edit JSON object.", { required: true }),
+      stringOption("edit-json", "editJson", "CMS edit JSON object. Use --data-file for larger edits."),
+      stringOption("data", "dataJson", "CMS edit JSON object. Alias for --edit-json."),
+      stringOption("data-file", "dataFile", "Read CMS edit JSON object from a file."),
       stringOption("source", "source", "Revision source: manual_edit, ai_assist, revision_revert, or publish.")
     ],
     schema: external_exports.object({
       siteId: optionalString,
-      editJson: requiredString,
+      editJson: optionalString,
+      dataJson: optionalString,
+      dataFile: optionalString,
       source: optionalString
+    }).superRefine((value, ctx) => {
+      const provided = [value.editJson, value.dataJson, value.dataFile].filter(Boolean);
+      if (provided.length !== 1) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["editJson"],
+          message: "Provide exactly one of --edit-json, --data, or --data-file."
+        });
+      }
     }),
     op: "site.cms.edit",
-    buildInput: (input2) => ({
+    buildInput: async (input2) => ({
       siteId: input2.siteId,
-      edit: parseJsonObjectText(input2.editJson, "edit-json"),
+      edit: await parseCmsEditPayload(input2),
       source: input2.source
     }),
-    risk: "write"
+    risk: "write",
+    supportsData: true
   }),
   rpcCommand({
     path: ["site", "cms", "assist"],
     summary: "Ask Dynasite for a CMS assist patch.",
     options: [
       stringOption("site-id", "siteId", "Dynasite site id."),
-      stringOption("action", "action", "Assist action.", { required: true }),
+      stringOption(
+        "action",
+        "action",
+        "Assist action: regenerateHero, improveAbout, suggestProjectTitles, rewriteSeo, critiqueDraft, fillMissingPageBody.",
+        { required: true }
+      ),
       stringOption("target-index", "targetIndex", "Optional target index.")
     ],
     schema: external_exports.object({
@@ -8556,7 +8613,7 @@ function renderCommandManifest() {
           auth: command.auth ?? "workspace",
           risk: commandRisk(command),
           supportsJson: true,
-          supportsData: false,
+          supportsData: command.supportsData ?? false,
           requiresYes: command.destructive || commandRisk(command) === "external",
           requiresConfirm: Boolean(command.confirmationTarget),
           interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
