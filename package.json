@@ -1,6 +1,6 @@
 {
   "name": "@merekit/cli",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Public Mere command plane with waitlist and invite onboarding, bundled app adapters, agent context packs, audits, and MCP access.",
   "private": false,
   "license": "Apache-2.0",
@@ -53,6 +53,7 @@
   },
   "overrides": {
     "fast-uri": "3.1.2",
+    "hono": "4.12.23",
     "qs": "6.15.2"
   },
   "pnpm": {
@@ -60,6 +61,7 @@
       "@vitejs/plugin-vue": "6.0.6",
       "esbuild": "0.28.0",
       "fast-uri": "3.1.2",
+      "hono": "4.12.23",
       "qs": "6.15.2",
       "vite": "6.4.2"
     }
