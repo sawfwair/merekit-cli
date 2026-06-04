@@ -6,6 +6,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.0 - 2026-06-04
+
+- Added `mere docs login|status|index|read|search|logout` for authenticated hosted Mere platform and app docs through `mere-docs.mere.world`, without reading local repo paths or making docs public.
+- Added docs filtering by `--app` and `--source`, docs-scoped session storage, `MERE_DOCS_TOKEN` automation support, shell completion, help text, and root tests for the hosted docs flow.
+- Refreshed bundled Business and Dynasite adapters so the public CLI exposes the Jormuwave site-CMS customer-help surface, including `site cms get`, `site cms edit` with structured data support, and `site cms assist`.
+- Added the release-facing docs Worker package contents and dry-run checks needed for the hosted docs command surface.
+
 ## 0.4.1 - 2026-05-27
 
 - Fixed adapter generation to prefer `mere-*` app repositories when both legacy and prefixed checkouts exist, so the bundled Network adapter includes its local-plane command surface.
