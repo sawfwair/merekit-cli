@@ -233,7 +233,7 @@ async function deliverCloudProjectionEvent(input) {
 }
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
-import { randomUUID as randomUUID2 } from "crypto";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "crypto";
 import { mkdir } from "fs/promises";
 import os2 from "os";
 import path2 from "path";
@@ -501,6 +501,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {
@@ -693,7 +719,7 @@ function getLocalPlaneInventory(db, options = {}) {
 }
 
 // cli/local-store.ts
-import { createHash as createHash2 } from "crypto";
+import { createHash as createHash3 } from "crypto";
 var DYNASITE_APP_ID = "mere-dynasite";
 var DYNASITE_ARCHIVE_SCHEMA = "mere.dynasite.archive.v1";
 var RECORD_TYPES = [
@@ -846,7 +872,7 @@ function rowPayload(row) {
   };
 }
 function stableSiteProjectionId(input) {
-  const digest = createHash2("sha256").update([DYNASITE_APP_ID, input.workspaceId, input.siteId, "site-summary"].join("\n")).digest("hex").slice(0, 24);
+  const digest = createHash3("sha256").update([DYNASITE_APP_ID, input.workspaceId, input.siteId, "site-summary"].join("\n")).digest("hex").slice(0, 24);
   return `dynpr_${digest}`;
 }
 function dateOnly(value) {
@@ -1540,8 +1566,6 @@ function manifestCommand(path3, summary, options = {}) {
     ...options.auditDefault === void 0 ? {} : { auditDefault: options.auditDefault }
   };
 }
-var PLANE_FLAGS = ["workspace", "store", "ai", "local-db", "json"];
-var PLANE_DATA_FLAGS = [...PLANE_FLAGS, "data", "data-file"];
 var COMMAND_MANIFEST = {
   schemaVersion: 1,
   app: "mere-dynasite",

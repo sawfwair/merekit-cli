@@ -63,6 +63,7 @@ mere agent bootstrap --workspace ws_123 --target codex --json
 mere apps list --json
 mere ops doctor --json
 mere auth status --all --json
+mere docs search "site cms assist" --app business --json
 mere finance profiles list --json
 mere context set-workspace --workspace ws_123
 mere ops workspace-snapshot
@@ -74,6 +75,8 @@ mere apps manifest --app projects --json
 After that first pass, stay in normal CLI commands: run a safe snapshot, inspect readiness, list skills, or open the nested manifest contract before anything more powerful. For humans, `workspace-snapshot` shows progress on stderr and a readable summary on stdout; for agents and scripts, add `--json`.
 
 `onboard` writes the bootstrap context pack plus `onboarding-report.json` and `ONBOARDING.md`. `agent bootstrap` is the lower-level reusable context-pack primitive. The default output is `~/.config/mere/agents/default`; use `--output DIR` for project-local or test-specific packs. The generated `mcp.json` defaults to read-only MCP and only includes write mode when `--allow-writes` is explicitly passed.
+
+`docs login`, `docs search`, and `docs read` let agents use authenticated Mere platform and app docs through the hosted docs API. The docs site remains broker-protected; the root CLI stores only a docs-scoped app session, and automation can provide `MERE_DOCS_TOKEN` when a support runner already has one.
 
 ## Installable Package
 
@@ -208,7 +211,7 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 159 | 2 | 60 read, 68 write, 15 destructive, 16 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
+| `business` | 160 | 2 | 60 read, 68 write, 15 destructive, 17 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json` |
 | `dynasite` | 31 | 3 | 14 read, 13 write, 4 external | `base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db` |
 | `projects` | 75 | 5 | 30 read, 28 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |

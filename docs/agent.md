@@ -86,6 +86,7 @@ mere onboard --workspace WORKSPACE_ID --target codex --json
 mere apps list --json
 mere ops doctor --json
 mere auth status --all --json
+mere docs search "business site cms" --app business --json
 mere finance profiles list --json
 mere finance profiles login default --base-url https://<tenant>.mere.finance --json
 mere context set-workspace --workspace WORKSPACE_ID
@@ -101,6 +102,7 @@ Interpretation:
 - `context set-workspace` stores a root default for root-owned workflows such as `workspace-snapshot`.
 - `workspace-snapshot` is the safest cross-stack operational read.
 - `apps manifest` is the source of truth for exact product commands.
+- `docs search` and `docs read` return broker-authenticated platform and app docs without making the docs site public or requiring local app repositories.
 - `onboarding-report.json` groups readiness, blockers, selector hints, and remediation commands.
 
 ## Operating Loop

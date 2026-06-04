@@ -124,14 +124,16 @@ After a site exists, use the workspace-aware Business commands first:
 ```sh
 mere business site status --workspace WORKSPACE_ID --json
 mere business site cms get --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --json
-mere business site cms edit --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --edit-json '{"headline":"Updated headline"}' --json
-mere business site cms assist --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --action rewrite-section --target-index 0 --json
+mere business site cms edit --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --data-file cms-edit.json --json
+mere business site cms assist --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --action critiqueDraft --json
 mere business site media import --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --discover --json
 mere business site media upload --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --file ./hero.jpg --alt "Hero image" --role hero --json
 mere business site revisions list --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --json
 mere business site revisions revert --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID REVISION_ID --json
 mere business site publish --workspace WORKSPACE_ID --site-id DYNASITE_SITE_ID --environment live --yes --json
 ```
+
+`site cms edit` accepts exactly one of `--edit-json`, `--data`, or `--data-file`; prefer `--data-file` for anything larger than a tiny focused edit. Supported assist actions are `regenerateHero`, `improveAbout`, `suggestProjectTitles`, `rewriteSeo`, `critiqueDraft`, and `fillMissingPageBody`.
 
 Publish is an external operation and requires `--yes`.
 

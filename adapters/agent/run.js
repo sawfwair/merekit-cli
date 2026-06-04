@@ -15,6 +15,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.57.1_@opentelemetry+a_a24688588653a54cfd1beeb755d34927/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -168,6 +170,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl2.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl2.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl2.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl2.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -299,12 +313,12 @@ async function logoutRemote(input = {}) {
 }
 
 // cli/local-plane.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir as mkdir2 } from "node:fs/promises";
 import path3 from "node:path";
 
@@ -807,6 +821,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {
@@ -1046,7 +1086,7 @@ function getLocalPlaneInventory(db, options = {}) {
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import https from "node:https";
 import os3 from "node:os";
 import path4 from "node:path";
@@ -1121,7 +1161,7 @@ async function download(url, dest) {
   });
 }
 async function sha256File(filePath) {
-  const hash = createHash2("sha256");
+  const hash = createHash3("sha256");
   await new Promise((resolve, reject) => {
     const stream = createReadStream(filePath);
     stream.on("data", (chunk) => hash.update(chunk));
@@ -1445,7 +1485,7 @@ function archiveCounts(payload) {
   return Object.fromEntries(RECORD_TYPES.map((type) => [COUNT_FIELDS[type], payload[type].length]));
 }
 function stableProjectionId(workspaceId, agentId) {
-  const digest = createHash3("sha256").update(AGENT_APP_ID).update("\0").update(workspaceId).update("\0").update(agentId).digest("hex").slice(0, 24);
+  const digest = createHash4("sha256").update(AGENT_APP_ID).update("\0").update(workspaceId).update("\0").update(agentId).digest("hex").slice(0, 24);
   return `agp_${digest}`;
 }
 function normalizePayload(value, workspaceId) {

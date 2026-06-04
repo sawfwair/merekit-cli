@@ -6,6 +6,7 @@ import { appendAudit, redactOutput } from './audit.js';
 import { parseArgs, extractPassthroughFlags, flagArgs, readBooleanFlag, readStringFlag } from './args.js';
 import { renderCompletion } from './completion.js';
 import { clearState, loadState, saveState } from './context.js';
+import { runDocs } from './docs.js';
 import { loadManifest, loadManifests, manifestForJson, findManifestCommand, supportedFlagNames } from './manifest.js';
 import { appMereRunModelRequests, inspectMereRun, inspectMereRunModels, pullMereRunModels, setupMereRun } from './mere-run.js';
 import { runMcpServer } from './mcp.js';
@@ -61,11 +62,12 @@ Global:
   --help                 Show help.
 
 Commands:
-  help [agent|onboard|safety|skills|mcp]
+  help [agent|docs|onboard|safety|skills|mcp]
   completion [bash|zsh|fish]
   apps list|manifest|doctor
   auth login|whoami|logout|status [--app APP|--all] [--invite-code CODE for business login]
   context get|set-workspace|clear
+  docs login|status|index|read|search|logout
   onboard [--interactive] [--waitlist-email EMAIL|--invite-code CODE|--workspace ID for operators] [--app APP] [--target codex|claude] [--output DIR]
   agent bootstrap [--workspace ID] [--app APP] [--target codex] [--output DIR]
   skills list|show|install|publish
@@ -99,6 +101,8 @@ Operator/agent workspace sequence:
   mere apps list --json
   mere ops doctor --json
   mere auth status --all --json
+  mere docs status --json
+  mere docs search "site cms" --app business --json
   mere finance profiles list --json
   mere context set-workspace --workspace WORKSPACE_ID
   mere ops workspace-snapshot --json
@@ -109,7 +113,8 @@ Operating loop:
   2. Use apps manifest to find exact command paths, risk, flags, and JSON/data support.
   3. Delegate with mere <app> ... and explicit --workspace/--json when needed.
   4. Use --data or --data-file for structured mutations when the manifest supports data.
-  5. Never invent destructive guardrails; app CLIs declare --yes and exact --confirm when required.
+  5. Use mere docs search/read for authenticated platform and app docs when command semantics are unclear.
+  6. Never invent destructive guardrails; app CLIs declare --yes and exact --confirm when required.
 
 Notes:
   Finance intentionally uses token/profile auth. Browser auth apps keep app-local sessions.
@@ -133,6 +138,29 @@ Usage:
 Output:
   Writes the same context pack as agent bootstrap plus ONBOARDING.md and onboarding-report.json.
   The command does not perform browser login, Finance token login, destructive actions, or skill installation.
+`;
+	}
+	if (topic === 'docs') {
+		return `mere docs guide
+
+Goal:
+  Read authenticated Mere platform and app docs from the CLI without making the docs site public.
+
+Usage:
+  mere docs login
+  mere docs status --json
+  mere docs search "site cms assist" --app business --json
+  mere docs index --app dynasite --json
+  mere docs read business/site-cms --json
+  mere docs read product/local-data-and-ai --source platform
+  mere docs logout
+
+Automation:
+  Set MERE_DOCS_TOKEN to a docs-scoped app session token for one-off authenticated reads.
+  Set MERE_DOCS_BASE_URL to target a preview docs worker.
+
+Boundary:
+  Docs remain protected by the Mere World broker. The CLI stores only a docs-scoped app session and does not read local repo paths.
 `;
 	}
 	if (topic === 'safety') {
@@ -189,7 +217,7 @@ Notes:
   Set WRANGLER_BIN="cfman personal wrangler" when publishing through cfman.
 `;
 	}
-	throw new Error(`Unknown help topic: ${topic}. Try: mere help agent, mere help onboard, mere help safety, mere help skills, or mere help mcp.`);
+	throw new Error(`Unknown help topic: ${topic}. Try: mere help agent, mere help docs, mere help onboard, mere help safety, mere help skills, or mere help mcp.`);
 }
 
 function markdownCell(value: unknown): string {
@@ -348,6 +376,7 @@ mere apps list --json
 mere auth status --all --json
 mere ops workspace-snapshot${input.workspace ? ` --workspace ${input.workspace}` : ''} --json
 mere apps manifest --json
+mere docs search "workspace site lifecycle" --json
 ${mcpCommand}
 \`\`\`
 
@@ -2063,6 +2092,7 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 		if (parsed.positionals[0] === 'setup') return await runSetup(io, parsed.positionals[1], parsed.positionals.slice(2), parsed.flags);
 		if (rest[0] === 'auth') return await runAuth(io, rest[1], parsed.flags);
 		if (rest[0] === 'context') return await runContext(io, rest[1], parsed.flags);
+		if (rest[0] === 'docs') return await runDocs(io, parsed.positionals[1], parsed.positionals.slice(2), parsed.flags);
 		if (rest[0] === 'agent' && (!rest[1] || rest[1] === 'help' || rest[1] === 'bootstrap')) {
 			return await runAgent(io, rest[1], parsed.flags);
 		}

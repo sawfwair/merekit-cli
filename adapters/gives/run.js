@@ -118,6 +118,8 @@ var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
 var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
 var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
 var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -169,6 +171,18 @@ async function waitForCallback(input) {
         return;
       }
       const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
       const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
       if (!requestId || !code) {
         response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -813,6 +827,32 @@ function ensureLocalPlaneSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_mere_plane_transfers_workspace
       ON mere_plane_transfers(app_id, workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mere_plane_projection_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES mere_plane_apps(app_id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL,
+      product TEXT NOT NULL,
+      source_event_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      external_object_type TEXT,
+      external_object_id TEXT,
+      occurred_at TEXT,
+      canonical_url TEXT,
+      dedupe_key TEXT,
+      source TEXT NOT NULL CHECK (source IN ('local-publish', 'cloud-delivery', 'file-import', 'dry-run', 'manual')),
+      envelope_sha256 TEXT NOT NULL,
+      envelope_json TEXT NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(app_id, workspace_id, source_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_workspace
+      ON mere_plane_projection_events(workspace_id, received_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mere_plane_projection_events_product
+      ON mere_plane_projection_events(app_id, product, event_type, received_at DESC);
   `);
 }
 function registerPlaneApp(db, appId, displayName) {

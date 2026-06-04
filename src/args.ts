@@ -15,6 +15,7 @@ const BOOLEAN_FLAGS = new Set([
 	'json',
 	'local',
 	'no-download',
+	'no-browser',
 	'ndjson',
 	'no-interactive',
 	'no-source',

@@ -321,6 +321,7 @@ test('renders help and completion', async () => {
   assert.equal(completion.code, 0);
   assert.match(completion.stdout, /complete -F _mere_completion mere/);
   assert.match(completion.stdout, /agent/);
+  assert.match(completion.stdout, /docs/);
   assert.match(completion.stdout, /onboard/);
   assert.doesNotMatch(completion.stdout, /\btui\b/);
   assert.match(completion.stdout, /--interactive/);
@@ -329,7 +330,154 @@ test('renders help and completion', async () => {
   assert.match(completion.stdout, /workspace-snapshot/);
   assert.match(completion.stdout, /finance profiles/);
   assert.match(help.stdout, /setup mere-run/);
+  assert.match(help.stdout, /docs login\|status\|index\|read\|search\|logout/);
   assert.match(completion.stdout, /mere-run/);
+});
+
+test('docs status reports the authenticated docs boundary', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-docs-status-'));
+  const result = await run(['docs', 'status', '--json'], {
+    HOME: home,
+    MERE_DOCS_BASE_URL: 'https://docs.example',
+    MERE_DOCS_TOKEN: 'asess_docs',
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.authenticated, true);
+  assert.equal(payload.baseUrl, 'https://docs.example');
+  assert.equal(payload.envToken, true);
+  assert.match(payload.sessionPath, /docs-session\.json$/);
+});
+
+test('docs read and search use bearer auth against the docs API', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const requestUrl = new URL(url.toString());
+    requests.push({
+      pathname: requestUrl.pathname,
+      search: requestUrl.search,
+      auth: new globalThis.Headers(init.headers).get('authorization'),
+    });
+    if (requestUrl.pathname === '/api/docs/index') {
+      return globalThis.Response.json({
+        generatedAt: '2026-06-04T00:00:00Z',
+        count: 1,
+        docs: [
+          {
+            id: 'business/site-cms',
+            path: 'business/site-cms',
+            source: 'app',
+            app: 'business',
+            title: 'Business Site CMS CLI',
+            excerpt: 'Use site cms commands to edit a Dynasite draft.',
+            url: 'https://docs.example/api/docs/read?id=business%2Fsite-cms',
+          },
+        ],
+      });
+    }
+    if (requestUrl.pathname === '/api/docs/read') {
+      return globalThis.Response.json({
+        id: requestUrl.searchParams.get('id'),
+        path: requestUrl.searchParams.get('id'),
+        source: 'app',
+        app: requestUrl.searchParams.get('app'),
+        title: 'Business Site CMS CLI',
+        url: 'https://docs.example/api/docs/read?id=business%2Fsite-cms',
+        content: '# Business Site CMS CLI\n\nHosted mode plus app docs.\n',
+      });
+    }
+    if (requestUrl.pathname === '/api/docs/search') {
+      return globalThis.Response.json({
+        query: requestUrl.searchParams.get('q'),
+        source: requestUrl.searchParams.get('source'),
+        app: requestUrl.searchParams.get('app'),
+        count: 1,
+        results: [
+          {
+            id: 'business/site-cms',
+            path: 'business/site-cms',
+            source: 'app',
+            app: 'business',
+            title: 'Business Site CMS CLI',
+            excerpt: 'Hosted mode plus app docs.',
+            url: 'https://docs.example/api/docs/read?id=business%2Fsite-cms',
+          },
+        ],
+      });
+    }
+    return globalThis.Response.json({ error: 'unexpected' }, { status: 404 });
+  };
+
+  try {
+    const indexResult = await run(['docs', 'index', '--app', 'business', '--json'], {
+      MERE_DOCS_BASE_URL: 'https://docs.example',
+      MERE_DOCS_TOKEN: 'asess_docs',
+    });
+    assert.equal(indexResult.code, 0, indexResult.stderr);
+    assert.equal(JSON.parse(indexResult.stdout).docs[0].path, 'business/site-cms');
+
+    const readResult = await run(['docs', 'read', 'business/site-cms', '--app', 'business', '--json'], {
+      MERE_DOCS_BASE_URL: 'https://docs.example',
+      MERE_DOCS_TOKEN: 'asess_docs',
+    });
+    assert.equal(readResult.code, 0, readResult.stderr);
+    assert.equal(JSON.parse(readResult.stdout).content, '# Business Site CMS CLI\n\nHosted mode plus app docs.\n');
+
+    const searchResult = await run(['docs', 'search', 'local', 'ai', '--app', 'business', '--source', 'app', '--limit', '3', '--json'], {
+      MERE_DOCS_BASE_URL: 'https://docs.example',
+      MERE_DOCS_TOKEN: 'asess_docs',
+    });
+    assert.equal(searchResult.code, 0, searchResult.stderr);
+    assert.equal(JSON.parse(searchResult.stdout).results[0].path, 'business/site-cms');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    {
+      pathname: '/api/docs/index',
+      search: '?app=business',
+      auth: 'Bearer asess_docs',
+    },
+    {
+      pathname: '/api/docs/read',
+      search: '?id=business%2Fsite-cms&app=business',
+      auth: 'Bearer asess_docs',
+    },
+    {
+      pathname: '/api/docs/search',
+      search: '?q=local+ai&app=business&source=app&limit=3',
+      auth: 'Bearer asess_docs',
+    },
+  ]);
+});
+
+test('docs read asks users to authenticate before fetching docs', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-docs-no-session-'));
+  const result = await run(['docs', 'read', 'product/local-data-and-ai'], { HOME: home });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /No Mere Docs session found/);
+  assert.match(result.stderr, /mere docs login/);
+});
+
+test('docs API redirects surface as expired docs sessions', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => globalThis.Response.redirect('https://mere.world/sign-in', 302);
+  try {
+    const result = await run(['docs', 'search', 'site', 'cms', '--json'], {
+      MERE_DOCS_BASE_URL: 'https://docs.example',
+      MERE_DOCS_TOKEN: 'stale_docs_session',
+    });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Mere Docs session is missing or expired/);
+    assert.match(result.stderr, /MERE_DOCS_TOKEN/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('onboard --interactive dry-run shows the onboarding command it will execute', async () => {
