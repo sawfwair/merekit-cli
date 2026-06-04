@@ -41,6 +41,7 @@ export default defineConfig({
       { text: 'Start', link: '/getting-started' },
       { text: 'Onboarding', link: '/onboarding/' },
       { text: 'Commands', link: '/commands' },
+      { text: 'Docs CLI', link: '/product-docs' },
       { text: 'MCP', link: '/mcp' }
     ],
     socialLinks: [
@@ -69,6 +70,7 @@ export default defineConfig({
         text: 'Operate',
         items: [
           { text: 'Command Reference', link: '/commands' },
+          { text: 'Hosted Product Docs', link: '/product-docs' },
           { text: 'Business Workspaces And Sites', link: '/business-site' },
           { text: 'Agent Workflow', link: '/agent' },
           { text: 'Ops Workflows', link: '/ops' },

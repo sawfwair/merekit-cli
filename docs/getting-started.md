@@ -72,6 +72,16 @@ mere apps list --json
 mere ops doctor --json
 ```
 
+If you need platform or product docs and do not have local app repositories:
+
+```sh
+mere docs login
+mere docs search "site cms assist" --app business --json
+mere docs read business/site-cms --json
+```
+
+The docs command uses the hosted `mere-docs.mere.world` API and requires broker auth or a docs-scoped `MERE_DOCS_TOKEN`.
+
 Operators can run `mere onboard` without a workspace as a package-health check, but workspace-scoped apps will be blocked and the report will tell you the exact command to rerun:
 
 ```sh
@@ -100,6 +110,7 @@ mere projects project list --workspace WORKSPACE_ID --json
 ```
 
 Use `workspace-snapshot` for the safest broad read. Use `apps manifest` before a delegated command so you can confirm the command path, required selectors, risk level, JSON/data support, and destructive guardrails.
+Use `mere docs search` and `mere docs read` when the manifest shows a command but you need workflow context or examples.
 
 For customer workspace and website operations, switch to the Business lifecycle surface:
 
@@ -116,4 +127,5 @@ See [Business Workspace And Site Lifecycle](/business-site) for existing-site im
 
 - [Onboarding overview](/onboarding/)
 - [First run walkthrough](/onboarding/first-run)
+- [Hosted product docs](/product-docs)
 - [Troubleshooting onboarding](/onboarding/troubleshooting)

@@ -112,6 +112,28 @@ If you know the profile and URL in advance:
 mere onboard --app finance --workspace WORKSPACE_ID --finance-profile books --finance-base-url https://finance.example.com --json
 ```
 
+## Docs Auth Missing
+
+Symptom:
+
+- `mere docs status --json` reports `"authenticated": false`.
+- `mere docs search ...` or `mere docs read ...` says no Mere Docs session exists.
+
+Fix for an interactive user:
+
+```sh
+mere docs login
+mere docs status --json
+```
+
+Fix for automation:
+
+```sh
+MERE_DOCS_TOKEN=... mere docs search "site cms" --app business --json
+```
+
+Docs access stays broker-authenticated through `mere-docs.mere.world`; do not make product docs public to work around a missing CLI session.
+
 ## Media Runtime Is Missing
 
 Symptom:

@@ -3,7 +3,7 @@ layout: home
 hero:
   name: Mere CLI
   text: One command plane for Mere workspaces.
-  tagline: Install once, onboard safely, inspect live app manifests, and hand agents a secret-free operating pack.
+  tagline: Install once, onboard safely, inspect live app manifests, read authenticated product docs, and hand agents a secret-free operating pack.
   actions:
     - theme: brand
       text: Start Onboarding
@@ -11,6 +11,9 @@ hero:
     - theme: alt
       text: Command Reference
       link: /commands
+    - theme: alt
+      text: Docs CLI
+      link: /product-docs
 features:
   - title: Onboarding first
     details: "'mere onboard --interactive' guides normal users from a waitlist email or invite code; 'mere onboard' runs discovery, readiness checks, auth status, manifest collection, and safe workspace reads for operators and agents."
@@ -18,6 +21,8 @@ features:
     details: Product behavior stays in app CLIs. The root discovers exact command paths, risks, flags, JSON support, and destructive guardrails.
   - title: Agent-ready by default
     details: Context packs include docs, manifests, auth summaries, snapshots, MCP config, and next commands without copying product secrets.
+  - title: Hosted product docs
+    details: "'mere docs' searches and reads authenticated platform and app docs from mere-docs.mere.world, so agents do not need local repos or private paths."
 ---
 
 ## What Mere CLI Is
@@ -37,7 +42,7 @@ The root CLI is responsible for discovery, onboarding, context, diagnostics, rea
   </div>
   <div class="mere-step">
     <strong>Operate</strong>
-    <span>Use manifests, snapshots, workspace lifecycle commands, site workflows, and MCP tools to inspect first and delegate carefully.</span>
+    <span>Use manifests, hosted docs, snapshots, workspace lifecycle commands, site workflows, and MCP tools to inspect first and delegate carefully.</span>
   </div>
 </div>
 
@@ -71,6 +76,7 @@ Then open the generated `ONBOARDING.md` for a readable summary and `onboarding-r
 - [Read the onboarding report](/onboarding/report)
 - [Understand the agent context pack](/onboarding/context-pack)
 - [Follow the agent workflow](/agent)
+- [Read hosted product docs](/product-docs)
 - [Operate Business workspaces and sites](/business-site)
 - [Use the command reference](/commands)
 - [Run the release checklist](/release-checklist)

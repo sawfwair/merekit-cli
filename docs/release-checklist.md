@@ -7,6 +7,8 @@ Use this before publishing `@merekit/cli` or making release-facing repository ch
 ```sh
 pnpm verify
 pnpm docs:build
+pnpm docs:worker:test
+pnpm docs:worker:dry-run
 pnpm check
 pnpm lint
 pnpm check:adapters
@@ -33,6 +35,7 @@ npm audit signatures --package-lock-only --ignore-scripts
 - Enable Dependabot for npm and GitHub Actions.
 - Set the repository description, homepage, and topics.
 - Confirm the Pages source is GitHub Actions and the Docs workflow deploys to `https://sawfwair.github.io/merekit-cli/`.
+- For hosted product docs or docs API changes, confirm `pnpm docs:worker:test` and `pnpm docs:worker:dry-run` pass before deploy.
 - Configure npm Trusted Publishing for `@merekit/cli`:
   - Provider: GitHub Actions.
   - Repository: `sawfwair/merekit-cli`.
