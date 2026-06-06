@@ -47,7 +47,7 @@ export function defaultMereRunInstallBin(env, override) {
     return expandPath(value, env);
 }
 export function defaultMereRunSourceDir(mereRoot, env, override) {
-    const value = override?.trim() || env.MERE_RUN_SOURCE_DIR?.trim() || env.MERE_MEDIA_MERE_RUN_SOURCE_DIR?.trim() || path.join(mereRoot, 'run-public');
+    const value = override?.trim() || env.MERE_RUN_SOURCE_DIR?.trim() || env.MERE_MEDIA_MERE_RUN_SOURCE_DIR?.trim() || path.join(mereRoot, 'mere-run');
     return expandPath(value, env);
 }
 function configuredBin(env, explicitBin) {
@@ -391,7 +391,7 @@ export async function setupMereRun(options) {
         sourceDir,
         version: null,
         steps,
-        error: `mere.run is not installed. Install MereRun.app from https://mere.run, pass --source-dir ~/mere/run-public for a local build, pass --bin /path/to/mere.run to link an existing binary, or set MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 to enable verified DMG installation from ${configuredDownloadUrl(env, options.downloadUrl)}.`
+        error: `mere.run is not installed. Install MereRun.app from https://mere.run, pass --source-dir ~/mere/mere-run for a local build, pass --bin /path/to/mere.run to link an existing binary, or set MERE_MEDIA_MERE_RUN_DOWNLOAD_SHA256 to enable verified DMG installation from ${configuredDownloadUrl(env, options.downloadUrl)}.`
     };
 }
 export async function inspectMereRunModels(options, requests, runtimeOverride) {
