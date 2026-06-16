@@ -8,3 +8,5 @@ docs/.vitepress/cache/
 .env.*
 .DS_Store
 *.tgz
+# Wrangler local cache/state
+.wrangler/
