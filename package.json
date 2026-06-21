@@ -101,7 +101,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@mere/docs-theme": "github:sawfwair/mere-docs#codex/mere-vitepress-theme&path:/packages/docs-theme",
+    "@mere/docs-theme": "github:sawfwair/mere-docs#main&path:/packages/docs-theme",
     "@types/node": "25.9.1",
     "c8": "11.0.0",
     "esbuild": "0.28.0",

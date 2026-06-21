@@ -33,7 +33,7 @@ importers:
         specifier: 10.0.1
         version: 10.0.1(eslint@10.3.0)
       '@mere/docs-theme':
-        specifier: github:sawfwair/mere-docs#codex/mere-vitepress-theme&path:/packages/docs-theme
+        specifier: github:sawfwair/mere-docs#main&path:/packages/docs-theme
         version: git+https://git@github.com:sawfwair/mere-docs.git#bc8bd58837f5625ac279f4b43ec683aea777427a&path:/packages/docs-theme(vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@25.9.1)(postcss@8.5.13)(search-insights@2.17.3)(typescript@6.0.3)(yaml@2.8.4))(vue@3.5.33(typescript@6.0.3))
       '@types/node':
         specifier: 25.9.1
