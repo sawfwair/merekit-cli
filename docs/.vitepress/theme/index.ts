@@ -1,4 +1,4 @@
-import { createMereProductDocsTheme } from '@mere/docs-theme'
+import { createMereProductDocsTheme } from './mere/index.js'
 
 export default createMereProductDocsTheme({
   productName: 'Mere CLI',
