@@ -32,6 +32,9 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.3.0)
+      '@mere/docs-theme':
+        specifier: github:sawfwair/mere-docs#codex/mere-vitepress-theme&path:/packages/docs-theme
+        version: git+https://git@github.com:sawfwair/mere-docs.git#0b6a8a316dc392d19e3b4a4d930df52aee1de9fd&path:/packages/docs-theme(vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@25.9.1)(postcss@8.5.13)(search-insights@2.17.3)(typescript@6.0.3)(yaml@2.8.4))(vue@3.5.33(typescript@6.0.3))
       '@types/node':
         specifier: 25.9.1
         version: 25.9.1
@@ -416,6 +419,13 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@mere/docs-theme@git+https://git@github.com:sawfwair/mere-docs.git#0b6a8a316dc392d19e3b4a4d930df52aee1de9fd&path:/packages/docs-theme':
+    resolution: {commit: 0b6a8a316dc392d19e3b4a4d930df52aee1de9fd, path: /packages/docs-theme, repo: git@github.com:sawfwair/mere-docs.git, type: git}
+    version: 0.1.0
+    peerDependencies:
+      vitepress: ^1.6.3
+      vue: ^3.5.0
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -2072,6 +2082,11 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@mere/docs-theme@git+https://git@github.com:sawfwair/mere-docs.git#0b6a8a316dc392d19e3b4a4d930df52aee1de9fd&path:/packages/docs-theme(vitepress@1.6.4(@algolia/client-search@5.52.0)(@types/node@25.9.1)(postcss@8.5.13)(search-insights@2.17.3)(typescript@6.0.3)(yaml@2.8.4))(vue@3.5.33(typescript@6.0.3))':
+    dependencies:
+      vitepress: 1.6.4(@algolia/client-search@5.52.0)(@types/node@25.9.1)(postcss@8.5.13)(search-insights@2.17.3)(typescript@6.0.3)(yaml@2.8.4)
+      vue: 3.5.33(typescript@6.0.3)
 
   '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
     dependencies:
