@@ -448,6 +448,12 @@ function requireWorkspaceSelection2(workspaces, selector) {
 function sessionNeedsRefresh2(session, targetWorkspaceId, now = Date.now()) {
   return sessionNeedsRefresh(session, targetWorkspaceId, now);
 }
+function createLocalSession2(payload, options = {}) {
+  return createLocalSession(payload, {
+    baseUrl: normalizeConsoleUrl(options.consoleUrl),
+    defaultWorkspaceId: options.defaultWorkspaceId ?? payload.defaultWorkspaceId ?? payload.workspace?.id ?? null
+  });
+}
 function mergeSessionPayload2(current, payload, options = {}) {
   return mergeSessionPayload(current, payload, {
     baseUrl: normalizeConsoleUrl(options.consoleUrl ?? current.baseUrl),
@@ -456,6 +462,29 @@ function mergeSessionPayload2(current, payload, options = {}) {
 }
 
 // src/auth.ts
+function isRecord2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+async function readJson(response) {
+  return response.json().catch(() => null);
+}
+function errorCode(payload) {
+  if (!isRecord2(payload)) return "device_auth_failed";
+  if (typeof payload.code === "string") return payload.code;
+  if (isRecord2(payload.error) && typeof payload.error.code === "string") return payload.error.code;
+  if (typeof payload.error === "string") return payload.error;
+  return "device_auth_failed";
+}
+function errorMessage(payload, fallback) {
+  if (!isRecord2(payload)) return fallback;
+  if (typeof payload.message === "string") return payload.message;
+  if (typeof payload.error === "string") return payload.error;
+  if (isRecord2(payload.error)) {
+    if (typeof payload.error.message === "string") return payload.error.message;
+    if (typeof payload.error.code === "string") return payload.error.code;
+  }
+  return fallback;
+}
 async function loginWithBrowser2(options, notify) {
   const consoleUrl = normalizeConsoleUrl(options.consoleUrl);
   return await loginWithBrowser({
@@ -465,6 +494,65 @@ async function loginWithBrowser2(options, notify) {
     inviteCode: options.inviteCode,
     notify
   });
+}
+async function startDeviceLogin(options) {
+  const baseUrl = normalizeConsoleUrl(options.consoleUrl);
+  const url = new URL("/api/cli/v1/auth/device/start", baseUrl);
+  if (options.workspace?.trim()) {
+    url.searchParams.set("workspace", options.workspace.trim());
+  }
+  const response = await fetch(url);
+  const payload = await readJson(response);
+  if (!response.ok || !isRecord2(payload)) {
+    throw new Error(errorMessage(payload, `Unable to start device login (${response.status}).`));
+  }
+  return {
+    requestId: String(payload.requestId ?? ""),
+    userCode: String(payload.userCode ?? ""),
+    authorizeUrl: String(payload.authorizeUrl ?? ""),
+    verificationUrl: typeof payload.verificationUrl === "string" ? payload.verificationUrl : null,
+    intervalSeconds: Number(payload.intervalSeconds ?? 5),
+    expiresAt: String(payload.expiresAt ?? ""),
+    baseUrl
+  };
+}
+async function pollDeviceLogin(options) {
+  const baseUrl = normalizeConsoleUrl(options.consoleUrl);
+  const url = new URL("/api/cli/v1/auth/device/exchange", baseUrl);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      requestId: options.requestId
+    })
+  });
+  const payload = await readJson(response);
+  if (response.ok) {
+    const session = createLocalSession2(payload, {
+      consoleUrl: baseUrl,
+      defaultWorkspaceId: payload.workspace?.id ?? payload.defaultWorkspaceId
+    });
+    return {
+      status: "authorized",
+      session
+    };
+  }
+  const code = errorCode(payload);
+  const message = errorMessage(payload, `Device login failed (${response.status}).`);
+  if (code === "authorization_pending" || code === "slow_down") {
+    return {
+      status: "pending",
+      code,
+      message
+    };
+  }
+  return {
+    status: "failed",
+    code,
+    message
+  };
 }
 async function logoutRemote(session) {
   await logoutRemoteSession({
@@ -643,30 +731,30 @@ async function parseResponseBody(response) {
     return text;
   }
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function errorMessageFromPayload(payload, fallback) {
   if (typeof payload === "string") return payload;
-  if (!isRecord2(payload)) return fallback;
+  if (!isRecord3(payload)) return fallback;
   if (typeof payload.message === "string") return payload.message;
   if (typeof payload.error === "string") return payload.error;
-  if (isRecord2(payload.error)) {
+  if (isRecord3(payload.error)) {
     if (typeof payload.error.message === "string") return payload.error.message;
     if (typeof payload.error.code === "string") return payload.error.code;
   }
   return fallback;
 }
 function errorDetailsFromPayload(payload) {
-  if (!isRecord2(payload)) return void 0;
+  if (!isRecord3(payload)) return void 0;
   if (payload.details !== void 0) return payload.details;
-  if (isRecord2(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  if (isRecord3(payload.error) && payload.error.details !== void 0) return payload.error.details;
   return void 0;
 }
 function errorCodeFromPayload(payload, fallback = "http_error") {
-  if (!isRecord2(payload)) return fallback;
+  if (!isRecord3(payload)) return fallback;
   if (typeof payload.code === "string") return payload.code;
-  if (isRecord2(payload.error) && typeof payload.error.code === "string") return payload.error.code;
+  if (isRecord3(payload.error) && typeof payload.error.code === "string") return payload.error.code;
   return fallback;
 }
 async function fetchJson2(input2, init) {
@@ -792,30 +880,30 @@ async function postWorkspaceOperation(workspace, accessToken, op, input2) {
   }
   return body.data;
 }
-function isRecord3(value) {
+function isRecord4(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function errorMessageFromPayload2(payload, fallback) {
   if (typeof payload === "string") return payload;
-  if (!isRecord3(payload)) return fallback;
+  if (!isRecord4(payload)) return fallback;
   if (typeof payload.message === "string") return payload.message;
   if (typeof payload.error === "string") return payload.error;
-  if (isRecord3(payload.error)) {
+  if (isRecord4(payload.error)) {
     if (typeof payload.error.message === "string") return payload.error.message;
     if (typeof payload.error.code === "string") return payload.error.code;
   }
   return fallback;
 }
 function errorDetailsFromPayload2(payload) {
-  if (!isRecord3(payload)) return void 0;
+  if (!isRecord4(payload)) return void 0;
   if (payload.details !== void 0) return payload.details;
-  if (isRecord3(payload.error) && payload.error.details !== void 0) return payload.error.details;
+  if (isRecord4(payload.error) && payload.error.details !== void 0) return payload.error.details;
   return void 0;
 }
 function errorCodeFromPayload2(payload, fallback = "http_error") {
-  if (!isRecord3(payload)) return fallback;
+  if (!isRecord4(payload)) return fallback;
   if (typeof payload.code === "string") return payload.code;
-  if (isRecord3(payload.error) && typeof payload.error.code === "string") return payload.error.code;
+  if (isRecord4(payload.error) && typeof payload.error.code === "string") return payload.error.code;
   return fallback;
 }
 async function fetchWorkspaceResource(workspace, accessToken, pathname, init = {}) {
@@ -1230,7 +1318,7 @@ function upsertPlaneWorkspace(db, appId, input2) {
          updated_at = excluded.updated_at`
   ).run(appId, input2.workspaceId, input2.dataPlane, input2.aiPlane, now, now, now);
 }
-function isRecord4(value) {
+function isRecord5(value) {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 function stringField(record, key) {
@@ -1239,7 +1327,7 @@ function stringField(record, key) {
 }
 function nestedRecord(record, key) {
   const value = record[key];
-  return isRecord4(value) ? value : null;
+  return isRecord5(value) ? value : null;
 }
 function hashJson(value) {
   const text = JSON.stringify(value);
@@ -1277,7 +1365,7 @@ function inferExternalObject(event) {
   return { externalObjectType: null, externalObjectId: null };
 }
 function normalizeProjectionEnvelope(input2) {
-  if (!isRecord4(input2.envelope)) {
+  if (!isRecord5(input2.envelope)) {
     throw new Error("Projection envelope must be a JSON object.");
   }
   const receivedAt = input2.receivedAt ?? isoNow();
@@ -2012,15 +2100,15 @@ var makeIssue = (params) => {
       message: issueData.message
     };
   }
-  let errorMessage = "";
+  let errorMessage2 = "";
   const maps = errorMaps.filter((m) => !!m).slice().reverse();
   for (const map of maps) {
-    errorMessage = map(fullIssue, { data, defaultError: errorMessage }).message;
+    errorMessage2 = map(fullIssue, { data, defaultError: errorMessage2 }).message;
   }
   return {
     ...issueData,
     path: fullPath,
-    message: errorMessage
+    message: errorMessage2
   };
 };
 var EMPTY_PATH = [];
@@ -6074,6 +6162,65 @@ ${workspace}`;
     }
   },
   {
+    path: ["auth", "device", "start"],
+    summary: "Start a device-code login for clients that cannot receive a browser callback.",
+    options: [stringOption("console-url", "consoleUrl", "Override the mere console URL.")],
+    schema: external_exports.object({
+      consoleUrl: optionalString
+    }),
+    auth: "none",
+    risk: "write",
+    execute: (runtime, input2) => runtime.startDeviceLogin({
+      consoleUrl: input2.consoleUrl,
+      workspace: runtime.global.workspace
+    }),
+    format: (data) => {
+      const started = data;
+      return [
+        `Enter code ${started.userCode} at:`,
+        started.authorizeUrl,
+        `request: ${started.requestId}`,
+        `expires: ${started.expiresAt}`
+      ].join("\n");
+    }
+  },
+  {
+    path: ["auth", "device", "poll"],
+    summary: "Poll a device-code login request and save the CLI session when approved.",
+    options: [
+      stringOption("request-id", "requestId", "Device login request id from `auth device start`."),
+      stringOption("console-url", "consoleUrl", "Override the mere console URL.")
+    ],
+    schema: external_exports.object({
+      requestId: optionalString,
+      consoleUrl: optionalString
+    }),
+    auth: "none",
+    risk: "write",
+    execute: (runtime, input2) => {
+      const requestId = input2.requestId?.trim();
+      if (!requestId) {
+        throw new Error("Required: --request-id");
+      }
+      return runtime.pollDeviceLogin({
+        consoleUrl: input2.consoleUrl,
+        requestId
+      });
+    },
+    format: (data) => {
+      const result = data;
+      if (result.status === "authorized") {
+        const workspace = result.session.workspace ? `workspace: ${result.session.workspace.name} (${result.session.workspace.id})` : "workspace: none yet";
+        return `Logged in as ${result.session.user.email}
+${workspace}`;
+      }
+      if (result.status === "pending") {
+        return `Waiting for approval: ${result.message}`;
+      }
+      return `Device login failed: ${result.message}`;
+    }
+  },
+  {
     path: ["auth", "logout"],
     summary: "Log out and clear the local CLI session.",
     schema: external_exports.object({}),
@@ -8788,6 +8935,20 @@ async function createRuntime(globalFlags) {
     global: globalFlags,
     login: async (options) => writeSession(await loginWithBrowser2(options, (message) => stderr.write(`${message}
 `))),
+    startDeviceLogin: async (options) => startDeviceLogin({
+      consoleUrl: options.consoleUrl,
+      workspace: options.workspace ?? globalFlags.workspace
+    }),
+    pollDeviceLogin: async (options) => {
+      const result = await pollDeviceLogin({
+        consoleUrl: options.consoleUrl,
+        requestId: options.requestId
+      });
+      if (result.status === "authorized") {
+        await writeSession(result.session);
+      }
+      return result;
+    },
     logout: async () => {
       const session = await getLocalSession();
       if (!session) return false;
