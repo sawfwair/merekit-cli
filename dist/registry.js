@@ -13,6 +13,7 @@ export const PRODUCT_APP_KEYS = [
     'video',
     'network',
     'email',
+    'im',
     'gives',
     'works',
     'media',
@@ -175,6 +176,19 @@ export function createRegistry(mereRoot, packageRoot = repo(mereRoot, 'cli')) {
             localCliPath: path.join(repo(mereRoot, 'email'), 'dist', 'run.js'),
             pathBins: ['mere-email'],
             authKind: 'browser',
+            packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
+        },
+        {
+            key: 'im',
+            label: 'IM',
+            namespace: 'im',
+            aliases: ['im', 'mereim', 'mere-im'],
+            repoDir: repo(mereRoot, 'im'),
+            envCliPath: 'MERE_IM_CLI',
+            bundledCliPath: adapter(packageRoot, 'im'),
+            localCliPath: path.join(repo(mereRoot, 'im'), 'dist', 'run.js'),
+            pathBins: ['mere-im'],
+            authKind: 'mixed',
             packageScripts: { build: 'build:cli', check: 'check:cli', smoke: 'smoke:cli' }
         },
         {
