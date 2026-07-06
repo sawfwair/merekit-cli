@@ -128,7 +128,13 @@ const adapters = [
 	{
 		key: 'deliver',
 		sourceRepoPath: repo('deliver'),
-		sourceArtifactPath: path.join(repo('deliver'), 'cli', 'run.js')
+		sourceArtifactPath: path.join(repo('deliver'), 'cli', 'run.js'),
+		extraBundles: [
+			{
+				source: path.join(repo('deliver'), 'cli', 'local-plane.js'),
+				target: 'local-plane.js'
+			}
+		]
 	}
 ];
 
@@ -172,6 +178,19 @@ async function copyAdapter(adapter) {
 	await mkdir(targetDir, { recursive: true });
 	await copyFile(adapter.sourceArtifactPath, target);
 	await stripSourceMapReference(target);
+	for (const bundle of adapter.extraBundles ?? []) {
+		await esbuild({
+			entryPoints: [bundle.source],
+			bundle: true,
+			platform: 'node',
+			format: 'esm',
+			target: ['node24'],
+			outfile: path.join(targetDir, bundle.target),
+			absWorkingDir: adapter.sourceRepoPath,
+			logLevel: 'silent'
+		});
+		await stripSourceMapReference(path.join(targetDir, bundle.target));
+	}
 	await chmod(target, 0o755);
 	return target;
 }
