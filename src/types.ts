@@ -9,6 +9,7 @@ export type AppKey =
 	| 'video'
 	| 'network'
 	| 'email'
+	| 'im'
 	| 'gives'
 	| 'works'
 	| 'media'
