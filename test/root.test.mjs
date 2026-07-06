@@ -100,6 +100,48 @@ process.exit(0);
   await chmod(fake, 0o755);
 }
 
+async function writeFakeAuthCli(fake, payload, exitCode = 0) {
+  await mkdir(path.dirname(fake), { recursive: true });
+  await writeFile(
+    fake,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'commands') {
+  console.log(JSON.stringify({
+    schemaVersion: 1,
+    app: 'fake-auth',
+    namespace: 'projects',
+    aliases: ['projects'],
+    auth: { kind: 'browser' },
+    baseUrlEnv: [],
+    sessionPath: null,
+    globalFlags: ['workspace', 'json'],
+    commands: [
+      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['workspace'], auditDefault: true },
+      { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
+    ]
+  }));
+  process.exit(0);
+}
+if (args[0] === '--version') {
+  console.log('fake-auth');
+  process.exit(0);
+}
+if (args[0] === 'completion') {
+  console.log('complete');
+  process.exit(0);
+}
+if (args[0] === 'auth' && args[1] === 'whoami') {
+  console.log(JSON.stringify({ ...${JSON.stringify(payload)}, args }));
+  process.exit(${exitCode});
+}
+console.log(JSON.stringify({ args }));
+`,
+    'utf8',
+  );
+  await chmod(fake, 0o755);
+}
+
 async function writeFakeSelectorCli(fake, app) {
   await mkdir(path.dirname(fake), { recursive: true });
   const commands = {
@@ -918,6 +960,117 @@ test('ops doctor does not report help text as an app version', async () => {
   assert.equal(app.versionOk, false);
   assert.equal(app.version, null);
   assert.match(app.versionError, /Usage: fake-help-version/);
+});
+
+test('auth status treats expired sessions as unusable even when adapters exit zero', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-expired-auth.js');
+  await writeFakeAuthCli(fake, {
+    ok: true,
+    authenticated: true,
+    user: { email: 'person@example.com' },
+    expiresAt: '2020-01-01T00:00:00.000Z',
+  });
+
+  const result = await run(['auth', 'status', '--app', 'projects', '--json'], {
+    MERE_ROOT: root,
+    MERE_PROJECTS_CLI: fake,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const status = JSON.parse(result.stdout).results[0];
+  assert.equal(status.ok, false);
+  assert.equal(status.authStatus, 'unauthenticated');
+  assert.match(status.authReasons.join(' '), /expired:2020-01-01T00:00:00.000Z/);
+});
+
+test('auth status treats authenticated false payloads as unusable despite ok true', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-authenticated-false.js');
+  await writeFakeAuthCli(fake, {
+    ok: true,
+    authenticated: false,
+    user: null,
+  });
+
+  const result = await run(['auth', 'status', '--app', 'projects', '--json'], {
+    MERE_ROOT: root,
+    MERE_PROJECTS_CLI: fake,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const status = JSON.parse(result.stdout).results[0];
+  assert.equal(status.ok, false);
+  assert.equal(status.authStatus, 'unauthenticated');
+  assert.ok(status.authReasons.includes('authenticated_false'));
+});
+
+test('auth status uses stored workspace context when no workspace flag is passed', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-auth-workspace-'));
+  const fake = path.join(root, 'fake-workspace-auth.js');
+  await writeFakeAuthCli(fake, {
+    ok: true,
+    authenticated: true,
+    user: { email: 'person@example.com' },
+    expiresAt: '2999-01-01T00:00:00.000Z',
+  });
+
+  const context = await run(['context', 'set-workspace', '--workspace', 'ws_active'], {
+    MERE_ROOT: root,
+    HOME: home,
+  });
+  assert.equal(context.code, 0, context.stderr);
+
+  const result = await run(['auth', 'status', '--app', 'projects', '--json'], {
+    MERE_ROOT: root,
+    MERE_PROJECTS_CLI: fake,
+    HOME: home,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const status = JSON.parse(result.stdout).results[0];
+  assert.equal(status.ok, true);
+  assert.equal(status.workspace, 'ws_active');
+  assert.deepEqual(JSON.parse(status.stdout).args, ['auth', 'whoami', '--json', '--workspace', 'ws_active']);
+});
+
+test('ops doctor uses the same auth usability semantics as auth status', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-doctor-auth.js');
+  await writeFakeAuthCli(fake, {
+    ok: true,
+    authenticated: true,
+    user: { email: 'person@example.com' },
+    expiresAt: '2020-01-01T00:00:00.000Z',
+  });
+
+  const result = await run(['ops', 'doctor', '--app', 'projects', '--json'], {
+    MERE_ROOT: root,
+    MERE_PROJECTS_CLI: fake,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const app = JSON.parse(result.stdout).apps[0];
+  assert.equal(app.authOk, false);
+  assert.equal(app.authStatus, 'unauthenticated');
+  assert.match(app.authReasons.join(' '), /expired:2020-01-01T00:00:00.000Z/);
+});
+
+test('auth status reports no-auth apps without delegating unsupported whoami commands', async () => {
+  const root = await fakeMereRoot();
+  const result = await run(['auth', 'status', '--app', 'link', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const status = JSON.parse(result.stdout).results[0];
+  assert.equal(status.app, 'link');
+  assert.equal(status.ok, true);
+  assert.equal(status.auth, 'none');
+  assert.equal(status.authStatus, 'not_required');
+  assert.equal(status.stdout, undefined);
 });
 
 test('workspace snapshot includes selector hints for inferred selectors', async () => {

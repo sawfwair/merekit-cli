@@ -785,6 +785,83 @@ function parseJsonMaybe(text) {
         return text;
     }
 }
+function parseJsonMaybeNull(text) {
+    if (!text.trim())
+        return null;
+    try {
+        return parseJsonObjectOrArray(text.trim());
+    }
+    catch {
+        return null;
+    }
+}
+function collectExpirationValues(value, output = []) {
+    if (Array.isArray(value)) {
+        for (const item of value)
+            collectExpirationValues(item, output);
+        return output;
+    }
+    if (!isRecord(value))
+        return output;
+    for (const [key, nested] of Object.entries(value)) {
+        if (/^(expiresAt|expires|expires_at|expiration|expiresOn)$/i.test(key) && typeof nested === 'string') {
+            output.push(nested);
+        }
+        if (isRecord(nested) || Array.isArray(nested))
+            collectExpirationValues(nested, output);
+    }
+    return output;
+}
+function textExpirationValues(text) {
+    return [...text.matchAll(/\bexpires(?:At|On)?\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?)/giu)]
+        .map((match) => match[1])
+        .filter((value) => Boolean(value));
+}
+function expiredValues(values, now = Date.now()) {
+    return values.filter((value) => {
+        const time = Date.parse(value);
+        return Number.isFinite(time) && time <= now;
+    });
+}
+function authHealthForResult(entry, result) {
+    if (entry.authKind === 'none') {
+        return { ok: true, status: 'not_required', reasons: ['auth_not_required'], payload: null };
+    }
+    const payload = parseJsonMaybeNull(result.stdout);
+    const reasons = [];
+    if (result.code !== 0) {
+        reasons.push(`exit_${result.code}`);
+    }
+    if (isRecord(payload)) {
+        if (payload.ok === false)
+            reasons.push('ok_false');
+        if (payload.authenticated === false)
+            reasons.push('authenticated_false');
+        if (payload.authenticated === true && payload.user === null)
+            reasons.push('authenticated_user_null');
+        if (!('authenticated' in payload) && payload.user === null && ['browser', 'mixed'].includes(entry.authKind)) {
+            reasons.push('user_null');
+        }
+        const error = isRecord(payload.error) ? payload.error : null;
+        const errorText = [error?.code, error?.message, payload.error].filter((part) => typeof part === 'string').join(' ');
+        if (/\b(expired|unauthenticated|auth_required|not authenticated|not signed in|no .*session|refresh session)\b/iu.test(errorText)) {
+            reasons.push('auth_error');
+        }
+        const expired = expiredValues(collectExpirationValues(payload));
+        if (expired.length > 0)
+            reasons.push(`expired:${expired[0]}`);
+    }
+    else {
+        const expired = expiredValues(textExpirationValues(result.stdout));
+        if (expired.length > 0)
+            reasons.push(`expired:${expired[0]}`);
+        if (/\b(unauthenticated|not signed in|auth required|no .*session|session .*expired|refresh session .*expired)\b/iu.test(`${result.stdout}\n${result.stderr}`)) {
+            reasons.push('auth_text_negative');
+        }
+    }
+    const ok = reasons.length === 0;
+    return { ok, status: ok ? 'authenticated' : 'unauthenticated', reasons, payload };
+}
 async function financeAuthStatus(io, entry, flags) {
     const config = await loadFinanceConfig(io.env);
     const profileName = readStringFlag(flags, 'profile') ?? config.currentProfile;
@@ -795,6 +872,8 @@ async function financeAuthStatus(io, entry, flags) {
         stdout: '',
         stderr: error instanceof Error ? error.message : String(error)
     }));
+    const health = authHealthForResult(entry, result);
+    const ok = health.ok && typeof profile.token === 'string' && profile.token.length > 0;
     return {
         app: 'finance',
         auth: 'token',
@@ -807,9 +886,11 @@ async function financeAuthStatus(io, entry, flags) {
         },
         profiles: financeProfileRows(config),
         whoami: {
-            ok: result.code === 0,
+            ok,
             code: result.code,
-            stdout: result.stdout.trim() ? parseJsonMaybe(result.stdout.trim()) : null,
+            stdout: health.payload ?? (result.stdout.trim() ? parseJsonMaybe(result.stdout.trim()) : null),
+            authStatus: ok ? 'authenticated' : 'unauthenticated',
+            authReasons: ok ? [] : [...health.reasons, ...(profile.token ? [] : ['missing_token'])],
             stderr: result.stderr.trim()
         }
     };
@@ -916,11 +997,20 @@ async function runAuth(io, action, flags) {
         throw new Error('Usage: mere auth login|whoami|logout|status [--app APP|--all] [--invite-code CODE for business login]');
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
+    const rootState = await loadState(paths);
+    const requestedWorkspace = readStringFlag(flags, 'workspace') ?? (action === 'status' ? rootState.defaultWorkspace : undefined);
     const entries = selectedEntries(registry, flags, { defaultAll: action === 'whoami' || action === 'status' });
     const results = [];
     for (const entry of entries) {
+        if (entry.authKind === 'none' && action === 'status') {
+            const result = { app: entry.key, ok: true, auth: 'none', authStatus: 'not_required', authReasons: [], workspace: requestedWorkspace ?? null };
+            results.push(result);
+            if (!readBooleanFlag(flags, 'json'))
+                io.stdout(`${entry.key}: not required\n`);
+            continue;
+        }
         if (entry.key === 'finance' && action === 'status') {
-            const result = await financeAuthStatus(io, entry, flags);
+            const result = await financeAuthStatus(io, entry, { ...flags, ...(requestedWorkspace ? { workspace: requestedWorkspace } : {}) });
             results.push(result);
             if (!readBooleanFlag(flags, 'json')) {
                 io.stdout(`${entry.key}: ${result.whoami.ok ? 'authenticated' : 'unauthenticated'} (${result.selectedProfile.name}, ${result.selectedProfile.hasToken ? 'token' : 'no-token'})\n`);
@@ -942,13 +1032,25 @@ async function runAuth(io, action, flags) {
             continue;
         }
         const authFlags = pickFlags(flags, ['base-url', 'workspace', 'profile', 'json']);
+        if (requestedWorkspace && authFlags.workspace === undefined)
+            authFlags.workspace = requestedWorkspace;
         if (entry.key === 'business' && flags['invite-code']) {
             authFlags['invite-code'] = flags['invite-code'];
         }
         const result = await delegateToApp(io, entry, ['auth', action === 'status' ? 'whoami' : action], authFlags, { capture: true });
-        results.push({ app: entry.key, ok: result.code === 0, code: result.code, stdout: redactOutput(result.stdout.trim()), stderr: redactOutput(result.stderr.trim()) });
+        const health = action === 'status' ? authHealthForResult(entry, result) : null;
+        results.push({
+            app: entry.key,
+            ok: health ? health.ok : result.code === 0,
+            code: result.code,
+            authStatus: health?.status,
+            authReasons: health?.reasons,
+            workspace: requestedWorkspace ?? null,
+            stdout: redactOutput(result.stdout.trim()),
+            stderr: redactOutput(result.stderr.trim())
+        });
         if (!readBooleanFlag(flags, 'json')) {
-            io.stdout(`${entry.key}: ${result.code === 0 ? 'ok' : `failed (${result.code})`}\n`);
+            io.stdout(`${entry.key}: ${health ? health.status : result.code === 0 ? 'ok' : `failed (${result.code})`}\n`);
             if (result.stdout.trim())
                 io.stdout(`${redactOutput(result.stdout.trim())}\n`);
             if (result.stderr.trim())
@@ -1051,6 +1153,8 @@ async function runApps(io, action, flags) {
 async function opsDoctor(io, flags) {
     const paths = resolveMerePaths(io.env);
     const registry = createRegistry(paths.mereRoot, paths.packageRoot);
+    const rootState = await loadState(paths);
+    const requestedWorkspace = readStringFlag(flags, 'workspace') ?? rootState.defaultWorkspace;
     const entries = readStringFlag(flags, 'app') ? selectedEntries(registry, flags) : registry;
     const node = process.version;
     const pnpm = await runCapture(findPnpm(io.env), ['--version'], { env: io.env }).catch((error) => ({
@@ -1070,7 +1174,13 @@ async function opsDoctor(io, flags) {
         const normalizedVersion = versionText(version);
         const completion = resolved.exists ? await runCapture(resolved.command, [...resolved.args, 'completion', 'bash'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
         const manifest = await loadManifest(entry, io.env);
-        const whoami = resolved.exists ? await runCapture(resolved.command, [...resolved.args, 'auth', 'whoami', '--json'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
+        const authArgs = ['auth', 'whoami', '--json', ...(requestedWorkspace ? ['--workspace', requestedWorkspace] : [])];
+        const whoami = resolved.exists && entry.authKind !== 'none' ? await runCapture(resolved.command, [...resolved.args, ...authArgs], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
+        const authHealth = entry.authKind === 'none'
+            ? authHealthForResult(entry, { code: 0, signal: null, stdout: '', stderr: '' })
+            : whoami
+                ? authHealthForResult(entry, whoami)
+                : { ok: false, status: 'unauthenticated', reasons: ['not_checked'], payload: null };
         apps.push({
             app: entry.key,
             cli: resolved.displayPath,
@@ -1081,8 +1191,10 @@ async function opsDoctor(io, flags) {
             versionError: normalizedVersion.ok ? null : normalizedVersion.value ?? version?.stderr.trim() ?? null,
             completionOk: completion?.code === 0,
             manifestOk: manifest.ok,
-            authOk: whoami?.code === 0,
-            authStatus: whoami?.code === 0 ? 'authenticated' : 'unauthenticated'
+            authOk: authHealth.ok,
+            authStatus: authHealth.status,
+            authReasons: authHealth.reasons,
+            workspace: requestedWorkspace ?? null
         });
     }
     const payload = { node, pnpm: { ok: pnpm.code === 0, version: pnpm.stdout.trim(), error: pnpm.stderr.trim() }, mereRun, mereRunModels, apps };
@@ -1514,6 +1626,8 @@ function safeCommand(entry, manifest, command, workspace) {
     return commandString(parts);
 }
 function authOkFor(entry, auth) {
+    if (entry.authKind === 'none')
+        return true;
     if (!auth)
         return false;
     if (entry.key === 'finance') {

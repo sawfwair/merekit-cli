@@ -36,6 +36,7 @@ function runPackDryRun() {
 }
 
 const files = runPackDryRun();
+const fileSet = new Set(files);
 const pathFailures = files.filter((file) => forbiddenPathPatterns.some((pattern) => pattern.test(file)));
 const contentFailures = [];
 
@@ -50,6 +51,14 @@ for (const file of files) {
 	for (const { label, pattern } of forbiddenContentPatterns) {
 		if (pattern.test(text)) {
 			contentFailures.push(`${file}: ${label}`);
+		}
+	}
+	for (const match of text.matchAll(/\bimport\(\s*['"](\.\/[^'"]+)['"]\s*\)/gu)) {
+		const target = match[1];
+		if (!target) continue;
+		const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), target));
+		if (!fileSet.has(resolved)) {
+			contentFailures.push(`${file}: missing relative dynamic import ${target}`);
 		}
 	}
 }
