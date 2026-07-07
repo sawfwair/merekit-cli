@@ -1235,6 +1235,46 @@ var init_local_store = __esm({
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
         ).run(key, value, (/* @__PURE__ */ new Date()).toISOString());
       }
+      countSealedEnvelopes(keyId) {
+        this.ensureEmailSchema();
+        const row = this.db.prepare("SELECT COUNT(*) AS count FROM email_local_sealed_envelopes WHERE key_id = ?").get(keyId);
+        return Number(row.count);
+      }
+      listMessagesToSeal(keyId, limit) {
+        this.ensureEmailSchema();
+        return this.db.prepare(
+          `SELECT m.id, m.workspace_id, m.thread_id, m.mailbox_id, m.message_id_header,
+                m.from_address, m.from_name, m.to_addresses_json, m.cc_addresses_json,
+                m.bcc_addresses_json, m.subject, m.body_text, m.body_html, m.direction,
+                m.sent_at, m.attachment_count
+         FROM email_local_messages m
+         LEFT JOIN email_local_sealed_envelopes s
+           ON s.message_id = m.id AND s.key_id = ?
+         WHERE s.message_id IS NULL
+         ORDER BY m.sent_at ASC
+         LIMIT ?`
+        ).all(keyId, limit);
+      }
+      insertSealedEnvelope(input) {
+        this.ensureEmailSchema();
+        this.db.prepare(
+          `INSERT INTO email_local_sealed_envelopes
+           (message_id, key_id, workspace_id, thread_id, envelope_json, sealed_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(message_id, key_id) DO UPDATE SET
+           envelope_json = excluded.envelope_json,
+           sealed_at = excluded.sealed_at`
+        ).run(input.messageId, input.keyId, input.workspaceId, input.threadId, input.envelopeJson, (/* @__PURE__ */ new Date()).toISOString());
+      }
+      sampleSealedEnvelopes(keyId, limit) {
+        this.ensureEmailSchema();
+        return this.db.prepare(
+          "SELECT message_id, envelope_json FROM email_local_sealed_envelopes WHERE key_id = ? ORDER BY sealed_at DESC LIMIT ?"
+        ).all(keyId, limit).map((row) => ({
+          messageId: row.message_id,
+          envelopeJson: row.envelope_json
+        }));
+      }
       listMailboxes(workspaceId) {
         this.ensureEmailSchema();
         const rows = this.db.prepare("SELECT * FROM email_local_mailboxes WHERE workspace_id = ? ORDER BY address ASC").all(workspaceId);
@@ -1720,6 +1760,16 @@ var init_local_store = __esm({
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS email_local_sealed_envelopes (
+        message_id TEXT NOT NULL,
+        key_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        envelope_json TEXT NOT NULL,
+        sealed_at TEXT NOT NULL,
+        PRIMARY KEY (message_id, key_id)
+      );
+
       CREATE TABLE IF NOT EXISTS email_local_workspaces (
         workspace_id TEXT PRIMARY KEY,
         slug TEXT NOT NULL,
@@ -1828,8 +1878,8 @@ var init_local_store = __esm({
 // cli/mere-email.ts
 init_src();
 init_projection();
-import { createHash as createHash4 } from "node:crypto";
-import { mkdir as mkdir3, readFile as readFile3, writeFile as writeFile2 } from "node:fs/promises";
+import { createHash as createHash5 } from "node:crypto";
+import { mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
@@ -2507,8 +2557,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -2624,11 +2674,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -7005,8 +7055,8 @@ var EmailCliClient = class {
   workspacePath(workspaceId, suffix) {
     return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
-  isAgentMailPath(path4) {
-    return path4.includes("/agent-mail/");
+  isAgentMailPath(path5) {
+    return path5.includes("/agent-mail/");
   }
   agentHeaders() {
     return new Headers({
@@ -7017,14 +7067,14 @@ var EmailCliClient = class {
       "x-mere-tool-key": "mere-email-cli"
     });
   }
-  async request(path4, init, options) {
+  async request(path5, init, options) {
     const requiresToken = options.requiresToken ?? true;
     if (requiresToken && !this.token) {
       throw new CliError("This command requires `mere-email auth login` or MERE_EMAIL_TOKEN.");
     }
     const headers = this.token ? buildBearerHeaders(this.token, init.headers) : new Headers(init.headers);
     headers.set("accept", "application/json");
-    if (this.isAgentMailPath(path4)) {
+    if (this.isAgentMailPath(path5)) {
       const agentHeaders = this.agentHeaders();
       for (const [key, value] of agentHeaders.entries()) {
         headers.set(key, value);
@@ -7033,7 +7083,7 @@ var EmailCliClient = class {
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
-    const response = await this.fetchImpl(new URL(path4, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path5, this.baseUrl), {
       ...init,
       headers
     });
@@ -7060,6 +7110,97 @@ var EmailCliClient = class {
     return options.parser(payload.data);
   }
 };
+
+// cli/sealed.ts
+init_json();
+import { createCipheriv, createDecipheriv, createHash as createHash4, randomBytes } from "node:crypto";
+import { chmod as chmod3, mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import os4 from "node:os";
+import path4 from "node:path";
+var SEALED_ENVELOPE_VERSION = 1;
+var SEALED_ENVELOPE_ALG = "A256GCM";
+function sealedKeyPath(env) {
+  const stateHome3 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path4.join(env.HOME?.trim() ? env.HOME.trim() : os4.homedir(), ".local", "state");
+  return path4.join(stateHome3, "mere-email", "sealed.key");
+}
+function keyFingerprint(key) {
+  return createHash4("sha256").update(key).digest("hex").slice(0, 16);
+}
+async function loadSealedKey(env, options = {}) {
+  const filePath = sealedKeyPath(env);
+  try {
+    const raw = await readFile2(filePath);
+    if (raw.length !== 32) {
+      throw new Error(`Sealed key at ${filePath} is corrupt (expected 32 bytes, found ${raw.length}).`);
+    }
+    return { key: raw, keyId: keyFingerprint(raw), filePath };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (!options.create) return null;
+  const key = randomBytes(32);
+  await mkdir3(path4.dirname(filePath), { recursive: true });
+  await writeFile2(filePath, key, { mode: 384 });
+  await chmod3(filePath, 384);
+  return { key, keyId: keyFingerprint(key), filePath };
+}
+function envelopeAad(header) {
+  return Buffer.from(
+    JSON.stringify([
+      header.v,
+      header.alg,
+      header.keyId,
+      header.workspaceId,
+      header.threadId,
+      header.messageId,
+      header.sentAt
+    ]),
+    "utf8"
+  );
+}
+function sealMessage(sealedKey, input) {
+  const header = {
+    v: SEALED_ENVELOPE_VERSION,
+    alg: SEALED_ENVELOPE_ALG,
+    keyId: sealedKey.keyId,
+    workspaceId: input.workspaceId,
+    threadId: input.threadId,
+    messageId: input.messageId,
+    sentAt: input.sentAt
+  };
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sealedKey.key, iv);
+  cipher.setAAD(envelopeAad(header));
+  const plaintext = Buffer.from(JSON.stringify(input.payload), "utf8");
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  return {
+    ...header,
+    iv: iv.toString("base64"),
+    ct: ciphertext.toString("base64")
+  };
+}
+function unsealEnvelope(sealedKey, envelope) {
+  if (envelope.v !== SEALED_ENVELOPE_VERSION || envelope.alg !== SEALED_ENVELOPE_ALG) {
+    throw new Error(`Unsupported sealed envelope format (v${envelope.v}, ${envelope.alg}).`);
+  }
+  if (envelope.keyId !== sealedKey.keyId) {
+    throw new Error(`Envelope was sealed with key ${envelope.keyId}, not the local key ${sealedKey.keyId}.`);
+  }
+  const raw = Buffer.from(envelope.ct, "base64");
+  if (raw.length < 17) {
+    throw new Error("Sealed envelope ciphertext is truncated.");
+  }
+  const tag = raw.subarray(raw.length - 16);
+  const ciphertext = raw.subarray(0, raw.length - 16);
+  const decipher = createDecipheriv("aes-256-gcm", sealedKey.key, Buffer.from(envelope.iv, "base64"));
+  decipher.setAAD(envelopeAad(envelope));
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return parseJsonText(plaintext.toString("utf8"), { invalidJsonMessage: "Sealed envelope payload is not valid JSON." });
+}
+function parseSealedEnvelope(text) {
+  return parseJsonText(text, { invalidJsonMessage: "Stored sealed envelope is not valid JSON." });
+}
 
 // cli/format.ts
 function formatTable(headers, rows) {
@@ -7335,7 +7476,7 @@ ${JSON.stringify(result.workspaceResponse, null, 2)}`);
 }
 
 // cli/send-command.ts
-import { readFile as readFile2 } from "node:fs/promises";
+import { readFile as readFile3 } from "node:fs/promises";
 import { basename, resolve as resolvePath } from "node:path";
 async function readAttachmentFiles(filePaths) {
   const attachments = [];
@@ -7343,7 +7484,7 @@ async function readAttachmentFiles(filePaths) {
     const absolutePath = resolvePath(filePath);
     let buffer;
     try {
-      buffer = await readFile2(absolutePath);
+      buffer = await readFile3(absolutePath);
     } catch (error) {
       throw new CliError(
         `Failed to read attachment ${absolutePath}: ${error instanceof Error ? error.message : "Unknown error."}`
@@ -7646,6 +7787,9 @@ Commands:
   store info
   custody status
   custody set <plaintext-cloud|sealed-mirror|live-tunnel|local-only>
+  custody keygen
+  custody seal [--limit N] [--dry-run]
+  custody verify [--limit N]
 
   auth login
   auth whoami
@@ -7745,7 +7889,7 @@ function helpJson() {
         "disconnect"
       ],
       sync: ["pull"],
-      custody: ["status", "set"],
+      custody: ["status", "set", "keygen", "seal", "verify"],
       mailboxes: ["list"],
       threads: ["list", "latest", "search", "show", "summarize", "publish", "revoke", "read", "star", "archive"],
       drafts: ["create", "show", "discard"],
@@ -7773,10 +7917,10 @@ function helpJson() {
     lifecycleStates: EMAIL_WORKSPACE_LIFECYCLE_STATES
   };
 }
-function manifestCommand(path4, summary, options = {}) {
+function manifestCommand(path5, summary, options = {}) {
   return {
-    id: path4.join("."),
-    path: path4,
+    id: path5.join("."),
+    path: path5,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -7806,6 +7950,9 @@ function commandManifest() {
         auditDefault: true
       }),
       manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { risk: "external" }),
+      manifestCommand(["custody", "keygen"], "Generate the local sealing key (never leaves this machine).", { risk: "write" }),
+      manifestCommand(["custody", "seal"], "Seal local mail into AES-256-GCM envelopes the cloud cannot open.", { risk: "write", flags: ["limit", "dry-run"] }),
+      manifestCommand(["custody", "verify"], "Unseal a sample of envelopes to prove round-trip integrity.", { flags: ["limit"] }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
@@ -7847,7 +7994,7 @@ function commandManifest() {
   };
 }
 async function cliVersion() {
-  const raw = await readFile3(new URL("../package.json", import.meta.url), "utf8");
+  const raw = await readFile4(new URL("../package.json", import.meta.url), "utf8");
   const parsed = parseJsonText(raw);
   return parsed.version ?? "0.0.0";
 }
@@ -8330,7 +8477,7 @@ function mergedOptions(globalOptions, options) {
   return { ...globalOptions, ...options };
 }
 function stablePublicationId(input) {
-  const hash = createHash4("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
+  const hash = createHash5("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
   return `pub_${hash}`;
 }
 function selectedPublicationMessages(state, messageId) {
@@ -8465,8 +8612,8 @@ function writeResult(io, globalOptions, value, render) {
 }
 async function writeBytesFile(outputPath, bytes) {
   const target = resolvePath2(outputPath);
-  await mkdir3(dirname(target), { recursive: true });
-  await writeFile2(target, bytes);
+  await mkdir4(dirname(target), { recursive: true });
+  await writeFile3(target, bytes);
   return target;
 }
 function pickWorkspaceSession(session, requestedWorkspace) {
@@ -8489,7 +8636,7 @@ async function readJsonFile(filePath) {
   const absolutePath = resolvePath2(filePath);
   let text;
   try {
-    text = await readFile3(absolutePath, "utf8");
+    text = await readFile4(absolutePath, "utf8");
   } catch (error) {
     throw new CliError(
       `Failed to read ${absolutePath}: ${error instanceof Error ? error.message : "Unknown error."}`
@@ -8879,32 +9026,69 @@ var CUSTODY_WEB_ACCESS = {
 function isEmailCustodyTier(value) {
   return Boolean(value) && EMAIL_CUSTODY_TIERS.includes(value);
 }
-function custodyStatusPayload(tier) {
+async function custodyStatusPayload(io, store, tier) {
+  const key = await loadSealedKey(io.env);
   return {
     ok: true,
     tier,
     webAccess: CUSTODY_WEB_ACCESS[tier],
-    sealedEnvelopes: null,
+    sealingKeyId: key?.keyId ?? null,
+    sealedEnvelopes: key ? store.countSealedEnvelopes(key.keyId) : null,
     // The tier is the recorded policy for this local plane. Plaintext cloud
-    // is what the platform enforces today; sealed projection and tunnel
-    // serving phase in behind this same switch.
-    enforcement: tier === "plaintext-cloud" ? "active" : "pending"
+    // is what the platform enforces today; local sealing is real (custody
+    // seal/verify) while the mirror upload leg waits on receiver support and
+    // the tunnel leg on provisioning.
+    enforcement: tier === "plaintext-cloud" ? "active" : "pending",
+    mirror: "pending-receiver",
+    tunnel: "unprovisioned"
   };
 }
 function renderCustody(payload) {
-  return [
+  const lines = [
     `custody: ${payload.tier}`,
     `web access: ${payload.webAccess}`,
     `enforcement: ${payload.enforcement}`
-  ].join("\n");
+  ];
+  if (payload.sealingKeyId) {
+    lines.push(`sealing key: ${payload.sealingKeyId}`);
+    lines.push(`sealed envelopes: ${payload.sealedEnvelopes ?? 0}`);
+  }
+  return lines.join("\n");
+}
+function readPositiveIntegerOption(options, name, fallback) {
+  const raw = readOptionalStringOption(options, name);
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new CliError(`--${name} must be a positive integer.`);
+  }
+  return value;
 }
 async function handleCustodyCommand(io, globalOptions, action, args) {
-  if (action !== "status" && action !== "set") {
-    throw new CliError("Unknown custody command. Expected status or set.");
+  const actions = ["status", "set", "keygen", "seal", "verify"];
+  if (!action || !actions.includes(action)) {
+    throw new CliError(`Unknown custody command. Expected ${actions.join(", ")}.`);
   }
-  const { options, positionals } = parseCommandFlags(args, {});
+  const { options, positionals } = parseCommandFlags(args, {
+    limit: "string",
+    "dry-run": "boolean"
+  });
   if (asBoolean(options.help)) {
     writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  if (action === "keygen") {
+    requireNoPositionals(positionals);
+    const existing = await loadSealedKey(io.env);
+    const key = existing ?? await loadSealedKey(io.env, { create: true });
+    if (!key) throw new CliError("Could not create the sealing key.");
+    writeResult(
+      io,
+      globalOptions,
+      { ok: true, keyId: key.keyId, path: key.filePath, created: !existing },
+      (payload) => `sealing key: ${payload.keyId}${payload.created ? " (created)" : ""}
+${payload.path}`
+    );
     return;
   }
   const store = await openLocalEmailStore(globalOptions, io);
@@ -8915,13 +9099,84 @@ async function handleCustodyCommand(io, globalOptions, action, args) {
         throw new CliError(`Custody tier must be one of: ${EMAIL_CUSTODY_TIERS.join(", ")}.`);
       }
       store.setSetting(CUSTODY_SETTING_KEY, tier2);
-      writeResult(io, globalOptions, custodyStatusPayload(tier2), renderCustody);
+      writeResult(io, globalOptions, await custodyStatusPayload(io, store, tier2), renderCustody);
+      return;
+    }
+    if (action === "seal") {
+      requireNoPositionals(positionals);
+      const key = await loadSealedKey(io.env);
+      if (!key) {
+        throw new CliError("No sealing key on this machine. Run custody keygen first.");
+      }
+      const limit = readPositiveIntegerOption(options, "limit", 500);
+      const pendingRows = store.listMessagesToSeal(key.keyId, limit);
+      if (asBoolean(options["dry-run"])) {
+        writeResult(
+          io,
+          globalOptions,
+          { ok: true, dryRun: true, keyId: key.keyId, wouldSeal: pendingRows.length },
+          (payload) => `would seal ${payload.wouldSeal} messages with key ${payload.keyId}`
+        );
+        return;
+      }
+      for (const row of pendingRows) {
+        const envelope = sealMessage(key, {
+          workspaceId: row.workspace_id,
+          threadId: row.thread_id,
+          messageId: row.id,
+          sentAt: row.sent_at,
+          payload: row
+        });
+        store.insertSealedEnvelope({
+          messageId: row.id,
+          keyId: key.keyId,
+          workspaceId: row.workspace_id,
+          threadId: row.thread_id,
+          envelopeJson: JSON.stringify(envelope)
+        });
+      }
+      writeResult(
+        io,
+        globalOptions,
+        {
+          ok: true,
+          keyId: key.keyId,
+          sealed: pendingRows.length,
+          sealedEnvelopes: store.countSealedEnvelopes(key.keyId)
+        },
+        (payload) => `sealed ${payload.sealed} messages; ${payload.sealedEnvelopes} envelopes total (key ${payload.keyId})`
+      );
+      return;
+    }
+    if (action === "verify") {
+      requireNoPositionals(positionals);
+      const key = await loadSealedKey(io.env);
+      if (!key) {
+        throw new CliError("No sealing key on this machine. Run custody keygen first.");
+      }
+      const limit = readPositiveIntegerOption(options, "limit", 10);
+      const sample = store.sampleSealedEnvelopes(key.keyId, limit);
+      let verified = 0;
+      for (const item of sample) {
+        const envelope = parseSealedEnvelope(item.envelopeJson);
+        const payload = unsealEnvelope(key, envelope);
+        if (envelope.messageId !== item.messageId || payload.id !== item.messageId) {
+          throw new CliError(`Envelope for ${item.messageId} failed verification.`);
+        }
+        verified += 1;
+      }
+      writeResult(
+        io,
+        globalOptions,
+        { ok: true, keyId: key.keyId, verified, sampled: sample.length },
+        (payload) => `verified ${payload.verified} of ${payload.sampled} sampled envelopes (key ${payload.keyId})`
+      );
       return;
     }
     requireNoPositionals(positionals);
     const recorded = store.getSetting(CUSTODY_SETTING_KEY);
     const tier = isEmailCustodyTier(recorded) ? recorded : "plaintext-cloud";
-    writeResult(io, globalOptions, custodyStatusPayload(tier), renderCustody);
+    writeResult(io, globalOptions, await custodyStatusPayload(io, store, tier), renderCustody);
   } finally {
     store.close();
   }
@@ -9528,13 +9783,13 @@ async function handleAttachmentsDownload(io, globalOptions, args) {
   const outputPath = readRequiredStringOption(options, "output");
   const workspaceId = resolveWorkspace(globalOptions, io.env);
   const download2 = await createClient(io, globalOptions).downloadAttachment(workspaceId, attachmentId);
-  const path4 = await writeBytesFile(outputPath, download2.bytes);
+  const path5 = await writeBytesFile(outputPath, download2.bytes);
   writeResult(
     io,
     globalOptions,
     {
       attachmentId,
-      path: path4,
+      path: path5,
       filename: download2.filename,
       contentType: download2.contentType,
       bytes: download2.bytes.byteLength
