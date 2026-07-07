@@ -9245,9 +9245,17 @@ async function createRuntime(globalFlags) {
         values,
         agent
       });
+      if (result.session) {
+        await writeSession(
+          createLocalSession2(result.session, {
+            consoleUrl: baseUrl,
+            defaultWorkspaceId: result.session.workspace?.id ?? result.session.defaultWorkspaceId
+          })
+        );
+      }
       const workspaceId = result.workspace?.id;
       if (!workspaceId || input2.noWait === true || result.state === "active" || result.state === "needs_attention") {
-        return result;
+        return stripSessionPayload(result);
       }
       const timeoutMs = Math.round(Number(input2.timeoutSeconds ?? 900) * 1e3);
       const pollMs = Math.max(1e3, Math.round(Number(input2.pollSeconds ?? 5) * 1e3));
@@ -9266,8 +9274,16 @@ async function createRuntime(globalFlags) {
           values,
           agent
         });
+        if (result.session) {
+          await writeSession(
+            createLocalSession2(result.session, {
+              consoleUrl: baseUrl,
+              defaultWorkspaceId: result.session.workspace?.id ?? result.session.defaultWorkspaceId
+            })
+          );
+        }
         if (result.state === "active" || result.state === "needs_attention") {
-          return result;
+          return stripSessionPayload(result);
         }
         const line = [
           result.provisioning?.activeStep ?? "provisioning",
@@ -9279,7 +9295,7 @@ async function createRuntime(globalFlags) {
         }
       }
       return {
-        ...result,
+        ...stripSessionPayload(result),
         state: result.state ?? "provisioning",
         timedOut: true,
         message: `Provisioning is still running after ${Math.round(timeoutMs / 1e3)} seconds.`
