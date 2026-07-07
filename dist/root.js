@@ -36,7 +36,7 @@ Human first run:
   mere business onboard start INVITE_CODE --json
 
 Operator/agent first run:
-  mere business onboard agent-start INVITE_CODE --json
+  AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
   mere ops doctor --json
@@ -93,7 +93,8 @@ Human first-use:
   mere business onboard start INVITE_CODE --json
 
 Operator/agent workspace sequence:
-  mere business onboard agent-start INVITE_CODE --json
+  AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json
+  AGENTSIDENTIFY_API_KEY=ai_... mere business auth agent-login --workspace WORKSPACE_ID --agent-id STABLE_AGENT_ID --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
@@ -129,7 +130,7 @@ Usage:
   mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
-  mere business onboard agent-start INVITE_CODE --json
+  AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere onboard --app projects --workspace WORKSPACE_ID
   mere onboard --finance-profile default --finance-base-url https://<tenant>.mere.finance --json
@@ -1895,7 +1896,7 @@ async function runOnboard(io, action, flags) {
     }
     const inviteCode = readStringFlag(flags, 'invite-code');
     if (inviteCode) {
-        throw new Error('Invite codes require interactive onboarding (`mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard agent-start INVITE_CODE --json`.');
+        throw new Error('Invite codes require interactive onboarding (`mere onboard --interactive --invite-code CODE`) or the headless agent bootstrap command with a persistent AgentsIdentify identity: `AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json`.');
     }
     const target = readStringFlag(flags, 'target') ?? 'codex';
     if (target !== 'codex' && target !== 'claude')

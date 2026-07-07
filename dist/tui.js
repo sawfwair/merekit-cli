@@ -435,7 +435,7 @@ export async function runFirstUseTui(input) {
     }
     const streams = promptStreams(input.io);
     if (!streams) {
-        throw new Error('Mere interactive onboarding requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `mere business onboard agent-start INVITE_CODE --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs. If your shell wrapper pipes stdin but you are at a terminal, set MERE_INTERACTIVE=1 to use /dev/tty for prompts.');
+        throw new Error('Mere interactive onboarding requires an interactive terminal. Use `mere business waitlist join --email EMAIL`, `AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json`, or `mere onboard --workspace WORKSPACE_ID --json` for headless runs. If your shell wrapper pipes stdin but you are at a terminal, set MERE_INTERACTIVE=1 to use /dev/tty for prompts.');
     }
     let choices;
     try {

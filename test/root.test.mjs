@@ -391,13 +391,13 @@ test('renders help and completion', async () => {
   assert.match(help.stdout, /mere onboard --interactive/);
   assert.match(help.stdout, /mere business waitlist join --email EMAIL/);
   assert.match(help.stdout, /Operator\/agent first run:/);
-  assert.match(help.stdout, /mere business onboard agent-start INVITE_CODE --json/);
+  assert.match(help.stdout, /AGENTSIDENTIFY_API_KEY=ai_\.\.\. mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json/);
   assert.match(help.stdout, /mere help agent/);
   const agentHelp = await run(['help', 'agent']);
   assert.equal(agentHelp.code, 0);
   assert.match(agentHelp.stdout, /mere agent guide/);
   assert.match(agentHelp.stdout, /Human first-use:/);
-  assert.match(agentHelp.stdout, /mere business onboard agent-start INVITE_CODE --json/);
+  assert.match(agentHelp.stdout, /AGENTSIDENTIFY_API_KEY=ai_\.\.\. mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json/);
   assert.match(agentHelp.stdout, /Operating loop:/);
   const completion = await run(['completion', 'bash']);
   assert.equal(completion.code, 0);
@@ -664,7 +664,7 @@ test('onboard --interactive preserves first-use non-interactive guidance', async
   assert.equal(result.code, 1);
   assert.match(result.stderr, /interactive onboarding requires an interactive terminal/);
   assert.match(result.stderr, /mere business waitlist join --email EMAIL/);
-  assert.match(result.stderr, /mere business onboard agent-start INVITE_CODE --json/);
+  assert.match(result.stderr, /AGENTSIDENTIFY_API_KEY=ai_\.\.\. mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json/);
   assert.match(result.stderr, /mere onboard --workspace WORKSPACE_ID --json/);
 });
 
@@ -672,7 +672,7 @@ test('onboard invite-code without interactive points to the bootstrap path', asy
   const result = await run(['onboard', '--invite-code', 'zcli_code_123', '--json']);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /Invite codes require interactive onboarding/);
-  assert.match(result.stderr, /mere business onboard agent-start INVITE_CODE --json/);
+  assert.match(result.stderr, /AGENTSIDENTIFY_API_KEY=ai_\.\.\. mere business onboard agent-start INVITE_CODE --agent-id STABLE_AGENT_ID --json/);
 });
 
 test('discovers local skills for registry publishing', async () => {
