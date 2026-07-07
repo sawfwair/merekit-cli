@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.14 - 2026-07-07
+
+- Published the bundled Business adapter with AgentsIdentify-backed browserless `business auth agent-login` reissue, replacing bare workspace/agent-id trust with a short-lived proof minted from an `ai_` identity key or supplied proof JWT.
+
 ## 0.5.13 - 2026-07-07
 
 - Published the bundled Business adapter stale-session fix so `business auth agent-login --workspace ... --agent-id ...` can reissue an agent session even when an unrelated local Business session already exists.
