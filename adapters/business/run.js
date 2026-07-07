@@ -848,6 +848,18 @@ async function bootstrapConsoleAgentOnboarding(input2) {
     { headers }
   );
 }
+async function reissueConsoleAgentSession(input2) {
+  const url = new URL("/api/cli/v1/auth/agent-session", input2.baseUrl);
+  const headers = new Headers();
+  if (input2.bootstrapToken?.trim()) {
+    headers.set("authorization", `Bearer ${input2.bootstrapToken.trim()}`);
+  }
+  return postJson2(
+    url,
+    { workspaceId: input2.workspaceId, agent: input2.agent ?? {} },
+    { headers }
+  );
+}
 async function createConsoleWorkspace(input2) {
   const url = new URL("/api/cli/v1/workspaces", input2.baseUrl);
   return postJson2(
@@ -6175,15 +6187,41 @@ ${workspace}`;
   },
   {
     path: ["auth", "agent-login"],
-    summary: "Refresh and verify a local Business agent session without opening a browser.",
-    options: [stringOption("workspace", "workspace", "Workspace id, slug, or host to select.")],
+    summary: "Refresh or reissue a local Business agent session without opening a browser.",
+    options: [
+      stringOption("workspace", "workspace", "Workspace id, slug, or host to select. Required when reissuing a missing local session."),
+      stringOption("bootstrap-token", "bootstrapToken", "Optional agent bootstrap bearer token. Defaults to MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN."),
+      stringOption("agent-id", "agentId", "Stable agent identifier from the original agent onboarding run. Required when reissuing a missing local session."),
+      stringOption("agent-label", "agentLabel", "Human-readable agent label."),
+      stringOption("agent-email", "agentEmail", "Broker identity email for the agent."),
+      stringOption("agent-email-local-part", "agentEmailLocalPart", "Local part for the default @mere.email agent identity."),
+      stringOption("agent-tool-key", "agentToolKey", "Agent tool key for audit context."),
+      stringOption("agent-job-id", "agentJobId", "Agent job id for audit context."),
+      stringOption("agent-session-id", "agentSessionId", "Agent session id for audit context.")
+    ],
     schema: external_exports.object({
-      workspace: optionalString
+      workspace: optionalString,
+      bootstrapToken: optionalString,
+      agentId: optionalString,
+      agentLabel: optionalString,
+      agentEmail: optionalString,
+      agentEmailLocalPart: optionalString,
+      agentToolKey: optionalString,
+      agentJobId: optionalString,
+      agentSessionId: optionalString
     }),
     auth: "none",
     risk: "write",
     execute: (runtime, input2) => runtime.agentLogin({
-      workspace: input2.workspace
+      workspace: input2.workspace,
+      bootstrapToken: input2.bootstrapToken,
+      agentId: input2.agentId,
+      agentLabel: input2.agentLabel,
+      agentEmail: input2.agentEmail,
+      agentEmailLocalPart: input2.agentEmailLocalPart,
+      agentToolKey: input2.agentToolKey,
+      agentJobId: input2.agentJobId,
+      agentSessionId: input2.agentSessionId
     }),
     format: (data) => {
       const session = data;
@@ -8919,6 +8957,20 @@ function stripSessionPayload(result) {
   delete next.session;
   return next;
 }
+function agentLoginSummary(session, paths, reissued) {
+  return {
+    ok: true,
+    authenticated: true,
+    user: session.user,
+    workspace: session.workspace,
+    workspaces: session.workspaces,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt,
+    sessionFile: paths.sessionFile,
+    reissued
+  };
+}
 function writeProgress(globalFlags, message) {
   if (!globalFlags.json) {
     stderr.write(`${message}
@@ -9048,9 +9100,49 @@ async function createRuntime(globalFlags) {
     agentLogin: async (options) => {
       const session = await getLocalSession();
       if (!session) {
-        throw authError(
-          "No local Mere Business agent session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+        const workspaceId = String(options.workspace ?? globalFlags.workspace ?? "").trim();
+        if (!workspaceId) {
+          throw authError(
+            "No local Mere Business agent session found. Reissue the existing workspace session with `mere business auth agent-login --workspace <workspace-id> --agent-id <same-agent-id> --bootstrap-token <token> --json`."
+          );
+        }
+        const agentId = String(options.agentId ?? "").trim();
+        if (!agentId) {
+          throw authError(
+            "No local Mere Business agent session found. Pass --agent-id with the stable agent id from the original `onboard agent-start` run to reissue the existing workspace session."
+          );
+        }
+        const bootstrapToken = String(options.bootstrapToken ?? "").trim() || env.MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN?.trim() || env.AGENT_ONBOARDING_BOOTSTRAP_SECRET?.trim() || "";
+        if (!bootstrapToken) {
+          throw authError(
+            "No local Mere Business agent session found and no bootstrap token is available. Set MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN or pass --bootstrap-token to reissue the existing workspace session."
+          );
+        }
+        const baseUrl = normalizeConsoleUrl();
+        const result = await reissueConsoleAgentSession({
+          baseUrl,
+          bootstrapToken,
+          workspaceId,
+          agent: compactObject({
+            id: agentId,
+            label: options.agentLabel,
+            email: options.agentEmail,
+            emailLocalPart: options.agentEmailLocalPart,
+            toolKey: options.agentToolKey,
+            jobId: options.agentJobId,
+            sessionId: options.agentSessionId
+          })
+        });
+        if (!result.session) {
+          throw authError("Business agent session reissue did not return a session.");
+        }
+        const next = await writeSession(
+          createLocalSession2(result.session, {
+            consoleUrl: baseUrl,
+            defaultWorkspaceId: result.session.workspace?.id ?? result.session.defaultWorkspaceId
+          })
         );
+        return agentLoginSummary(next, paths, true);
       }
       const selector = options.workspace ?? globalFlags.workspace ?? session.defaultWorkspaceId ?? session.workspace?.id;
       const workspace = requireWorkspaceSelection2(session.workspaces, selector);
@@ -9060,14 +9152,14 @@ async function createRuntime(globalFlags) {
           workspace,
           defaultWorkspaceId: session.defaultWorkspaceId ?? workspace.id
         };
-        return writeSession(next);
+        return agentLoginSummary(await writeSession(next), paths, false);
       }
-      return writeSession(
+      return agentLoginSummary(await writeSession(
         await refreshRemoteSession2(session, {
           workspace: workspace.id,
           persistDefaultWorkspace: false
         })
-      );
+      ), paths, false);
     },
     getLocalSession,
     switchWorkspace: async (selector) => {

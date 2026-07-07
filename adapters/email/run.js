@@ -7639,6 +7639,10 @@ async function startCustodyTunnelServer(input) {
     ok: true,
     custody: "live-tunnel",
     mode: "sealed-envelope-loopback",
+    exposure: "loopback",
+    localDataPolicy: "plaintext-allowed",
+    remoteDataPolicy: "sealed-required",
+    payloadClass: "sealed-envelope",
     state: "live",
     keyId: input.key.keyId,
     url,
@@ -7679,6 +7683,10 @@ async function startCustodyTunnelServer(input) {
           {
             ok: true,
             custody: "live-tunnel",
+            exposure: "loopback",
+            localDataPolicy: "plaintext-allowed",
+            remoteDataPolicy: "sealed-required",
+            payloadClass: "sealed-envelope",
             keyId: input.key.keyId,
             count: rows.length,
             envelopes: rows.map(mapEnvelope)
@@ -8272,6 +8280,7 @@ Commands:
   custody push [--limit N] [--dry-run]
   custody unmirror [--dry-run]
   custody grant --device CODE
+  custody tunnel serve [--host HOST] [--port PORT] [--once]
   custody tunnel up [--host HOST] [--port PORT] [--cloudflared] [--tunnel-name NAME] [--once]
   custody verify [--limit N]
 
@@ -8441,7 +8450,7 @@ function commandManifest() {
       manifestCommand(["custody", "push"], "Upload unsent sealed envelopes to the opaque custody receiver.", { risk: "external", flags: ["limit", "dry-run"] }),
       manifestCommand(["custody", "unmirror"], "Delete mirrored sealed envelopes from the custody receiver.", { risk: "destructive", requiresYes: true, flags: ["dry-run", "yes"] }),
       manifestCommand(["custody", "grant"], "Approve a browser device-link request by wrapping the local sealing key.", { risk: "external", flags: ["device"] }),
-      manifestCommand(["custody", "tunnel"], "Serve sealed envelopes from this machine over a read-only loopback tunnel.", { auth: "none", risk: "external", flags: ["host", "port", "cloudflared", "tunnel-name", "once"], positionals: ["up"] }),
+      manifestCommand(["custody", "tunnel"], "Serve the Email custody capability over loopback; fronted web access uses sealed envelopes.", { auth: "none", risk: "external", flags: ["host", "port", "cloudflared", "tunnel-name", "once"], positionals: ["serve", "up"] }),
       manifestCommand(["custody", "verify"], "Unseal a sample of envelopes to prove round-trip integrity.", { flags: ["limit"] }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "agent-login"], "Create an Email session from a Business agent session.", {
@@ -9820,9 +9829,12 @@ ${payload.path}`
       return;
     }
     if (action === "tunnel") {
-      const tunnelAction = requireSinglePositional(positionals, "custody tunnel command: up");
-      if (tunnelAction !== "up") {
-        throw new CliError("Unknown custody tunnel command. Expected up.");
+      const tunnelAction = requireSinglePositional(positionals, "custody tunnel command: serve or up");
+      if (tunnelAction !== "serve" && tunnelAction !== "up") {
+        throw new CliError("Unknown custody tunnel command. Expected serve or up.");
+      }
+      if (tunnelAction === "serve" && (asBoolean(options.cloudflared) || readOptionalStringOption(options, "tunnel-name"))) {
+        throw new CliError("custody tunnel serve is loopback-only. Let the console front it.");
       }
       const key = await loadSealedKey(io.env);
       if (!key) {
@@ -9846,7 +9858,7 @@ ${payload.path}`
       store.setSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY, startedAt);
       const tunnelName = readOptionalStringOption(options, "tunnel-name");
       const cloudflaredArgs = buildCloudflaredArgs({ localUrl: server.url, tunnelName });
-      const cloudflared = asBoolean(options.cloudflared) ? startCloudflaredTunnel({ localUrl: server.url, tunnelName }) : null;
+      const cloudflared = tunnelAction === "up" && asBoolean(options.cloudflared) ? startCloudflaredTunnel({ localUrl: server.url, tunnelName }) : null;
       cloudflared?.stdout?.on("data", (chunk) => {
         io.stderr(`[cloudflared] ${String(chunk)}`);
       });
@@ -9859,7 +9871,14 @@ ${payload.path}`
       });
       const payload = {
         ok: true,
+        capabilityId: "email.sealed-envelope.v1",
+        owner: tunnelAction === "serve" ? "adapter" : "legacy-up",
         tunnel: "live",
+        mode: "sealed-envelope-loopback",
+        exposure: "loopback",
+        localDataPolicy: "plaintext-allowed",
+        remoteDataPolicy: "sealed-required",
+        payloadClass: "sealed-envelope",
         url: server.url,
         keyId: key.keyId,
         sealedEnvelopes: store.countSealedEnvelopes(key.keyId),
@@ -9958,9 +9977,6 @@ ${payload.path}`
         );
         return;
       }
-      if (!asBoolean(options.yes) && !asBoolean(globalOptions.yes)) {
-        throw new CliError("Refusing to unmirror sealed envelopes without --yes.", 2);
-      }
       const client = createClient(io, globalOptions);
       let pushed = 0;
       for (const row of pendingRows) {
@@ -10013,6 +10029,9 @@ ${payload.path}`
           (payload) => `would unmirror ${payload.wouldUnmirror} sealed envelopes across ${payload.workspaces} workspaces`
         );
         return;
+      }
+      if (!asBoolean(options.yes) && !asBoolean(globalOptions.yes)) {
+        throw new CliError("Refusing to unmirror sealed envelopes without --yes.", 2);
       }
       const client = createClient(io, globalOptions);
       let remoteDeleted = 0;
