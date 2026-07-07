@@ -1223,6 +1223,18 @@ var init_local_store = __esm({
           messageCount: count("SELECT COUNT(*) AS count FROM email_local_messages")
         };
       }
+      getSetting(key) {
+        this.ensureEmailSchema();
+        const row = this.db.prepare("SELECT value FROM email_local_settings WHERE key = ?").get(key);
+        return row?.value ?? null;
+      }
+      setSetting(key, value) {
+        this.ensureEmailSchema();
+        this.db.prepare(
+          `INSERT INTO email_local_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).run(key, value, (/* @__PURE__ */ new Date()).toISOString());
+      }
       listMailboxes(workspaceId) {
         this.ensureEmailSchema();
         const rows = this.db.prepare("SELECT * FROM email_local_mailboxes WHERE workspace_id = ? ORDER BY address ASC").all(workspaceId);
@@ -1702,6 +1714,12 @@ var init_local_store = __esm({
       }
       ensureEmailSchema() {
         this.db.exec(`
+      CREATE TABLE IF NOT EXISTS email_local_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS email_local_workspaces (
         workspace_id TEXT PRIMARY KEY,
         slug TEXT NOT NULL,
@@ -7626,6 +7644,8 @@ Global flags:
 Commands:
   completion [bash|zsh|fish]
   store info
+  custody status
+  custody set <plaintext-cloud|sealed-mirror|live-tunnel|local-only>
 
   auth login
   auth whoami
@@ -7725,6 +7745,7 @@ function helpJson() {
         "disconnect"
       ],
       sync: ["pull"],
+      custody: ["status", "set"],
       mailboxes: ["list"],
       threads: ["list", "latest", "search", "show", "summarize", "publish", "revoke", "read", "star", "archive"],
       drafts: ["create", "show", "discard"],
@@ -7780,6 +7801,11 @@ function commandManifest() {
     globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["store", "info"], "Show local/cloud plane selection.", { auth: "none", auditDefault: true }),
+      manifestCommand(["custody", "status"], "Show who holds mail: plaintext cloud, sealed mirror, live tunnel, or local only.", {
+        auth: "none",
+        auditDefault: true
+      }),
+      manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { risk: "external" }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
@@ -7801,7 +7827,7 @@ function commandManifest() {
       manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
       manifestCommand(["threads", "read"], "Mark thread read.", { risk: "write" }),
       manifestCommand(["threads", "star"], "Star thread.", { risk: "write" }),
-      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", requiresYes: true }),
+      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["drafts", "create"], "Create draft.", { risk: "write", supportsData: true }),
       manifestCommand(["drafts", "show"], "Show draft."),
       manifestCommand(["drafts", "discard"], "Discard draft.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
@@ -7837,6 +7863,7 @@ var COMPLETION_WORDS = [
   "mailboxes",
   "send",
   "store",
+  "custody",
   "sync",
   "threads",
   "workspace"
@@ -8841,6 +8868,64 @@ async function handleStoreCommand(io, globalOptions, action, args) {
     renderStoreInfo
   );
 }
+var EMAIL_CUSTODY_TIERS = ["plaintext-cloud", "sealed-mirror", "live-tunnel", "local-only"];
+var CUSTODY_SETTING_KEY = "custody.tier";
+var CUSTODY_WEB_ACCESS = {
+  "plaintext-cloud": "hosted",
+  "sealed-mirror": "sealed",
+  "live-tunnel": "tunnel",
+  "local-only": "off"
+};
+function isEmailCustodyTier(value) {
+  return Boolean(value) && EMAIL_CUSTODY_TIERS.includes(value);
+}
+function custodyStatusPayload(tier) {
+  return {
+    ok: true,
+    tier,
+    webAccess: CUSTODY_WEB_ACCESS[tier],
+    sealedEnvelopes: null,
+    // The tier is the recorded policy for this local plane. Plaintext cloud
+    // is what the platform enforces today; sealed projection and tunnel
+    // serving phase in behind this same switch.
+    enforcement: tier === "plaintext-cloud" ? "active" : "pending"
+  };
+}
+function renderCustody(payload) {
+  return [
+    `custody: ${payload.tier}`,
+    `web access: ${payload.webAccess}`,
+    `enforcement: ${payload.enforcement}`
+  ].join("\n");
+}
+async function handleCustodyCommand(io, globalOptions, action, args) {
+  if (action !== "status" && action !== "set") {
+    throw new CliError("Unknown custody command. Expected status or set.");
+  }
+  const { options, positionals } = parseCommandFlags(args, {});
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  const store = await openLocalEmailStore(globalOptions, io);
+  try {
+    if (action === "set") {
+      const tier2 = positionals[0];
+      if (positionals.length !== 1 || !isEmailCustodyTier(tier2)) {
+        throw new CliError(`Custody tier must be one of: ${EMAIL_CUSTODY_TIERS.join(", ")}.`);
+      }
+      store.setSetting(CUSTODY_SETTING_KEY, tier2);
+      writeResult(io, globalOptions, custodyStatusPayload(tier2), renderCustody);
+      return;
+    }
+    requireNoPositionals(positionals);
+    const recorded = store.getSetting(CUSTODY_SETTING_KEY);
+    const tier = isEmailCustodyTier(recorded) ? recorded : "plaintext-cloud";
+    writeResult(io, globalOptions, custodyStatusPayload(tier), renderCustody);
+  } finally {
+    store.close();
+  }
+}
 async function handleSyncPull(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {
     limit: "string",
@@ -9766,7 +9851,7 @@ async function runCli(argv, io) {
     const localDataMode = resolveDataMode(globalOptions, io.env) === "local";
     const isWorkspaceMetadataCommand = group === "workspace" && ["list", "current", "use"].includes(action ?? "");
     const isSyncPullCommand = group === "sync" && action === "pull";
-    if (group !== "auth" && group !== "store" && !isWorkspaceMetadataCommand && activeSession && (!localDataMode || isSyncPullCommand) && !resolveExternalToken(globalOptions, io.env)) {
+    if (group !== "auth" && group !== "store" && group !== "custody" && !isWorkspaceMetadataCommand && activeSession && (!localDataMode || isSyncPullCommand) && !resolveExternalToken(globalOptions, io.env)) {
       activeSession = await ensureWorkspaceSession(activeSession, {
         workspace: resolveWorkspaceOptional(globalOptions, io.env),
         fetchImpl: io.fetchImpl
@@ -9779,6 +9864,9 @@ async function runCli(argv, io) {
         break;
       case "store":
         await handleStoreCommand(io, globalOptions, action, remaining);
+        break;
+      case "custody":
+        await handleCustodyCommand(io, globalOptions, action, remaining);
         break;
       case "sync":
         await handleSyncCommand(io, globalOptions, action, remaining);
