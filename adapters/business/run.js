@@ -9102,15 +9102,18 @@ async function createRuntime(globalFlags) {
     },
     agentLogin: async (options) => {
       const session = await getLocalSession();
-      if (!session) {
-        const inviteCode = String(options.inviteCode ?? "").trim();
-        const workspaceId = String(options.workspace ?? globalFlags.workspace ?? "").trim();
+      const inviteCode = String(options.inviteCode ?? "").trim();
+      const agentId = String(options.agentId ?? "").trim();
+      const shouldReissue = Boolean(agentId || inviteCode || options.bootstrapToken);
+      if (!session || shouldReissue) {
+        const workspaceId = String(
+          options.workspace ?? globalFlags.workspace ?? session?.defaultWorkspaceId ?? session?.workspace?.id ?? ""
+        ).trim();
         if (!workspaceId && !inviteCode) {
           throw authError(
             "No local Mere Business agent session found. Reissue with `mere business auth agent-login --workspace <workspace-id> --agent-id <same-agent-id> --json`, or recover from the original claimed invite with `--invite-code <code>`."
           );
         }
-        const agentId = String(options.agentId ?? "").trim();
         if (!agentId) {
           throw authError(
             "No local Mere Business agent session found. Pass --agent-id with the stable agent id from the original `onboard agent-start` run to reissue the existing workspace session."
