@@ -245,6 +245,7 @@ Registered namespaces:
 | `video` | browser | Rooms, meetings, agents, diagnostics, recordings, and transcripts |
 | `network` | browser | Calls, SMS, conversations, numbers, routing, deployments, diagnostics |
 | `email` | browser | Mailboxes, threads, sending, providers, domains, drafts |
+| `im` | mixed | Encrypted messaging, conversations, devices, keys, and relationships |
 | `gives` | browser | Donation tenants, campaigns, receipts, Stripe, widgets, settings |
 | `works` | browser | Work apps, data, releases, shares, capabilities, and surfaces |
 | `media` | browser | Audio imports, transcripts, embeddings, media search, and local processing through `mere.run` |

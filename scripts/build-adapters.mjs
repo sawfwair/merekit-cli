@@ -11,14 +11,13 @@ const adaptersDir = path.join(packageRoot, 'adapters');
 const pnpm = process.env.PNPM_BIN?.trim() || 'pnpm';
 
 function repo(name) {
-	if (name !== 'business') {
-		const prefixed = path.join(mereRoot, `mere-${name}`);
-		if (existsSync(prefixed)) return prefixed;
-	}
 	const direct = path.join(mereRoot, name);
-	if (existsSync(direct)) return direct;
 	const prefixed = path.join(mereRoot, `mere-${name}`);
-	if (existsSync(prefixed)) return prefixed;
+	const candidates = [prefixed, direct];
+	const packageRoot = candidates.find((candidate) => existsSync(path.join(candidate, 'package.json')));
+	if (packageRoot) return packageRoot;
+	const existing = candidates.find((candidate) => existsSync(candidate));
+	if (existing) return existing;
 	return direct;
 }
 
@@ -58,6 +57,7 @@ const appBuilds = [
 	{ repo: 'video', script: 'build:cli' },
 	{ repo: 'network', script: 'build:cli' },
 	{ repo: 'email', script: 'build:cli' },
+	{ repo: 'im', script: 'build:cli' },
 	{ repo: 'gives', script: 'build:cli' },
 	{ repo: 'works', script: 'build:cli' },
 	{ repo: 'media', script: 'build:cli' },
@@ -109,6 +109,11 @@ const adapters = [
 		key: 'email',
 		sourceRepoPath: repo('email'),
 		sourceArtifactPath: path.join(repo('email'), 'dist', 'run.js')
+	},
+	{
+		key: 'im',
+		sourceRepoPath: repo('im'),
+		sourceArtifactPath: path.join(repo('im'), 'dist', 'run.js')
 	},
 	{
 		key: 'gives',

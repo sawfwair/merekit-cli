@@ -8,7 +8,7 @@ var __export = (target, all) => {
 // src/index.ts
 import { readFileSync } from "node:fs";
 import path3 from "node:path";
-import { stdout as output2, stderr } from "node:process";
+import { env, stdout as output2, stderr } from "node:process";
 import { fileURLToPath } from "node:url";
 
 // ../cli-core/src/errors.ts
@@ -142,9 +142,9 @@ var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 // ../cli-auth/src/session.ts
 import os from "node:os";
 import path from "node:path";
-function stateHome(env) {
-  const homeDir = env.HOME?.trim() || os.homedir();
-  return env.XDG_STATE_HOME?.trim() || path.join(homeDir, ".local", "state");
+function stateHome(env2) {
+  const homeDir = env2.HOME?.trim() || os.homedir();
+  return env2.XDG_STATE_HOME?.trim() || path.join(homeDir, ".local", "state");
 }
 function normalizeBaseUrl(raw) {
   const url = new URL(raw);
@@ -153,8 +153,8 @@ function normalizeBaseUrl(raw) {
   url.hash = "";
   return url.toString().replace(/\/$/, "");
 }
-function resolveCliPaths(appName, env = process.env) {
-  const stateDir = path.join(stateHome(env), appName);
+function resolveCliPaths(appName, env2 = process.env) {
+  const stateDir = path.join(stateHome(env2), appName);
   return {
     stateDir,
     sessionFile: path.join(stateDir, "session.json")
@@ -375,15 +375,15 @@ function normalizeConsoleUrl(raw = DEFAULT_CONSOLE_URL) {
   url.hash = "";
   return url.toString().replace(/\/$/, "");
 }
-function resolveCliPaths2(env = process.env) {
-  const paths = resolveCliPaths(PRIMARY_APP_NAME, env);
+function resolveCliPaths2(env2 = process.env) {
+  const paths = resolveCliPaths(PRIMARY_APP_NAME, env2);
   return {
     configDir: paths.stateDir,
     ...paths
   };
 }
-function resolveLegacyCliPaths(env = process.env) {
-  const paths = resolveCliPaths(LEGACY_APP_NAME, env);
+function resolveLegacyCliPaths(env2 = process.env) {
+  const paths = resolveCliPaths(LEGACY_APP_NAME, env2);
   return {
     configDir: paths.stateDir,
     ...paths
@@ -836,6 +836,18 @@ async function bootstrapConsoleOnboarding(input2) {
     }
   ).then((payload) => payload);
 }
+async function bootstrapConsoleAgentOnboarding(input2) {
+  const url = new URL("/api/cli/v1/onboarding/agent-bootstrap", input2.baseUrl);
+  const headers = new Headers();
+  if (input2.bootstrapToken?.trim()) {
+    headers.set("authorization", `Bearer ${input2.bootstrapToken.trim()}`);
+  }
+  return postJson2(
+    url,
+    { code: input2.code, values: input2.values ?? {}, agent: input2.agent ?? {} },
+    { headers }
+  );
+}
 async function createConsoleWorkspace(input2) {
   const url = new URL("/api/cli/v1/workspaces", input2.baseUrl);
   return postJson2(
@@ -1127,12 +1139,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir as mkdir3 } from "node:fs/promises";
 import os2 from "node:os";
 import path2 from "node:path";
-function stateHome2(env) {
-  const home = env.HOME?.trim() || os2.homedir();
-  return env.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
+function stateHome2(env2) {
+  const home = env2.HOME?.trim() || os2.homedir();
+  return env2.XDG_DATA_HOME?.trim() || path2.join(home, ".local", "share");
 }
-function expandHome(value, env) {
-  const home = env.HOME?.trim() || os2.homedir();
+function expandHome(value, env2) {
+  const home = env2.HOME?.trim() || os2.homedir();
   if (value === "~") return home;
   if (value.startsWith("~/")) return path2.join(home, value.slice(2));
   return value;
@@ -1140,14 +1152,14 @@ function expandHome(value, env) {
 function envPrefix(appId) {
   return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
 }
-function defaultLocalPlaneDbPath(env = process.env) {
-  return path2.join(stateHome2(env), "mere", "local-plane.db");
+function defaultLocalPlaneDbPath(env2 = process.env) {
+  return path2.join(stateHome2(env2), "mere", "local-plane.db");
 }
 function resolveLocalPlaneDbPath(input2 = {}) {
-  const env = input2.env ?? process.env;
+  const env2 = input2.env ?? process.env;
   const prefix = input2.appId ? envPrefix(input2.appId) : "";
-  const configured = input2.localDbPath ?? (prefix ? env[`${prefix}_LOCAL_DB`] : void 0) ?? (prefix ? env[`${prefix}_LOCAL_PLANE_DB`] : void 0) ?? env.MERE_LOCAL_DB ?? env.MERE_LOCAL_PLANE_DB;
-  return path2.resolve(configured?.trim() ? expandHome(configured, env) : defaultLocalPlaneDbPath(env));
+  const configured = input2.localDbPath ?? (prefix ? env2[`${prefix}_LOCAL_DB`] : void 0) ?? (prefix ? env2[`${prefix}_LOCAL_PLANE_DB`] : void 0) ?? env2.MERE_LOCAL_DB ?? env2.MERE_LOCAL_PLANE_DB;
+  return path2.resolve(configured?.trim() ? expandHome(configured, env2) : defaultLocalPlaneDbPath(env2));
 }
 function isoNow() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -6418,6 +6430,61 @@ next: ${payload.nextUrl}` : ""}`;
     execute: (runtime, input2) => runtime.startOnboarding(input2),
     format: onboardingFormat
   },
+  {
+    path: ["onboard", "agent-start"],
+    summary: "Bootstrap a workspace from a Mere invite code as an agent; never opens a browser.",
+    positionals: ["code"],
+    options: [
+      stringOption("bootstrap-token", "bootstrapToken", "Optional agent onboarding bootstrap bearer token. Defaults to MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN."),
+      stringOption("name", "name", "Business name override. Required when the invite does not provide a name."),
+      stringOption("slug", "slug", "Workspace subdomain override."),
+      stringOption("business-mode", "businessMode", "Business mode: new or existing."),
+      stringOption("base-domain", "baseDomain", "Workspace base domain."),
+      stringOption("existing-website-url", "existingWebsiteUrl", "Existing business website URL."),
+      stringOption("existing-city", "existingCity", "Existing business city."),
+      stringOption("existing-state", "existingState", "Existing business state/province."),
+      stringOption("existing-industry", "existingIndustry", "Existing business industry."),
+      stringOption("existing-phone", "existingPhone", "Existing business phone."),
+      stringOption("existing-description", "existingDescription", "Existing business description."),
+      stringOption("agent-id", "agentId", "Stable agent identifier."),
+      stringOption("agent-label", "agentLabel", "Human-readable agent label."),
+      stringOption("agent-email", "agentEmail", "Broker identity email for the agent."),
+      stringOption("agent-email-local-part", "agentEmailLocalPart", "Local part for the default @mere.email agent identity."),
+      stringOption("agent-tool-key", "agentToolKey", "Agent tool key for audit context."),
+      stringOption("agent-job-id", "agentJobId", "Agent job id for audit context."),
+      stringOption("agent-session-id", "agentSessionId", "Agent session id for audit context."),
+      booleanOption("no-wait", "noWait", "Return after provisioning starts."),
+      stringOption("timeout-seconds", "timeoutSeconds", "Maximum seconds to wait for provisioning."),
+      stringOption("poll-seconds", "pollSeconds", "Seconds between provisioning status checks.")
+    ],
+    schema: external_exports.object({
+      code: requiredString,
+      bootstrapToken: optionalString,
+      name: optionalString,
+      slug: optionalString,
+      businessMode: external_exports.enum(["new", "existing"]).optional(),
+      baseDomain: optionalString,
+      existingWebsiteUrl: optionalString,
+      existingCity: optionalString,
+      existingState: optionalString,
+      existingIndustry: optionalString,
+      existingPhone: optionalString,
+      existingDescription: optionalString,
+      agentId: optionalString,
+      agentLabel: optionalString,
+      agentEmail: optionalString,
+      agentEmailLocalPart: optionalString,
+      agentToolKey: optionalString,
+      agentJobId: optionalString,
+      agentSessionId: optionalString,
+      noWait: external_exports.boolean().optional(),
+      timeoutSeconds: optionalPositiveNumber,
+      pollSeconds: optionalPositiveNumber
+    }),
+    auth: "none",
+    execute: (runtime, input2) => runtime.startAgentOnboarding(input2),
+    format: onboardingFormat
+  },
   rpcCommand({
     path: ["onboard", "snapshot"],
     summary: "Show onboarding setup state for the current workspace.",
@@ -9139,6 +9206,80 @@ async function createRuntime(globalFlags) {
       }
       return {
         ...stripSessionPayload(result),
+        state: result.state ?? "provisioning",
+        timedOut: true,
+        message: `Provisioning is still running after ${Math.round(timeoutMs / 1e3)} seconds.`
+      };
+    },
+    startAgentOnboarding: async (input2) => {
+      const code = String(input2.code ?? "").trim();
+      if (!code) throw usageError("Invite code is required.");
+      const bootstrapToken = String(input2.bootstrapToken ?? "").trim() || env.MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN?.trim() || env.AGENT_ONBOARDING_BOOTSTRAP_SECRET?.trim() || "";
+      const values = compactObject({
+        name: input2.name,
+        slug: input2.slug,
+        businessMode: input2.businessMode,
+        baseDomain: input2.baseDomain,
+        existingWebsiteUrl: input2.existingWebsiteUrl,
+        existingCity: input2.existingCity,
+        existingState: input2.existingState,
+        existingIndustry: input2.existingIndustry,
+        existingPhone: input2.existingPhone,
+        existingDescription: input2.existingDescription
+      });
+      const agent = compactObject({
+        id: input2.agentId,
+        label: input2.agentLabel,
+        email: input2.agentEmail,
+        emailLocalPart: input2.agentEmailLocalPart,
+        toolKey: input2.agentToolKey,
+        jobId: input2.agentJobId,
+        sessionId: input2.agentSessionId
+      });
+      const baseUrl = normalizeConsoleUrl();
+      writeProgress(globalFlags, "Starting agent onboarding...");
+      let result = await bootstrapConsoleAgentOnboarding({
+        baseUrl,
+        bootstrapToken,
+        code,
+        values,
+        agent
+      });
+      const workspaceId = result.workspace?.id;
+      if (!workspaceId || input2.noWait === true || result.state === "active" || result.state === "needs_attention") {
+        return result;
+      }
+      const timeoutMs = Math.round(Number(input2.timeoutSeconds ?? 900) * 1e3);
+      const pollMs = Math.max(1e3, Math.round(Number(input2.pollSeconds ?? 5) * 1e3));
+      const deadline = Date.now() + timeoutMs;
+      let lastLine = "";
+      writeProgress(
+        globalFlags,
+        `Workspace ${result.workspace?.slug ?? workspaceId} created. Waiting for provisioning...`
+      );
+      while (Date.now() < deadline) {
+        await sleep(pollMs);
+        result = await bootstrapConsoleAgentOnboarding({
+          baseUrl,
+          bootstrapToken,
+          code,
+          values,
+          agent
+        });
+        if (result.state === "active" || result.state === "needs_attention") {
+          return result;
+        }
+        const line = [
+          result.provisioning?.activeStep ?? "provisioning",
+          result.provisioning?.activeOutput
+        ].filter(Boolean).join(": ");
+        if (line && line !== lastLine) {
+          writeProgress(globalFlags, line);
+          lastLine = line;
+        }
+      }
+      return {
+        ...result,
         state: result.state ?? "provisioning",
         timedOut: true,
         message: `Provisioning is still running after ${Math.round(timeoutMs / 1e3)} seconds.`

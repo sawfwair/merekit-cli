@@ -40,6 +40,7 @@ Human first run:
   mere business onboard start INVITE_CODE --json
 
 Operator/agent first run:
+  mere business onboard agent-start INVITE_CODE --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
   mere ops doctor --json
@@ -96,6 +97,7 @@ Human first-use:
   mere business onboard start INVITE_CODE --json
 
 Operator/agent workspace sequence:
+  mere business onboard agent-start INVITE_CODE --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere agent bootstrap --workspace WORKSPACE_ID --target codex --json
   mere apps list --json
@@ -131,6 +133,7 @@ Usage:
   mere business waitlist join --email EMAIL
   mere onboard --interactive
   mere business onboard start INVITE_CODE --json
+  mere business onboard agent-start INVITE_CODE --json
   mere onboard --workspace WORKSPACE_ID --target codex --json
   mere onboard --app projects --workspace WORKSPACE_ID
   mere onboard --finance-profile default --finance-base-url https://<tenant>.mere.finance --json
@@ -2090,7 +2093,7 @@ async function runOnboard(io: CliIO, action: string | undefined, flags: Record<s
 	}
 	const inviteCode = readStringFlag(flags, 'invite-code');
 	if (inviteCode) {
-		throw new Error('Invite codes require interactive onboarding (`mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard start INVITE_CODE --json`.');
+		throw new Error('Invite codes require interactive onboarding (`mere onboard --interactive --invite-code CODE`) or the headless bootstrap command: `mere business onboard agent-start INVITE_CODE --json`.');
 	}
 	const target = readStringFlag(flags, 'target') ?? 'codex';
 	if (target !== 'codex' && target !== 'claude') throw new Error('Onboard target must be codex or claude.');

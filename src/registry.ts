@@ -26,14 +26,13 @@ export const PRODUCT_APP_KEYS: AppKey[] = [
 export const APP_KEYS: AppKey[] = [...PRODUCT_APP_KEYS];
 
 function repo(mereRoot: string, name: string): string {
-	if (name !== 'business') {
-		const prefixed = path.join(mereRoot, `mere-${name}`);
-		if (existsSync(prefixed)) return prefixed;
-	}
 	const direct = path.join(mereRoot, name);
-	if (existsSync(direct)) return direct;
 	const prefixed = path.join(mereRoot, `mere-${name}`);
-	if (existsSync(prefixed)) return prefixed;
+	const candidates = [prefixed, direct];
+	const packageRoot = candidates.find((candidate) => existsSync(path.join(candidate, 'package.json')));
+	if (packageRoot) return packageRoot;
+	const existing = candidates.find((candidate) => existsSync(candidate));
+	if (existing) return existing;
 	return direct;
 }
 
