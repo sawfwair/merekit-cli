@@ -3329,6 +3329,8 @@ async function handleLocalDataCommand(rest, globalOptions, io) {
   return true;
 }
 async function runCli(argv, io) {
+  let parsedGroup;
+  let parsedAction;
   try {
     if (argv.length === 1 && (argv[0] === "-v" || argv[0] === "version")) {
       writeText(io, await cliVersion());
@@ -3336,6 +3338,8 @@ async function runCli(argv, io) {
     }
     const { options: globalOptions, rest } = splitGlobalFlags(argv);
     const [group, action, ...args] = rest;
+    parsedGroup = group;
+    parsedAction = action;
     if (asBoolean2(globalOptions.version)) {
       writeText(io, await cliVersion());
       return 0;
@@ -3428,7 +3432,7 @@ async function runCli(argv, io) {
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected CLI error.";
-    if (argv.includes("--json")) {
+    if (argv.includes("--json") && parsedGroup === "auth" && parsedAction === "agent-login") {
       writeJsonError(io, message);
     } else {
       io.stderr(`${message}

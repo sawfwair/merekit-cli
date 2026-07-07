@@ -10601,7 +10601,7 @@ function registerTransactionCommands(program2, deps) {
 }
 
 // packages/cli/src/version.ts
-var CLI_VERSION = "2.0.0";
+var CLI_VERSION = "0.1.0";
 
 // packages/cli/src/index.ts
 function manifestCommand(path4, summary, options = {}) {

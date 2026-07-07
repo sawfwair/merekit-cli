@@ -2920,6 +2920,12 @@ async function handleLocalDataCommand(parsed, ctx) {
   } else if (group === "import") {
     result = await handleLocalImport(parsed.flags, io);
   } else if (localData) {
+    if (group === "sites" && command === "bundle") {
+      throw new CliError(
+        `--store local is not supported for sites bundle commands. ${hostedDynasiteBoundary()}`,
+        1
+      );
+    }
     const type = localRecordType(group);
     if (!type) {
       throw new CliError(
@@ -3018,7 +3024,7 @@ async function runCli(rawArgs, ctx) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (boolFlag(parsed, "json")) {
+    if (boolFlag(parsed, "json") && key === "auth agent-login") {
       return printJsonError(ctx, message, error instanceof CliError ? error.exitCode : 1);
     }
     ctx.stderr(`Error: ${message}

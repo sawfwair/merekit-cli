@@ -44,15 +44,27 @@ function executorBaseUrl(flags, integration) {
         return { value: envValue, source: 'env' };
     return { value: 'http://localhost:4788', source: 'default' };
 }
+function executorTokenEnv(flags, integration) {
+    const flagValue = stringFlag(flags, 'executor-token-env');
+    if (flagValue)
+        return { name: flagValue, source: 'flag' };
+    if (integration?.tokenEnv)
+        return { name: integration.tokenEnv, source: 'config' };
+    return undefined;
+}
 function executorToken(flags, integration, baseUrl, baseUrlSource) {
-    const tokenEnv = stringFlag(flags, 'executor-token-env') ?? integration?.tokenEnv;
-    if (tokenEnv)
-        return process.env[tokenEnv]?.trim() || undefined;
+    const tokenEnv = executorTokenEnv(flags, integration);
+    if (tokenEnv) {
+        if (tokenEnv.source === 'config' && !localExecutorUrl(baseUrl)) {
+            throw new Error('Refusing to send a config-selected Executor tokenEnv to a non-local Executor baseUrl. Pass --executor-token-env for that runtime after verifying the destination.');
+        }
+        return process.env[tokenEnv.name]?.trim() || undefined;
+    }
     const token = process.env.MERE_LINK_EXECUTOR_TOKEN?.trim();
     if (!token)
         return undefined;
     if (baseUrlSource === 'config' && !localExecutorUrl(baseUrl)) {
-        throw new Error('Refusing to send MERE_LINK_EXECUTOR_TOKEN to a non-local Executor baseUrl from config. Declare tokenEnv on the Executor integration or pass --executor-token-env for that runtime.');
+        throw new Error('Refusing to send MERE_LINK_EXECUTOR_TOKEN to a non-local Executor baseUrl from config. Pass --executor-token-env for that runtime after verifying the destination.');
     }
     return token;
 }
@@ -355,8 +367,7 @@ async function listModernExecutorPolicies(runtime) {
 async function createModernExecutorPolicy(runtime, rule) {
     const result = await executeExecutorCorePolicy(runtime, 'create', {
         owner: 'org',
-        pattern: rule.pattern,
-        action: rule.action
+        ...policyCreateBody(rule)
     });
     return decodeExecutorPolicy(modernPolicyFromCreateResult(result), 'Executor policy create response');
 }
@@ -373,6 +384,9 @@ export async function listExecutorPolicies(flags, config) {
 }
 function policyIdentity(policy) {
     return `${typeof policy.pattern === 'string' ? policy.pattern : ''}:${typeof policy.action === 'string' ? policy.action : ''}`;
+}
+function ruleIdentity(rule) {
+    return `${rule.pattern}:${rule.action}`;
 }
 function executorPolicyRules(plan) {
     return plan.rules.filter((rule) => rule.enforcement === 'executor' || rule.enforcement === 'executor-and-link');
@@ -391,33 +405,70 @@ function conflictingPolicies(existing, plan) {
         return Boolean(actions) && !actions?.has(policy.action);
     });
 }
+function policyResourceGuards(policy) {
+    const guards = policy.resourceGuards;
+    if (guards === undefined || guards === null)
+        return [];
+    return asArray(guards, 'Executor policy.resourceGuards');
+}
+function resourceGuardIdentity(guards) {
+    return JSON.stringify(guards);
+}
+function staleGuardPolicies(existing, plan) {
+    const guardedRules = new Map();
+    for (const rule of executorPolicyRules(plan)) {
+        if (rule.resourceGuards.length > 0)
+            guardedRules.set(ruleIdentity(rule), rule);
+    }
+    return existing.filter((policy) => {
+        const rule = guardedRules.get(policyIdentity(policy));
+        if (!rule)
+            return false;
+        return resourceGuardIdentity(policyResourceGuards(policy)) !== resourceGuardIdentity(rule.resourceGuards);
+    });
+}
+function assertPolicyRuntimeMatchesPlan(existing, plan) {
+    const actionConflicts = conflictingPolicies(existing, plan);
+    const guardConflicts = staleGuardPolicies(existing, plan);
+    if (actionConflicts.length === 0 && guardConflicts.length === 0)
+        return;
+    const actionDetail = actionConflicts
+        .map((policy) => `${String(policy.pattern)} currently ${String(policy.action)}`)
+        .join('; ');
+    const guardDetail = guardConflicts
+        .map((policy) => `${String(policy.pattern)} currently ${String(policy.action)} without matching resourceGuards`)
+        .join('; ');
+    const detail = [actionDetail, guardDetail].filter(Boolean).join('; ');
+    throw new Error(`Executor policy apply refused because existing runtime policies conflict with compiled Link policy: ${detail}. Remove stale runtime policies and re-run apply.`);
+}
+function policyCreateBody(rule, targetScope) {
+    return {
+        ...(targetScope ? { targetScope } : {}),
+        pattern: rule.pattern,
+        action: rule.action,
+        reason: rule.reason,
+        enforcement: rule.enforcement,
+        surfaces: rule.surfaces,
+        resourceGuards: rule.resourceGuards
+    };
+}
 export async function applyExecutorPolicy(flags, config, plan) {
     try {
         const runtime = await runtimeWithScope(flags, config);
         const existing = decodeResponseArray(await requestJson(runtime, scopedPath(runtime.scopeId, '/policies')), 'Executor policies', decodeExecutorPolicy);
-        const conflicts = conflictingPolicies(existing, plan);
-        if (conflicts.length > 0) {
-            const detail = conflicts
-                .map((policy) => `${String(policy.pattern)} currently ${String(policy.action)}`)
-                .join('; ');
-            throw new Error(`Executor policy apply refused because existing runtime policies conflict with compiled Link policy: ${detail}. Remove stale runtime policies and re-run apply.`);
-        }
+        assertPolicyRuntimeMatchesPlan(existing, plan);
         const existingIdentities = new Set(existing.map(policyIdentity));
         const created = [];
         const skipped = [];
         for (const rule of executorPolicyRules(plan)) {
-            const identity = `${rule.pattern}:${rule.action}`;
+            const identity = ruleIdentity(rule);
             if (existingIdentities.has(identity)) {
                 skipped.push({ pattern: rule.pattern, action: rule.action, reason: 'already-exists' });
                 continue;
             }
             const result = decodeExecutorPolicy(await requestJson(runtime, scopedPath(runtime.scopeId, '/policies'), {
                 method: 'POST',
-                body: {
-                    targetScope: runtime.scopeId,
-                    pattern: rule.pattern,
-                    action: rule.action
-                }
+                body: policyCreateBody(rule, runtime.scopeId)
             }), 'Executor policy create response');
             created.push(result);
             existingIdentities.add(identity);
@@ -436,18 +487,12 @@ export async function applyExecutorPolicy(flags, config, plan) {
     }
     const runtime = executorRuntime(flags, config);
     const existing = await listModernExecutorPolicies(runtime);
-    const conflicts = conflictingPolicies(existing, plan);
-    if (conflicts.length > 0) {
-        const detail = conflicts
-            .map((policy) => `${String(policy.pattern)} currently ${String(policy.action)}`)
-            .join('; ');
-        throw new Error(`Executor policy apply refused because existing runtime policies conflict with compiled Link policy: ${detail}. Remove stale runtime policies and re-run apply.`);
-    }
+    assertPolicyRuntimeMatchesPlan(existing, plan);
     const existingIdentities = new Set(existing.map(policyIdentity));
     const created = [];
     const skipped = [];
     for (const rule of executorPolicyRules(plan)) {
-        const identity = `${rule.pattern}:${rule.action}`;
+        const identity = ruleIdentity(rule);
         if (existingIdentities.has(identity)) {
             skipped.push({ pattern: rule.pattern, action: rule.action, reason: 'already-exists' });
             continue;

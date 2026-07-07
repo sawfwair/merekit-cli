@@ -2672,7 +2672,8 @@ async function agentLogin(args, io) {
       })
     }
   );
-  const payload = await response.json().catch(() => null);
+  const responseText = await response.text();
+  const payload = responseText ? parseJsonText(responseText, "Business product session response") : null;
   if (!response.ok) {
     throw new Error(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
   }
