@@ -844,7 +844,12 @@ async function bootstrapConsoleAgentOnboarding(input2) {
   }
   return postJson2(
     url,
-    { code: input2.code, values: input2.values ?? {}, agent: input2.agent ?? {} },
+    {
+      code: input2.code,
+      values: input2.values ?? {},
+      agent: input2.agent ?? {},
+      ...input2.identityProof?.trim() ? { identityProof: input2.identityProof.trim() } : {}
+    },
     { headers }
   );
 }
@@ -871,6 +876,22 @@ async function mintAgentsIdentifyMereProof(input2) {
     {
       workspaceId: input2.workspaceId,
       mereAgentId: input2.mereAgentId,
+      audience: input2.audience
+    },
+    {
+      headers: {
+        authorization: `Bearer ${input2.apiKey}`
+      }
+    }
+  );
+}
+async function mintAgentsIdentifyMereBootstrapProof(input2) {
+  const url = new URL("/api/mere/workspace-bootstrap-proof", input2.origin);
+  return postJson2(
+    url,
+    {
+      inviteCode: input2.code,
+      ...input2.mereAgentId?.trim() ? { mereAgentId: input2.mereAgentId.trim() } : {},
       audience: input2.audience
     },
     {
@@ -6544,6 +6565,9 @@ next: ${payload.nextUrl}` : ""}`;
       stringOption("agent-tool-key", "agentToolKey", "Agent tool key for audit context."),
       stringOption("agent-job-id", "agentJobId", "Agent job id for audit context."),
       stringOption("agent-session-id", "agentSessionId", "Agent session id for audit context."),
+      stringOption("agentsidentify-key", "agentsIdentifyKey", "AgentsIdentify ai_ identity key used to mint a short-lived Mere workspace bootstrap proof. Defaults to AGENTSIDENTIFY_API_KEY."),
+      stringOption("agentsidentify-origin", "agentsIdentifyOrigin", "AgentsIdentify origin. Defaults to AGENTSIDENTIFY_ORIGIN or https://agentsidentify.com."),
+      stringOption("identity-proof", "identityProof", "Pre-minted AgentsIdentify Mere workspace bootstrap proof JWT."),
       booleanOption("no-wait", "noWait", "Return after provisioning starts."),
       stringOption("timeout-seconds", "timeoutSeconds", "Maximum seconds to wait for provisioning."),
       stringOption("poll-seconds", "pollSeconds", "Seconds between provisioning status checks.")
@@ -6568,6 +6592,9 @@ next: ${payload.nextUrl}` : ""}`;
       agentToolKey: optionalString,
       agentJobId: optionalString,
       agentSessionId: optionalString,
+      agentsIdentifyKey: optionalString,
+      agentsIdentifyOrigin: optionalString,
+      identityProof: optionalString,
       noWait: external_exports.boolean().optional(),
       timeoutSeconds: optionalPositiveNumber,
       pollSeconds: optionalPositiveNumber
@@ -9009,6 +9036,40 @@ function writeProgress(globalFlags, message) {
 `);
   }
 }
+function agentsIdentifyOptions(options) {
+  return {
+    apiKey: String(options.agentsIdentifyKey ?? "").trim() || env.AGENTSIDENTIFY_API_KEY?.trim() || env.AGENTSIDENTIFY_KEY?.trim() || "",
+    origin: String(options.agentsIdentifyOrigin ?? "").trim() || env.AGENTSIDENTIFY_ORIGIN?.trim() || "https://agentsidentify.com"
+  };
+}
+async function mintRequiredAgentsIdentifyProof(input2) {
+  const explicitProof = String(input2.explicitProof ?? "").trim();
+  if (explicitProof) return explicitProof;
+  const { apiKey, origin } = agentsIdentifyOptions(input2.options);
+  if (!apiKey) {
+    throw authError(
+      "AgentsIdentify identity is required. Set AGENTSIDENTIFY_API_KEY, pass --agentsidentify-key, or pass --identity-proof."
+    );
+  }
+  const proofResult = input2.code ? await mintAgentsIdentifyMereBootstrapProof({
+    origin,
+    apiKey,
+    code: input2.code,
+    mereAgentId: input2.agentId,
+    audience: input2.audience
+  }) : await mintAgentsIdentifyMereProof({
+    origin,
+    apiKey,
+    workspaceId: input2.workspaceId ?? "",
+    mereAgentId: input2.agentId ?? "",
+    audience: input2.audience
+  });
+  const proof = String(proofResult.proof?.token ?? "").trim();
+  if (!proof) {
+    throw authError("AgentsIdentify did not return a Mere identity proof.");
+  }
+  return proof;
+}
 async function createRuntime(globalFlags) {
   const paths = resolveCliPaths2();
   let sessionCache;
@@ -9159,34 +9220,20 @@ async function createRuntime(globalFlags) {
         });
         const bootstrapToken = String(options.bootstrapToken ?? "").trim() || env.MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN?.trim() || env.AGENT_ONBOARDING_BOOTSTRAP_SECRET?.trim() || "";
         const baseUrl = normalizeConsoleUrl();
-        const explicitIdentityProof = String(options.identityProof ?? "").trim();
-        const agentsIdentifyKey = String(options.agentsIdentifyKey ?? "").trim() || env.AGENTSIDENTIFY_API_KEY?.trim() || env.AGENTSIDENTIFY_KEY?.trim() || "";
-        const agentsIdentifyOrigin = String(options.agentsIdentifyOrigin ?? "").trim() || env.AGENTSIDENTIFY_ORIGIN?.trim() || "https://agentsidentify.com";
-        let identityProof = explicitIdentityProof;
-        if (!identityProof && !inviteCode && !bootstrapToken) {
-          if (!agentsIdentifyKey) {
-            throw authError(
-              "No AgentsIdentify proof available. Set AGENTSIDENTIFY_API_KEY, pass --agentsidentify-key, or pass --identity-proof to reissue an existing workspace agent session without a bootstrap recovery grant."
-            );
-          }
-          const proofResult = await mintAgentsIdentifyMereProof({
-            origin: agentsIdentifyOrigin,
-            apiKey: agentsIdentifyKey,
-            workspaceId,
-            mereAgentId: agentId,
-            audience: new URL(baseUrl).origin
-          });
-          identityProof = String(proofResult.proof?.token ?? "").trim();
-          if (!identityProof) {
-            throw authError("AgentsIdentify did not return a Mere agent-login proof.");
-          }
-        }
+        const identityProof = await mintRequiredAgentsIdentifyProof({
+          explicitProof: String(options.identityProof ?? "").trim(),
+          options,
+          audience: new URL(baseUrl).origin,
+          agentId,
+          ...inviteCode ? { code: inviteCode } : { workspaceId }
+        });
         const result = inviteCode ? await bootstrapConsoleAgentOnboarding({
           baseUrl,
           bootstrapToken,
           code: inviteCode,
           values: {},
-          agent
+          agent,
+          identityProof
         }) : await reissueConsoleAgentSession({
           baseUrl,
           bootstrapToken,
@@ -9437,13 +9484,21 @@ async function createRuntime(globalFlags) {
         sessionId: input2.agentSessionId
       });
       const baseUrl = normalizeConsoleUrl();
+      const nextIdentityProof = () => mintRequiredAgentsIdentifyProof({
+        explicitProof: String(input2.identityProof ?? "").trim(),
+        options: input2,
+        audience: new URL(baseUrl).origin,
+        code,
+        agentId: String(input2.agentId ?? "").trim() || void 0
+      });
       writeProgress(globalFlags, "Starting agent onboarding...");
       let result = await bootstrapConsoleAgentOnboarding({
         baseUrl,
         bootstrapToken,
         code,
         values,
-        agent
+        agent,
+        identityProof: await nextIdentityProof()
       });
       if (result.session) {
         await writeSession(
@@ -9472,7 +9527,8 @@ async function createRuntime(globalFlags) {
           bootstrapToken,
           code,
           values,
-          agent
+          agent,
+          identityProof: await nextIdentityProof()
         });
         if (result.session) {
           await writeSession(

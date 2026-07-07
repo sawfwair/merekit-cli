@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.15 - 2026-07-07
+
+- Published the bundled Business adapter with production-grade AgentsIdentify-backed agent onboarding: invite bootstrap now requires a persistent AgentsIdentify proof, Business owns the workspace-agent identity binding, and session reissue is authorized through that binding instead of a distributed bootstrap token.
+
 ## 0.5.14 - 2026-07-07
 
 - Published the bundled Business adapter with AgentsIdentify-backed browserless `business auth agent-login` reissue, replacing bare workspace/agent-id trust with a short-lived proof minted from an `ai_` identity key or supplied proof JWT.

@@ -44,6 +44,25 @@ mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
 ```
 
+For agentic workspace creation from an invite code, the agent must already have a persistent AgentsIdentify identity. The Business adapter mints a short-lived proof from that identity, creates the Mere-owned workspace-agent binding during invite bootstrap, and later reissues Business sessions only when that binding matches:
+
+```sh
+AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE \
+  --agent-id STABLE_AGENT_ID \
+  --name "Acme Plumbing" \
+  --slug acme-plumbing \
+  --json
+```
+
+After a workspace already exists, agents reissue the local Business session through the same persistent identity and stable Mere agent id:
+
+```sh
+AGENTSIDENTIFY_API_KEY=ai_... mere business auth agent-login \
+  --workspace WORKSPACE_ID \
+  --agent-id STABLE_AGENT_ID \
+  --json
+```
+
 For headless waitlist access before an invite exists:
 
 ```sh

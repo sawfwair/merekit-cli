@@ -42,6 +42,25 @@ mere business onboard start INVITE_CODE --json
 mere onboard --workspace WORKSPACE_ID --target codex --json
 ```
 
+For agentic workspace creation from an invite code, use a persistent AgentsIdentify identity before touching the invite. The Business adapter mints a short-lived AgentsIdentify proof, consumes the invite, and stores the Mere-owned identity binding for the workspace agent:
+
+```sh
+AGENTSIDENTIFY_API_KEY=ai_... mere business onboard agent-start INVITE_CODE \
+  --agent-id STABLE_AGENT_ID \
+  --name "Acme Plumbing" \
+  --slug acme-plumbing \
+  --json
+```
+
+After the workspace exists, the same agent reissues a local Business session from that binding:
+
+```sh
+AGENTSIDENTIFY_API_KEY=ai_... mere business auth agent-login \
+  --workspace WORKSPACE_ID \
+  --agent-id STABLE_AGENT_ID \
+  --json
+```
+
 For operators, agents, or automation after a workspace exists:
 
 ```sh
@@ -92,6 +111,8 @@ mere business onboard start INVITE_CODE --json
 ```
 
 That delegated Business command validates the invite, signs in or signs up through the browser when needed, creates/provisions the workspace, and returns workspace state for the root readiness pass.
+
+Agent bootstrap is intentionally different from human invite bootstrap. It never opens a browser and it does not rely on a distributed Mere bootstrap token. It requires an AgentsIdentify API key or pre-minted proof, binds the resulting AgentsIdentify agent id to the Mere workspace agent id in Business, and refuses later session reissue unless the same binding is active.
 
 ## What Root Onboarding Does
 
