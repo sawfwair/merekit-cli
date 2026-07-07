@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "builtAt": "2026-07-07T04:15:18.556Z",
+  "builtAt": "2026-07-07T10:41:08.357Z",
   "adapters": [
     {
       "app": "business",
       "sourceRepoPath": "mere-business",
       "sourceArtifactPath": "mere-business/packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:27:36.605Z"
     },
     {
       "app": "finance",
@@ -18,10 +18,10 @@
     },
     {
       "app": "dynasite",
-      "sourceRepoPath": "dynasite",
-      "sourceArtifactPath": "dynasite/dist/run.js",
+      "sourceRepoPath": "mere-dynasite",
+      "sourceArtifactPath": "mere-dynasite/dist/run.js",
       "adapterPath": "adapters/dynasite/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:30:01.023Z"
     },
     {
       "app": "projects",
@@ -60,24 +60,24 @@
     },
     {
       "app": "network",
-      "sourceRepoPath": "network",
-      "sourceArtifactPath": "network/dist/run.js",
+      "sourceRepoPath": "mere-network",
+      "sourceArtifactPath": "mere-network/dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:30:01.023Z"
     },
     {
       "app": "email",
-      "sourceRepoPath": "email",
-      "sourceArtifactPath": "email/dist/run.js",
+      "sourceRepoPath": "mere-email",
+      "sourceArtifactPath": "mere-email/dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:41:08.357Z"
     },
     {
       "app": "im",
       "sourceRepoPath": "mere-im",
       "sourceArtifactPath": "mere-im/dist/run.js",
       "adapterPath": "adapters/im/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:30:01.023Z"
     },
     {
       "app": "gives",
@@ -95,10 +95,10 @@
     },
     {
       "app": "media",
-      "sourceRepoPath": "media",
-      "sourceArtifactPath": "media/dist/run.js",
+      "sourceRepoPath": "mere-media",
+      "sourceArtifactPath": "mere-media/dist/run.js",
       "adapterPath": "adapters/media/run.js",
-      "builtAt": "2026-06-04T16:56:40.732Z"
+      "builtAt": "2026-07-07T10:30:46.319Z"
     },
     {
       "app": "deliver",

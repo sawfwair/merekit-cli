@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.9 - 2026-07-07
+
+- Published bundled Business, Dynasite, Network, Email, IM, and Media adapters with browserless `auth agent-login`, plus consistent JSON auth errors for agent automation.
+
 ## 0.5.8 - 2026-07-07
 
 - Published bundled Agent, Video, and Gives adapters with `auth agent-login`, extending the browserless Business-session exchange path across the remaining long-running agent workspace surfaces.

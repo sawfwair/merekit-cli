@@ -1240,6 +1240,26 @@ var init_local_store = __esm({
         const row = this.db.prepare("SELECT COUNT(*) AS count FROM email_local_sealed_envelopes WHERE key_id = ?").get(keyId);
         return Number(row.count);
       }
+      countMirroredSealedEnvelopes(keyId) {
+        this.ensureEmailSchema();
+        const row = this.db.prepare(
+          `SELECT COUNT(*) AS count
+         FROM email_local_sealed_envelopes
+         WHERE key_id = ? AND pushed_at IS NOT NULL AND deleted_at IS NULL`
+        ).get(keyId);
+        return Number(row.count);
+      }
+      countMessagesToSeal(keyId) {
+        this.ensureEmailSchema();
+        const row = this.db.prepare(
+          `SELECT COUNT(*) AS count
+         FROM email_local_messages m
+         LEFT JOIN email_local_sealed_envelopes s
+           ON s.message_id = m.id AND s.key_id = ?
+         WHERE s.message_id IS NULL`
+        ).get(keyId);
+        return Number(row.count);
+      }
       listMessagesToSeal(keyId, limit) {
         this.ensureEmailSchema();
         return this.db.prepare(
@@ -1274,6 +1294,88 @@ var init_local_store = __esm({
           messageId: row.message_id,
           envelopeJson: row.envelope_json
         }));
+      }
+      listSealedEnvelopes(input) {
+        this.ensureEmailSchema();
+        const clauses = ["key_id = ?", "deleted_at IS NULL"];
+        const values = [input.keyId];
+        if (input.workspaceId) {
+          clauses.push("workspace_id = ?");
+          values.push(input.workspaceId);
+        }
+        if (input.threadId) {
+          clauses.push("thread_id = ?");
+          values.push(input.threadId);
+        }
+        if (input.messageId) {
+          clauses.push("message_id = ?");
+          values.push(input.messageId);
+        }
+        values.push(input.limit);
+        return this.db.prepare(
+          `SELECT message_id, key_id, workspace_id, thread_id, envelope_json, remote_etag, sealed_at
+         FROM email_local_sealed_envelopes
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY sealed_at DESC
+         LIMIT ?`
+        ).all(...values).map((row) => ({
+          messageId: row.message_id,
+          keyId: row.key_id,
+          workspaceId: row.workspace_id,
+          threadId: row.thread_id,
+          envelopeJson: row.envelope_json,
+          remoteEtag: row.remote_etag,
+          sealedAt: row.sealed_at
+        }));
+      }
+      listSealedEnvelopesToPush(keyId, limit) {
+        this.ensureEmailSchema();
+        return this.db.prepare(
+          `SELECT message_id, key_id, workspace_id, thread_id, envelope_json, remote_etag
+         FROM email_local_sealed_envelopes
+         WHERE key_id = ? AND pushed_at IS NULL
+         ORDER BY sealed_at ASC
+         LIMIT ?`
+        ).all(keyId, limit).map((row) => ({
+          messageId: row.message_id,
+          keyId: row.key_id,
+          workspaceId: row.workspace_id,
+          threadId: row.thread_id,
+          envelopeJson: row.envelope_json,
+          remoteEtag: row.remote_etag
+        }));
+      }
+      listMirroredSealedEnvelopes(keyId) {
+        this.ensureEmailSchema();
+        return this.db.prepare(
+          `SELECT message_id, key_id, workspace_id, thread_id, envelope_json, remote_etag
+         FROM email_local_sealed_envelopes
+         WHERE key_id = ? AND pushed_at IS NOT NULL AND deleted_at IS NULL
+         ORDER BY pushed_at ASC`
+        ).all(keyId).map((row) => ({
+          messageId: row.message_id,
+          keyId: row.key_id,
+          workspaceId: row.workspace_id,
+          threadId: row.thread_id,
+          envelopeJson: row.envelope_json,
+          remoteEtag: row.remote_etag
+        }));
+      }
+      markSealedEnvelopePushed(input) {
+        this.ensureEmailSchema();
+        this.db.prepare(
+          `UPDATE email_local_sealed_envelopes
+         SET pushed_at = ?, deleted_at = NULL, remote_etag = ?
+         WHERE message_id = ? AND key_id = ?`
+        ).run((/* @__PURE__ */ new Date()).toISOString(), input.remoteEtag ?? null, input.messageId, input.keyId);
+      }
+      markSealedEnvelopeUnmirrored(input) {
+        this.ensureEmailSchema();
+        this.db.prepare(
+          `UPDATE email_local_sealed_envelopes
+         SET pushed_at = NULL, deleted_at = ?, remote_etag = NULL
+         WHERE message_id = ? AND key_id = ?`
+        ).run((/* @__PURE__ */ new Date()).toISOString(), input.messageId, input.keyId);
       }
       listMailboxes(workspaceId) {
         this.ensureEmailSchema();
@@ -1767,6 +1869,9 @@ var init_local_store = __esm({
         thread_id TEXT NOT NULL,
         envelope_json TEXT NOT NULL,
         sealed_at TEXT NOT NULL,
+        pushed_at TEXT,
+        deleted_at TEXT,
+        remote_etag TEXT,
         PRIMARY KEY (message_id, key_id)
       );
 
@@ -1869,7 +1974,22 @@ var init_local_store = __esm({
         ON email_local_attachments(workspace_id, message_id);
       CREATE INDEX IF NOT EXISTS idx_email_local_publications_thread
         ON email_local_publications(workspace_id, thread_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_email_local_sealed_push
+        ON email_local_sealed_envelopes(key_id, pushed_at, deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_email_local_sealed_thread
+        ON email_local_sealed_envelopes(workspace_id, thread_id, key_id);
     `);
+        const sealedColumns = this.db.prepare("PRAGMA table_info(email_local_sealed_envelopes)").all();
+        const existingSealedColumns = new Set(sealedColumns.map((column) => column.name));
+        if (!existingSealedColumns.has("pushed_at")) {
+          this.db.prepare("ALTER TABLE email_local_sealed_envelopes ADD COLUMN pushed_at TEXT").run();
+        }
+        if (!existingSealedColumns.has("deleted_at")) {
+          this.db.prepare("ALTER TABLE email_local_sealed_envelopes ADD COLUMN deleted_at TEXT").run();
+        }
+        if (!existingSealedColumns.has("remote_etag")) {
+          this.db.prepare("ALTER TABLE email_local_sealed_envelopes ADD COLUMN remote_etag TEXT").run();
+        }
       }
     };
   }
@@ -6375,6 +6495,21 @@ var EmailWorkspaceImportStatusSchema = external_exports.object({
 init_email_product();
 init_json();
 
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
+import { spawn as spawn2 } from "node:child_process";
+import { createServer } from "node:http";
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/contract.ts
+var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
+var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
+var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
+var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
+var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
+var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
+var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
+
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/session.ts
 import { chmod as chmod2, mkdir as mkdir2, readFile, rm as rm2, writeFile } from "node:fs/promises";
 import os3 from "node:os";
@@ -6475,6 +6610,157 @@ function mergeSessionPayload(current, payload, options = {}) {
     defaultWorkspaceId: nextDefaultWorkspaceId ?? null,
     lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
+function maybeOpenBrowser(url) {
+  try {
+    if (process.platform === "darwin") {
+      const child2 = spawn2("open", [url], { detached: true, stdio: "ignore" });
+      child2.unref();
+      return true;
+    }
+    if (process.platform === "win32") {
+      const child2 = spawn2("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
+      child2.unref();
+      return true;
+    }
+    const child = spawn2("xdg-open", [url], { detached: true, stdio: "ignore" });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function parseJson(response) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload;
+}
+async function fetchJson(fetchImpl, input) {
+  return parseJson(await fetchImpl(input));
+}
+async function postJson(fetchImpl, input, body) {
+  return parseJson(
+    await fetchImpl(input, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+async function waitForCallback(input) {
+  return new Promise((resolve, reject) => {
+    const server = createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (requestUrl.pathname !== "/callback") {
+        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Not found.");
+        return;
+      }
+      const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
+      const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
+      if (!requestId || !code) {
+        response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Missing request or code.");
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(
+        `<!doctype html><html><body><h1>${input.productLabel} login complete.</h1><p>You can close this window.</p></body></html>`
+      );
+      void (async () => {
+        clearTimeout(timeout);
+        server.close();
+        try {
+          const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
+          resolve(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
+        } catch (error) {
+          reject(error);
+        }
+      })();
+    });
+    server.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    server.listen(0, "127.0.0.1", () => {
+      void (async () => {
+        try {
+          const address = server.address();
+          if (!address) {
+            throw new Error("Local login callback server could not bind to a port.");
+          }
+          const callbackUrl = new URL(`http://127.0.0.1:${address.port}/callback`);
+          const startUrl = new URL(CLI_AUTH_START_PATH, input.baseUrl);
+          startUrl.searchParams.set(CLI_AUTH_CALLBACK_URL_QUERY_PARAM, callbackUrl.toString());
+          if (input.workspace?.trim()) {
+            startUrl.searchParams.set("workspace", input.workspace.trim());
+          }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
+          const started = await fetchJson(input.fetchImpl, startUrl);
+          const opened = maybeOpenBrowser(started.authorizeUrl);
+          input.notify(
+            opened ? `Opened your browser to complete ${input.productLabel} login.` : `Open this URL to complete ${input.productLabel} login:`
+          );
+          input.notify(started.authorizeUrl);
+        } catch (error) {
+          clearTimeout(timeout);
+          server.close();
+          reject(error);
+        }
+      })();
+    });
+    const timeout = setTimeout(() => {
+      server.close();
+      reject(new Error("Timed out waiting for the browser login callback."));
+    }, 12e4);
+  });
+}
+async function loginWithBrowser(input) {
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const payload = await waitForCallback({
+    baseUrl,
+    fetchImpl: input.fetchImpl ?? fetch,
+    notify: input.notify,
+    workspace: input.workspace,
+    inviteCode: input.inviteCode,
+    productLabel: input.productLabel
+  });
+  return createLocalSession(payload, {
+    baseUrl,
+    defaultWorkspaceId: payload.workspace?.id ?? payload.defaultWorkspaceId
+  });
+}
+async function refreshRemoteSession(input) {
+  const refreshUrl = new URL(CLI_AUTH_REFRESH_PATH, normalizeBaseUrl(input.baseUrl));
+  return postJson(input.fetchImpl ?? fetch, refreshUrl, {
+    refreshToken: input.refreshToken,
+    workspace: input.workspace ?? null
+  });
+}
+async function logoutRemoteSession(input) {
+  const logoutUrl = new URL(CLI_AUTH_LOGOUT_PATH, normalizeBaseUrl(input.baseUrl));
+  await postJson(input.fetchImpl ?? fetch, logoutUrl, {
+    refreshToken: input.refreshToken
+  });
 }
 
 // cli/client.ts
@@ -6766,6 +7052,51 @@ function parseInboundResult(value) {
     workspaceResponse: record.workspaceResponse
   };
 }
+function parseSealedEnvelopePushResult(value) {
+  const record = expectRecord(value, "sealed envelope push payload");
+  return {
+    ok: true,
+    messageId: expectString(record.messageId, "messageId"),
+    keyId: expectString(record.keyId, "keyId"),
+    etag: expectString(record.etag, "etag")
+  };
+}
+function parseSealedEnvelopeDeleteResult(value) {
+  const record = expectRecord(value, "sealed envelope delete payload");
+  return {
+    ok: true,
+    deleted: expectNumber(record.deleted, "deleted")
+  };
+}
+function parseCustodyKeyGrant(value) {
+  const record = expectRecord(value, "custody key grant response");
+  const grant = expectRecord(record.grant, "custody key grant");
+  const alg = expectString(grant.alg, "alg");
+  if (alg !== "ECDH-P256-A256GCM") {
+    throw new Error("custody key grant uses an unsupported algorithm");
+  }
+  const status = expectString(grant.status, "status");
+  if (!["pending", "approved", "claimed", "expired", "revoked"].includes(status)) {
+    throw new Error("custody key grant status is invalid");
+  }
+  const grantStatus = status;
+  return {
+    id: expectString(grant.id, "id"),
+    workspaceId: expectString(grant.workspaceId, "workspaceId"),
+    tenantId: expectString(grant.tenantId, "tenantId"),
+    userId: expectString(grant.userId, "userId"),
+    deviceCode: expectString(grant.deviceCode, "deviceCode"),
+    alg,
+    publicKeyJwk: expectRecord(grant.publicKeyJwk, "publicKeyJwk"),
+    keyId: expectNullableString(grant.keyId, "keyId"),
+    status: grantStatus,
+    expiresAt: expectString(grant.expiresAt, "expiresAt"),
+    createdAt: expectString(grant.createdAt, "createdAt"),
+    updatedAt: expectString(grant.updatedAt, "updatedAt"),
+    approvedAt: expectNullableString(grant.approvedAt, "approvedAt"),
+    claimedAt: expectNullableString(grant.claimedAt, "claimedAt")
+  };
+}
 function passthroughJson(value) {
   return value;
 }
@@ -6852,6 +7183,45 @@ var EmailCliClient = class {
       this.workspacePath(workspaceId, "connection"),
       { method: "DELETE" },
       { parser: parseDisconnectResult }
+    );
+  }
+  async pushSealedEnvelope(workspaceId, envelope) {
+    return this.request(
+      this.workspacePath(workspaceId, "projections/email/sealed"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "email.sealed_envelope.v1",
+          envelope
+        })
+      },
+      { parser: parseSealedEnvelopePushResult }
+    );
+  }
+  async deleteSealedEnvelopeMirror(workspaceId, input) {
+    const params = new URLSearchParams({ keyId: input.keyId });
+    const suffix = input.messageId ? `projections/email/sealed/${encodeURIComponent(input.messageId)}?${params.toString()}` : `projections/email/sealed?${params.toString()}`;
+    return this.request(
+      this.workspacePath(workspaceId, suffix),
+      { method: "DELETE" },
+      { parser: parseSealedEnvelopeDeleteResult }
+    );
+  }
+  async readCustodyKeyGrant(deviceCode) {
+    return this.request(
+      `/api/cli/v1/custody/grants/${encodeURIComponent(deviceCode)}`,
+      {},
+      { parser: parseCustodyKeyGrant, useRpcEnvelope: false }
+    );
+  }
+  async approveCustodyKeyGrant(deviceCode, input) {
+    return this.request(
+      `/api/cli/v1/custody/grants/${encodeURIComponent(deviceCode)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(input)
+      },
+      { parser: parseCustodyKeyGrant, useRpcEnvelope: false }
     );
   }
   async listMailboxes(workspaceId) {
@@ -7202,6 +7572,280 @@ function parseSealedEnvelope(text) {
   return parseJsonText(text, { invalidJsonMessage: "Stored sealed envelope is not valid JSON." });
 }
 
+// cli/tunnel.ts
+import { spawn as spawn3 } from "node:child_process";
+import { createServer as createServer2 } from "node:http";
+function buildCloudflaredArgs(input) {
+  if (input.tunnelName) {
+    return ["tunnel", "run", "--url", input.localUrl, input.tunnelName];
+  }
+  return ["tunnel", "--url", input.localUrl];
+}
+function startCloudflaredTunnel(input) {
+  return spawn3("cloudflared", buildCloudflaredArgs(input), {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+}
+function jsonHeaders(extra = {}) {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, HEAD, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    ...extra
+  };
+}
+function writeJson(response, status, body, headOnly = false) {
+  const text = JSON.stringify(body);
+  response.writeHead(status, jsonHeaders({ "content-length": String(Buffer.byteLength(text)) }));
+  if (!headOnly) response.end(text);
+  else response.end();
+}
+function parseLimit(value, fallback, max) {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, max);
+}
+function mapEnvelope(row) {
+  const envelope = parseSealedEnvelope(row.envelopeJson);
+  if (envelope.keyId !== row.keyId || envelope.workspaceId !== row.workspaceId || envelope.threadId !== row.threadId || envelope.messageId !== row.messageId) {
+    throw new Error(`Sealed envelope row/header mismatch for ${row.messageId}.`);
+  }
+  return {
+    type: "email.sealed_envelope.v1",
+    keyId: row.keyId,
+    workspaceId: row.workspaceId,
+    threadId: row.threadId,
+    messageId: row.messageId,
+    sealedAt: row.sealedAt,
+    remoteEtag: row.remoteEtag,
+    envelope
+  };
+}
+async function startCustodyTunnelServer(input) {
+  const host = input.host ?? "127.0.0.1";
+  const port = input.port ?? 0;
+  const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+  let url = "";
+  let lastSeenAt = startedAt;
+  const markSeen = () => {
+    lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
+    input.onSeen?.(lastSeenAt);
+  };
+  const snapshot = () => ({
+    ok: true,
+    custody: "live-tunnel",
+    mode: "sealed-envelope-loopback",
+    state: "live",
+    keyId: input.key.keyId,
+    url,
+    startedAt,
+    lastSeenAt,
+    sealedEnvelopes: input.store.countSealedEnvelopes(input.key.keyId),
+    pendingSealableMessages: input.store.countMessagesToSeal(input.key.keyId)
+  });
+  const server = createServer2((request, response) => {
+    try {
+      if (request.method === "OPTIONS") {
+        response.writeHead(204, jsonHeaders({ "content-length": "0" }));
+        response.end();
+        return;
+      }
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        writeJson(response, 405, { ok: false, error: "Method not allowed." }, request.method === "HEAD");
+        return;
+      }
+      markSeen();
+      const requestUrl = new URL(request.url ?? "/", url || `http://${host}:${port}`);
+      const headOnly = request.method === "HEAD";
+      if (requestUrl.pathname === "/" || requestUrl.pathname === "/health") {
+        writeJson(response, 200, snapshot(), headOnly);
+        return;
+      }
+      if (requestUrl.pathname === "/v1/envelopes") {
+        const rows = input.store.listSealedEnvelopes({
+          keyId: input.key.keyId,
+          limit: parseLimit(requestUrl.searchParams.get("limit"), 100, 500),
+          workspaceId: requestUrl.searchParams.get("workspaceId") ?? void 0,
+          threadId: requestUrl.searchParams.get("threadId") ?? void 0,
+          messageId: requestUrl.searchParams.get("messageId") ?? void 0
+        });
+        writeJson(
+          response,
+          200,
+          {
+            ok: true,
+            custody: "live-tunnel",
+            keyId: input.key.keyId,
+            count: rows.length,
+            envelopes: rows.map(mapEnvelope)
+          },
+          headOnly
+        );
+        return;
+      }
+      writeJson(response, 404, { ok: false, error: "Not found." }, headOnly);
+    } catch (error) {
+      writeJson(response, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : "Custody tunnel failed."
+      });
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      const address = server.address();
+      url = `http://${address.address}:${address.port}`;
+      markSeen();
+      resolve();
+    });
+  });
+  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 15e3;
+  const heartbeat = heartbeatIntervalMs > 0 ? setInterval(() => {
+    markSeen();
+  }, heartbeatIntervalMs) : null;
+  heartbeat?.unref();
+  return {
+    url,
+    startedAt,
+    close: async () => {
+      if (heartbeat) clearInterval(heartbeat);
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+  };
+}
+
+// src/lib/custody/browser-sealed.ts
+init_json();
+
+// src/lib/custody/device-grant.ts
+var DEVICE_GRANT_WRAP_ALG = "ECDH-P256-A256GCM";
+function subtleCrypto() {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    throw new Error("WebCrypto is not available.");
+  }
+  return subtle;
+}
+function randomBytes2(length) {
+  const bytes = new Uint8Array(length);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes;
+}
+function arrayBufferFromBytes(bytes) {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+function cloneBytes(value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  return bytes.slice();
+}
+function base64FromBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+function assertPublicKeyJwk(value) {
+  if (value.kty !== "EC" || value.crv !== "P-256" || typeof value.x !== "string" || typeof value.y !== "string") {
+    throw new Error("Custody grant public key must be an ECDH P-256 public JWK.");
+  }
+  if ("d" in value) {
+    throw new Error("Custody grant public key must not include private key material.");
+  }
+  return value;
+}
+function publicKeyJwkFromExport(value) {
+  const { d: _privateKeyMaterial, ...publicOnly } = value;
+  return assertPublicKeyJwk(publicOnly);
+}
+function grantAad(input) {
+  return new TextEncoder().encode(
+    JSON.stringify(["mere.email.custody.grant.v1", input.alg, input.grantId, input.workspaceId, input.keyId])
+  );
+}
+async function createDeviceGrantKeyPair() {
+  const pair = await subtleCrypto().generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    ["deriveKey"]
+  );
+  if (!("privateKey" in pair) || !("publicKey" in pair)) {
+    throw new Error("WebCrypto did not return an ECDH key pair.");
+  }
+  const publicKeyJwk = publicKeyJwkFromExport(await subtleCrypto().exportKey("jwk", pair.publicKey));
+  return { privateKey: pair.privateKey, publicKeyJwk };
+}
+async function importPublicKey(publicKeyJwk) {
+  return subtleCrypto().importKey(
+    "jwk",
+    publicKeyJwk,
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    []
+  );
+}
+async function deriveGrantAesKey(privateKey, publicKeyJwk, usage) {
+  return subtleCrypto().deriveKey(
+    {
+      name: "ECDH",
+      public: await importPublicKey(publicKeyJwk)
+    },
+    privateKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    [usage]
+  );
+}
+async function wrapRawSealingKeyForDeviceGrant(input) {
+  if (input.grant.alg !== DEVICE_GRANT_WRAP_ALG) {
+    throw new Error(`Unsupported custody grant algorithm: ${input.grant.alg}.`);
+  }
+  const rawKey = cloneBytes(input.rawKey);
+  if (rawKey.byteLength !== 32) {
+    throw new Error(`Sealing key must be 32 bytes; received ${rawKey.byteLength}.`);
+  }
+  const wrappingPair = await createDeviceGrantKeyPair();
+  const wrappingKey = await deriveGrantAesKey(wrappingPair.privateKey, input.grant.publicKeyJwk, "encrypt");
+  const iv = randomBytes2(12);
+  const ciphertext = await subtleCrypto().encrypt(
+    {
+      name: "AES-GCM",
+      iv: arrayBufferFromBytes(iv),
+      additionalData: arrayBufferFromBytes(
+        grantAad({
+          grantId: input.grant.id,
+          workspaceId: input.grant.workspaceId,
+          keyId: input.keyId,
+          alg: input.grant.alg
+        })
+      ),
+      tagLength: 128
+    },
+    wrappingKey,
+    arrayBufferFromBytes(rawKey)
+  );
+  return {
+    alg: DEVICE_GRANT_WRAP_ALG,
+    keyId: input.keyId,
+    wrappingPublicKeyJwk: wrappingPair.publicKeyJwk,
+    iv: base64FromBytes(iv),
+    ct: base64FromBytes(new Uint8Array(ciphertext))
+  };
+}
+
 // cli/format.ts
 function formatTable(headers, rows) {
   const widths = headers.map(
@@ -7516,172 +8160,6 @@ async function buildSendInputFromCliOptions(options) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
-import { spawn as spawn2 } from "node:child_process";
-import { createServer } from "node:http";
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/contract.ts
-var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
-var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
-var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
-var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
-var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
-var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
-var CLI_AUTH_CODE_QUERY_PARAM = "code";
-var CLI_AUTH_ERROR_QUERY_PARAM = "error";
-var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
-function maybeOpenBrowser(url) {
-  try {
-    if (process.platform === "darwin") {
-      const child2 = spawn2("open", [url], { detached: true, stdio: "ignore" });
-      child2.unref();
-      return true;
-    }
-    if (process.platform === "win32") {
-      const child2 = spawn2("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
-      child2.unref();
-      return true;
-    }
-    const child = spawn2("xdg-open", [url], { detached: true, stdio: "ignore" });
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function parseJson(response) {
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload) {
-    const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
-    throw new Error(message);
-  }
-  return payload;
-}
-async function fetchJson(fetchImpl, input) {
-  return parseJson(await fetchImpl(input));
-}
-async function postJson(fetchImpl, input, body) {
-  return parseJson(
-    await fetchImpl(input, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    })
-  );
-}
-async function waitForCallback(input) {
-  return new Promise((resolve, reject) => {
-    const server = createServer((request, response) => {
-      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (requestUrl.pathname !== "/callback") {
-        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-        response.end("Not found.");
-        return;
-      }
-      const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
-      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
-      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
-      if (authError) {
-        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        response.end(
-          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
-        );
-        clearTimeout(timeout);
-        server.close();
-        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
-        return;
-      }
-      const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
-      if (!requestId || !code) {
-        response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-        response.end("Missing request or code.");
-        return;
-      }
-      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      response.end(
-        `<!doctype html><html><body><h1>${input.productLabel} login complete.</h1><p>You can close this window.</p></body></html>`
-      );
-      void (async () => {
-        clearTimeout(timeout);
-        server.close();
-        try {
-          const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
-          resolve(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
-        } catch (error) {
-          reject(error);
-        }
-      })();
-    });
-    server.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    server.listen(0, "127.0.0.1", () => {
-      void (async () => {
-        try {
-          const address = server.address();
-          if (!address) {
-            throw new Error("Local login callback server could not bind to a port.");
-          }
-          const callbackUrl = new URL(`http://127.0.0.1:${address.port}/callback`);
-          const startUrl = new URL(CLI_AUTH_START_PATH, input.baseUrl);
-          startUrl.searchParams.set(CLI_AUTH_CALLBACK_URL_QUERY_PARAM, callbackUrl.toString());
-          if (input.workspace?.trim()) {
-            startUrl.searchParams.set("workspace", input.workspace.trim());
-          }
-          if (input.inviteCode?.trim()) {
-            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
-          }
-          const started = await fetchJson(input.fetchImpl, startUrl);
-          const opened = maybeOpenBrowser(started.authorizeUrl);
-          input.notify(
-            opened ? `Opened your browser to complete ${input.productLabel} login.` : `Open this URL to complete ${input.productLabel} login:`
-          );
-          input.notify(started.authorizeUrl);
-        } catch (error) {
-          clearTimeout(timeout);
-          server.close();
-          reject(error);
-        }
-      })();
-    });
-    const timeout = setTimeout(() => {
-      server.close();
-      reject(new Error("Timed out waiting for the browser login callback."));
-    }, 12e4);
-  });
-}
-async function loginWithBrowser(input) {
-  const baseUrl = normalizeBaseUrl(input.baseUrl);
-  const payload = await waitForCallback({
-    baseUrl,
-    fetchImpl: input.fetchImpl ?? fetch,
-    notify: input.notify,
-    workspace: input.workspace,
-    inviteCode: input.inviteCode,
-    productLabel: input.productLabel
-  });
-  return createLocalSession(payload, {
-    baseUrl,
-    defaultWorkspaceId: payload.workspace?.id ?? payload.defaultWorkspaceId
-  });
-}
-async function refreshRemoteSession(input) {
-  const refreshUrl = new URL(CLI_AUTH_REFRESH_PATH, normalizeBaseUrl(input.baseUrl));
-  return postJson(input.fetchImpl ?? fetch, refreshUrl, {
-    refreshToken: input.refreshToken,
-    workspace: input.workspace ?? null
-  });
-}
-async function logoutRemoteSession(input) {
-  const logoutUrl = new URL(CLI_AUTH_LOGOUT_PATH, normalizeBaseUrl(input.baseUrl));
-  await postJson(input.fetchImpl ?? fetch, logoutUrl, {
-    refreshToken: input.refreshToken
-  });
-}
-
 // cli/session.ts
 var APP_NAME = "mere-email";
 async function loadSession(env = process.env) {
@@ -7744,6 +8222,7 @@ async function logoutRemote(input = {}) {
 // cli/mere-email.ts
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
+  "business-base-url": "string",
   token: "string",
   workspace: "string",
   store: "string",
@@ -7767,6 +8246,7 @@ Usage:
 
 Global flags:
   --base-url URL       Override MERE_EMAIL_BASE_URL
+  --business-base-url URL Override Mere Business for browserless agent login
   --token TOKEN        Override MERE_EMAIL_TOKEN
   --workspace ID       Override MERE_EMAIL_WORKSPACE_ID
   --store local|cloud  Choose local or cloud data plane
@@ -7789,9 +8269,14 @@ Commands:
   custody set <plaintext-cloud|sealed-mirror|live-tunnel|local-only>
   custody keygen
   custody seal [--limit N] [--dry-run]
+  custody push [--limit N] [--dry-run]
+  custody unmirror [--dry-run]
+  custody grant --device CODE
+  custody tunnel up [--host HOST] [--port PORT] [--cloudflared] [--tunnel-name NAME] [--once]
   custody verify [--limit N]
 
   auth login
+  auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business]
   auth whoami
   auth logout
 
@@ -7861,6 +8346,7 @@ function helpJson() {
     usage: "mere-email [global flags] <command> [args]",
     globalFlags: {
       "--base-url": "Override MERE_EMAIL_BASE_URL",
+      "--business-base-url": "Override Mere Business for browserless agent login",
       "--token": "Override MERE_EMAIL_TOKEN",
       "--workspace": "Override MERE_EMAIL_WORKSPACE_ID",
       "--store": "Choose local or cloud data plane",
@@ -7878,7 +8364,7 @@ function helpJson() {
     commands: {
       completion: ["bash", "zsh", "fish"],
       store: ["info"],
-      auth: ["login", "whoami", "logout"],
+      auth: ["login", "agent-login", "whoami", "logout"],
       workspace: [
         "list",
         "current",
@@ -7889,7 +8375,7 @@ function helpJson() {
         "disconnect"
       ],
       sync: ["pull"],
-      custody: ["status", "set", "keygen", "seal", "verify"],
+      custody: ["status", "set", "keygen", "seal", "push", "unmirror", "grant", "tunnel", "verify"],
       mailboxes: ["list"],
       threads: ["list", "latest", "search", "show", "summarize", "publish", "revoke", "read", "star", "archive"],
       drafts: ["create", "show", "discard"],
@@ -7942,7 +8428,7 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_EMAIL_BASE_URL"],
     sessionPath: "~/.local/state/mere-email/session.json",
-    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm"],
+    globalFlags: ["base-url", "business-base-url", "workspace", "store", "ai", "local-db", "projection-url", "projection-token", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["store", "info"], "Show local/cloud plane selection.", { auth: "none", auditDefault: true }),
       manifestCommand(["custody", "status"], "Show who holds mail: plaintext cloud, sealed mirror, live tunnel, or local only.", {
@@ -7952,8 +8438,17 @@ function commandManifest() {
       manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { risk: "external" }),
       manifestCommand(["custody", "keygen"], "Generate the local sealing key (never leaves this machine).", { risk: "write" }),
       manifestCommand(["custody", "seal"], "Seal local mail into AES-256-GCM envelopes the cloud cannot open.", { risk: "write", flags: ["limit", "dry-run"] }),
+      manifestCommand(["custody", "push"], "Upload unsent sealed envelopes to the opaque custody receiver.", { risk: "external", flags: ["limit", "dry-run"] }),
+      manifestCommand(["custody", "unmirror"], "Delete mirrored sealed envelopes from the custody receiver.", { risk: "destructive", requiresYes: true, flags: ["dry-run", "yes"] }),
+      manifestCommand(["custody", "grant"], "Approve a browser device-link request by wrapping the local sealing key.", { risk: "external", flags: ["device"] }),
+      manifestCommand(["custody", "tunnel"], "Serve sealed envelopes from this machine over a read-only loopback tunnel.", { auth: "none", risk: "external", flags: ["host", "port", "cloudflared", "tunnel-name", "once"], positionals: ["up"] }),
       manifestCommand(["custody", "verify"], "Unseal a sample of envelopes to prove round-trip integrity.", { flags: ["limit"] }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create an Email session from a Business agent session.", {
+        auth: "none",
+        risk: "write",
+        flags: ["workspace", "business-base-url", "base-url"]
+      }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -8228,6 +8723,123 @@ function resolveBaseUrl(options, env) {
     throw new CliError("Missing base URL. Set MERE_EMAIL_BASE_URL or pass --base-url.");
   }
   return baseUrl;
+}
+function normalizeBaseUrl3(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+function resolveBusinessWorkspaceSelector(options, env) {
+  return trimOption(asString(options.workspace)) ?? trimOption(env.MERE_EMAIL_WORKSPACE_ID);
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.");
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return an Email base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return an Email CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(globalOptions, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+    );
+  }
+  const workspace = selectBusinessWorkspace(
+    current,
+    resolveBusinessWorkspaceSelector(globalOptions, io.env)
+  );
+  const baseUrl = normalizeBaseUrl3(trimOption(asString(globalOptions["business-base-url"])) ?? current.baseUrl);
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(globalOptions, io) {
+  const business = await loadRefreshedBusinessSession(globalOptions, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "email",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.text().then((text) => text.trim().length > 0 ? parseJsonText(text) : null).catch(() => null);
+  if (!response.ok) {
+    throw new CliError(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl3(trimOption(asString(globalOptions["base-url"])) ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
 }
 function resolveToken(options, env) {
   return trimOption(asString(options.token)) ?? trimOption(env.MERE_EMAIL_TOKEN) ?? activeSession?.accessToken;
@@ -8577,7 +9189,7 @@ function renderWorkspaceLabel(workspace) {
 }
 function writeAuthSession(io, globalOptions, session) {
   if (asBoolean(globalOptions.json)) {
-    writeJson(io, {
+    writeJson2(io, {
       user: session.user,
       baseUrl: session.baseUrl,
       expiresAt: session.expiresAt,
@@ -8588,9 +9200,18 @@ function writeAuthSession(io, globalOptions, session) {
   }
   writeText(io, renderSessionSummary(session));
 }
-function writeJson(io, value) {
+function writeJson2(io, value) {
   io.stdout(`${JSON.stringify(value, null, 2)}
 `);
+}
+function writeJsonError(io, message) {
+  writeJson2(io, {
+    ok: false,
+    error: {
+      code: message.includes("No local Mere Business session") ? "auth_error" : "cli_error",
+      message
+    }
+  });
 }
 function writeText(io, value) {
   io.stdout(`${value}
@@ -8598,14 +9219,14 @@ function writeText(io, value) {
 }
 function writeHelp(io, json2) {
   if (json2) {
-    writeJson(io, helpJson());
+    writeJson2(io, helpJson());
     return;
   }
   writeText(io, HELP_TEXT);
 }
 function writeResult(io, globalOptions, value, render) {
   if (asBoolean(globalOptions.json)) {
-    writeJson(io, value);
+    writeJson2(io, value);
     return;
   }
   writeText(io, render(value));
@@ -8946,6 +9567,17 @@ async function handleAuthWhoami(io, globalOptions, args) {
   activeSession = session;
   writeAuthSession(io, globalOptions, session);
 }
+async function handleAuthAgentLogin(io, globalOptions, args) {
+  const { options, positionals } = parseCommandFlags(args, {});
+  if (asBoolean(options.help)) {
+    writeHelp(io, asBoolean(globalOptions.json));
+    return;
+  }
+  requireNoPositionals(positionals);
+  const session = await agentLogin(globalOptions, io);
+  activeSession = session;
+  writeAuthSession(io, globalOptions, session);
+}
 async function handleAuthLogout(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {});
   if (asBoolean(options.help)) {
@@ -8959,18 +9591,21 @@ async function handleAuthLogout(io, globalOptions, args) {
   });
   activeSession = null;
   if (asBoolean(globalOptions.json)) {
-    writeJson(io, { loggedOut });
+    writeJson2(io, { loggedOut });
     return;
   }
   writeText(io, loggedOut ? "Logged out." : "No local session found.");
 }
 async function handleAuthCommand(io, globalOptions, action, args) {
   if (!action) {
-    throw new CliError("Unknown auth command. Expected login, whoami, or logout.");
+    throw new CliError("Unknown auth command. Expected login, agent-login, whoami, or logout.");
   }
   switch (action) {
     case "login":
       await handleAuthLogin(io, globalOptions, args);
+      return;
+    case "agent-login":
+      await handleAuthAgentLogin(io, globalOptions, args);
       return;
     case "whoami":
       await handleAuthWhoami(io, globalOptions, args);
@@ -8979,7 +9614,7 @@ async function handleAuthCommand(io, globalOptions, action, args) {
       await handleAuthLogout(io, globalOptions, args);
       return;
     default:
-      throw new CliError("Unknown auth command. Expected login, whoami, or logout.");
+      throw new CliError("Unknown auth command. Expected login, agent-login, whoami, or logout.");
   }
 }
 async function handleStoreCommand(io, globalOptions, action, args) {
@@ -9017,6 +9652,10 @@ async function handleStoreCommand(io, globalOptions, action, args) {
 }
 var EMAIL_CUSTODY_TIERS = ["plaintext-cloud", "sealed-mirror", "live-tunnel", "local-only"];
 var CUSTODY_SETTING_KEY = "custody.tier";
+var CUSTODY_TUNNEL_URL_KEY = "custody.tunnel.url";
+var CUSTODY_TUNNEL_STARTED_AT_KEY = "custody.tunnel.startedAt";
+var CUSTODY_TUNNEL_LAST_SEEN_AT_KEY = "custody.tunnel.lastSeenAt";
+var CUSTODY_TUNNEL_RECENT_MS = 9e4;
 var CUSTODY_WEB_ACCESS = {
   "plaintext-cloud": "hosted",
   "sealed-mirror": "sealed",
@@ -9026,21 +9665,40 @@ var CUSTODY_WEB_ACCESS = {
 function isEmailCustodyTier(value) {
   return Boolean(value) && EMAIL_CUSTODY_TIERS.includes(value);
 }
+function custodyTunnelStatus(store) {
+  const url = store.getSetting(CUSTODY_TUNNEL_URL_KEY);
+  if (!url) return "unprovisioned";
+  const lastStartedAt = store.getSetting(CUSTODY_TUNNEL_STARTED_AT_KEY);
+  const lastSeenAt = store.getSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY);
+  const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
+  const lastSeenSecondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.floor((Date.now() - lastSeenMs) / 1e3)) : null;
+  return {
+    state: lastSeenSecondsAgo !== null && lastSeenSecondsAgo * 1e3 <= CUSTODY_TUNNEL_RECENT_MS ? "recent" : "stale",
+    url,
+    lastStartedAt,
+    lastSeenAt,
+    lastSeenSecondsAgo
+  };
+}
 async function custodyStatusPayload(io, store, tier) {
   const key = await loadSealedKey(io.env);
+  const sealedEnvelopes = key ? store.countSealedEnvelopes(key.keyId) : null;
+  const mirroredEnvelopes = key ? store.countMirroredSealedEnvelopes(key.keyId) : null;
+  const mirror = sealedEnvelopes !== null && mirroredEnvelopes !== null && mirroredEnvelopes > 0 ? mirroredEnvelopes >= sealedEnvelopes ? "pushed" : "partial" : "pending-receiver";
   return {
     ok: true,
     tier,
     webAccess: CUSTODY_WEB_ACCESS[tier],
     sealingKeyId: key?.keyId ?? null,
-    sealedEnvelopes: key ? store.countSealedEnvelopes(key.keyId) : null,
+    sealedEnvelopes,
+    pendingSealableMessages: key ? store.countMessagesToSeal(key.keyId) : null,
+    mirroredEnvelopes,
     // The tier is the recorded policy for this local plane. Plaintext cloud
     // is what the platform enforces today; local sealing is real (custody
-    // seal/verify) while the mirror upload leg waits on receiver support and
-    // the tunnel leg on provisioning.
+    // seal/verify/push) while enforcement and the tunnel leg remain separate.
     enforcement: tier === "plaintext-cloud" ? "active" : "pending",
-    mirror: "pending-receiver",
-    tunnel: "unprovisioned"
+    mirror,
+    tunnel: custodyTunnelStatus(store)
   };
 }
 function renderCustody(payload) {
@@ -9052,6 +9710,14 @@ function renderCustody(payload) {
   if (payload.sealingKeyId) {
     lines.push(`sealing key: ${payload.sealingKeyId}`);
     lines.push(`sealed envelopes: ${payload.sealedEnvelopes ?? 0}`);
+    lines.push(`mirrored envelopes: ${payload.mirroredEnvelopes ?? 0}`);
+    lines.push(`pending seal: ${payload.pendingSealableMessages ?? 0}`);
+  }
+  if (payload.tunnel !== "unprovisioned") {
+    lines.push(`tunnel: ${payload.tunnel.url}`);
+    lines.push(
+      `last seen: ${payload.tunnel.lastSeenSecondsAgo === null ? "unknown" : `${payload.tunnel.lastSeenSecondsAgo}s ago`}`
+    );
   }
   return lines.join("\n");
 }
@@ -9064,14 +9730,32 @@ function readPositiveIntegerOption(options, name, fallback) {
   }
   return value;
 }
+function waitForShutdownSignal() {
+  return new Promise((resolve) => {
+    const done = () => {
+      process.off("SIGINT", done);
+      process.off("SIGTERM", done);
+      resolve();
+    };
+    process.once("SIGINT", done);
+    process.once("SIGTERM", done);
+  });
+}
 async function handleCustodyCommand(io, globalOptions, action, args) {
-  const actions = ["status", "set", "keygen", "seal", "verify"];
+  const actions = ["status", "set", "keygen", "seal", "push", "unmirror", "grant", "tunnel", "verify"];
   if (!action || !actions.includes(action)) {
     throw new CliError(`Unknown custody command. Expected ${actions.join(", ")}.`);
   }
   const { options, positionals } = parseCommandFlags(args, {
     limit: "string",
-    "dry-run": "boolean"
+    "dry-run": "boolean",
+    device: "string",
+    host: "string",
+    port: "string",
+    cloudflared: "boolean",
+    "tunnel-name": "string",
+    once: "boolean",
+    yes: "boolean"
   });
   if (asBoolean(options.help)) {
     writeHelp(io, asBoolean(globalOptions.json));
@@ -9091,6 +9775,39 @@ ${payload.path}`
     );
     return;
   }
+  if (action === "grant") {
+    requireNoPositionals(positionals);
+    const deviceCode = readRequiredStringOption(options, "device", "--device");
+    const key = await loadSealedKey(io.env);
+    if (!key) {
+      throw new CliError("No sealing key on this machine. Run custody keygen first.");
+    }
+    const client = createClient(io, globalOptions);
+    const grant = await client.readCustodyKeyGrant(deviceCode);
+    if (grant.status !== "pending") {
+      throw new CliError(`Custody grant ${grant.deviceCode} is ${grant.status}, not pending.`);
+    }
+    const wrappedKey = await wrapRawSealingKeyForDeviceGrant({
+      rawKey: key.key,
+      keyId: key.keyId,
+      grant: {
+        id: grant.id,
+        workspaceId: grant.workspaceId,
+        alg: grant.alg,
+        publicKeyJwk: grant.publicKeyJwk
+      }
+    });
+    const approved = await client.approveCustodyKeyGrant(grant.deviceCode, {
+      wrappedKey
+    });
+    writeResult(
+      io,
+      globalOptions,
+      { ok: true, grantId: approved.id, deviceCode: approved.deviceCode, keyId: approved.keyId, status: approved.status },
+      (payload) => `granted browser custody access for ${payload.deviceCode} with key ${payload.keyId}`
+    );
+    return;
+  }
   const store = await openLocalEmailStore(globalOptions, io);
   try {
     if (action === "set") {
@@ -9100,6 +9817,82 @@ ${payload.path}`
       }
       store.setSetting(CUSTODY_SETTING_KEY, tier2);
       writeResult(io, globalOptions, await custodyStatusPayload(io, store, tier2), renderCustody);
+      return;
+    }
+    if (action === "tunnel") {
+      const tunnelAction = requireSinglePositional(positionals, "custody tunnel command: up");
+      if (tunnelAction !== "up") {
+        throw new CliError("Unknown custody tunnel command. Expected up.");
+      }
+      const key = await loadSealedKey(io.env);
+      if (!key) {
+        throw new CliError("No sealing key on this machine. Run custody keygen first.");
+      }
+      const host = readOptionalStringOption(options, "host") ?? "127.0.0.1";
+      const port = parseIntegerOption(readOptionalStringOption(options, "port"), "--port", { min: 0, max: 65535 }) ?? 0;
+      const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+      const server = await startCustodyTunnelServer({
+        store,
+        key,
+        host,
+        port,
+        onSeen: (seenAt) => {
+          store.setSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY, seenAt);
+        }
+      });
+      store.setSetting(CUSTODY_SETTING_KEY, "live-tunnel");
+      store.setSetting(CUSTODY_TUNNEL_URL_KEY, server.url);
+      store.setSetting(CUSTODY_TUNNEL_STARTED_AT_KEY, startedAt);
+      store.setSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY, startedAt);
+      const tunnelName = readOptionalStringOption(options, "tunnel-name");
+      const cloudflaredArgs = buildCloudflaredArgs({ localUrl: server.url, tunnelName });
+      const cloudflared = asBoolean(options.cloudflared) ? startCloudflaredTunnel({ localUrl: server.url, tunnelName }) : null;
+      cloudflared?.stdout?.on("data", (chunk) => {
+        io.stderr(`[cloudflared] ${String(chunk)}`);
+      });
+      cloudflared?.stderr?.on("data", (chunk) => {
+        io.stderr(`[cloudflared] ${String(chunk)}`);
+      });
+      cloudflared?.once("error", (error) => {
+        io.stderr(`[cloudflared] ${error.message}
+`);
+      });
+      const payload = {
+        ok: true,
+        tunnel: "live",
+        url: server.url,
+        keyId: key.keyId,
+        sealedEnvelopes: store.countSealedEnvelopes(key.keyId),
+        pendingSealableMessages: store.countMessagesToSeal(key.keyId),
+        startedAt,
+        cloudflared: {
+          enabled: Boolean(cloudflared),
+          mode: tunnelName ? "named" : "quick",
+          command: `cloudflared ${cloudflaredArgs.join(" ")}`
+        }
+      };
+      writeResult(
+        io,
+        globalOptions,
+        payload,
+        (value) => [
+          `live tunnel: ${value.url}`,
+          `sealing key: ${value.keyId}`,
+          `sealed envelopes: ${value.sealedEnvelopes}`,
+          value.cloudflared.enabled ? `cloudflared: started (${value.cloudflared.mode})` : `cloudflared: ${value.cloudflared.command}`
+        ].join("\n")
+      );
+      if (asBoolean(options.once)) {
+        cloudflared?.kill("SIGTERM");
+        await server.close();
+        return;
+      }
+      try {
+        await waitForShutdownSignal();
+      } finally {
+        cloudflared?.kill("SIGTERM");
+        await server.close();
+      }
       return;
     }
     if (action === "seal") {
@@ -9145,6 +9938,101 @@ ${payload.path}`
           sealedEnvelopes: store.countSealedEnvelopes(key.keyId)
         },
         (payload) => `sealed ${payload.sealed} messages; ${payload.sealedEnvelopes} envelopes total (key ${payload.keyId})`
+      );
+      return;
+    }
+    if (action === "push") {
+      requireNoPositionals(positionals);
+      const key = await loadSealedKey(io.env);
+      if (!key) {
+        throw new CliError("No sealing key on this machine. Run custody keygen first.");
+      }
+      const limit = readPositiveIntegerOption(options, "limit", 500);
+      const pendingRows = store.listSealedEnvelopesToPush(key.keyId, limit);
+      if (asBoolean(options["dry-run"])) {
+        writeResult(
+          io,
+          globalOptions,
+          { ok: true, dryRun: true, keyId: key.keyId, wouldPush: pendingRows.length },
+          (payload) => `would push ${payload.wouldPush} sealed envelopes with key ${payload.keyId}`
+        );
+        return;
+      }
+      if (!asBoolean(options.yes) && !asBoolean(globalOptions.yes)) {
+        throw new CliError("Refusing to unmirror sealed envelopes without --yes.", 2);
+      }
+      const client = createClient(io, globalOptions);
+      let pushed = 0;
+      for (const row of pendingRows) {
+        const envelope = parseSealedEnvelope(row.envelopeJson);
+        const receipt = await client.pushSealedEnvelope(row.workspaceId, { ...envelope });
+        store.markSealedEnvelopePushed({
+          messageId: row.messageId,
+          keyId: key.keyId,
+          remoteEtag: receipt.etag
+        });
+        pushed += 1;
+      }
+      writeResult(
+        io,
+        globalOptions,
+        {
+          ok: true,
+          keyId: key.keyId,
+          pushed,
+          mirroredEnvelopes: store.countMirroredSealedEnvelopes(key.keyId)
+        },
+        (payload) => `pushed ${payload.pushed} sealed envelopes; ${payload.mirroredEnvelopes} mirrored (key ${payload.keyId})`
+      );
+      return;
+    }
+    if (action === "unmirror") {
+      requireNoPositionals(positionals);
+      const key = await loadSealedKey(io.env);
+      if (!key) {
+        throw new CliError("No sealing key on this machine. Run custody keygen first.");
+      }
+      const mirroredRows = store.listMirroredSealedEnvelopes(key.keyId);
+      const byWorkspace = /* @__PURE__ */ new Map();
+      for (const row of mirroredRows) {
+        const rows = byWorkspace.get(row.workspaceId) ?? [];
+        rows.push(row);
+        byWorkspace.set(row.workspaceId, rows);
+      }
+      if (asBoolean(options["dry-run"])) {
+        writeResult(
+          io,
+          globalOptions,
+          {
+            ok: true,
+            dryRun: true,
+            keyId: key.keyId,
+            wouldUnmirror: mirroredRows.length,
+            workspaces: byWorkspace.size
+          },
+          (payload) => `would unmirror ${payload.wouldUnmirror} sealed envelopes across ${payload.workspaces} workspaces`
+        );
+        return;
+      }
+      const client = createClient(io, globalOptions);
+      let remoteDeleted = 0;
+      for (const [workspaceId, rows] of byWorkspace.entries()) {
+        const result = await client.deleteSealedEnvelopeMirror(workspaceId, { keyId: key.keyId });
+        remoteDeleted += result.deleted;
+        for (const row of rows) {
+          store.markSealedEnvelopeUnmirrored({ messageId: row.messageId, keyId: key.keyId });
+        }
+      }
+      writeResult(
+        io,
+        globalOptions,
+        {
+          ok: true,
+          keyId: key.keyId,
+          unmirrored: mirroredRows.length,
+          remoteDeleted
+        },
+        (payload) => `unmirrored ${payload.unmirrored} sealed envelopes; receiver deleted ${payload.remoteDeleted}`
       );
       return;
     }
@@ -9983,14 +10871,14 @@ async function handleExport(io, globalOptions, args) {
   if (resolveDataMode(globalOptions, io.env) === "local") {
     const store = await openLocalEmailStore(globalOptions, io);
     try {
-      writeJson(io, wrapEmailWorkspaceTransfer(store.exportWorkspace(workspaceId), config));
+      writeJson2(io, wrapEmailWorkspaceTransfer(store.exportWorkspace(workspaceId), config));
     } finally {
       store.close();
     }
     return;
   }
   const result = await createClient(io, globalOptions).exportWorkspace(workspaceId);
-  writeJson(io, wrapEmailWorkspaceTransfer(result, config));
+  writeJson2(io, wrapEmailWorkspaceTransfer(result, config));
 }
 async function handleImport(io, globalOptions, args) {
   const { options, positionals } = parseCommandFlags(args, {
@@ -10013,7 +10901,7 @@ async function handleImport(io, globalOptions, args) {
   }
   const config = resolveEmailPlaneConfig(globalOptions, io.env);
   if (asBoolean(options["dry-run"])) {
-    writeJson(io, planEmailWorkspaceImport(payload, bundle, config));
+    writeJson2(io, planEmailWorkspaceImport(payload, bundle, config));
     return;
   }
   if (resolveDataMode(globalOptions, io.env) === "local") {
@@ -10094,7 +10982,7 @@ async function runCli(argv, io) {
       return 0;
     }
     if (rest[0] === "commands") {
-      writeJson(io, commandManifest());
+      writeJson2(io, commandManifest());
       return 0;
     }
     if (asBoolean(globalOptions.help) || rest.length === 0 || rest[0] === "help") {
@@ -10106,7 +10994,8 @@ async function runCli(argv, io) {
     const localDataMode = resolveDataMode(globalOptions, io.env) === "local";
     const isWorkspaceMetadataCommand = group === "workspace" && ["list", "current", "use"].includes(action ?? "");
     const isSyncPullCommand = group === "sync" && action === "pull";
-    if (group !== "auth" && group !== "store" && group !== "custody" && !isWorkspaceMetadataCommand && activeSession && (!localDataMode || isSyncPullCommand) && !resolveExternalToken(globalOptions, io.env)) {
+    const isCustodySessionCommand = group === "custody" && action === "grant";
+    if (group !== "auth" && group !== "store" && (group !== "custody" || isCustodySessionCommand) && !isWorkspaceMetadataCommand && activeSession && (!localDataMode || isSyncPullCommand) && !resolveExternalToken(globalOptions, io.env)) {
       activeSession = await ensureWorkspaceSession(activeSession, {
         workspace: resolveWorkspaceOptional(globalOptions, io.env),
         fetchImpl: io.fetchImpl
@@ -10161,12 +11050,16 @@ async function runCli(argv, io) {
     }
     return 0;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected CLI error.";
+    if (argv.includes("--json")) {
+      writeJsonError(io, message);
+      return error instanceof CliError ? error.exitCode : 1;
+    }
     if (error instanceof CliError) {
       io.stderr(`${error.message}
 `);
       return error.exitCode;
     }
-    const message = error instanceof Error ? error.message : "Unexpected CLI error.";
     io.stderr(`${message}
 `);
     return 1;
