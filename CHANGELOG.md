@@ -6,6 +6,12 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.3 - 2026-07-07
+
+- Added the browserless `mere business onboard agent-start` invite bootstrap path to the bundled Business adapter and root agent guidance.
+- Updated local app repo resolution to prefer usable `mere-*` checkouts over partial legacy helper folders.
+- Completed the registered IM adapter packaging so the root registry, bundled adapters, docs, and package checks stay in sync.
+
 ## 0.5.0 - 2026-06-04
 
 - Added `mere docs login|status|index|read|search|logout` for authenticated hosted Mere platform and app docs through `mere-docs.mere.world`, without reading local repo paths or making docs public.
