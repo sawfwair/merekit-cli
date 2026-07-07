@@ -6189,8 +6189,9 @@ ${workspace}`;
     path: ["auth", "agent-login"],
     summary: "Refresh or reissue a local Business agent session without opening a browser.",
     options: [
-      stringOption("workspace", "workspace", "Workspace id, slug, or host to select. Required when reissuing a missing local session."),
-      stringOption("bootstrap-token", "bootstrapToken", "Optional agent bootstrap bearer token. Defaults to MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN."),
+      stringOption("workspace", "workspace", "Workspace id, slug, or host to select. Required for workspace-claim reissue."),
+      stringOption("invite-code", "inviteCode", "Original claimed onboarding invite code for session recovery without a browser."),
+      stringOption("bootstrap-token", "bootstrapToken", "Optional admin recovery bootstrap bearer token. Defaults to MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN."),
       stringOption("agent-id", "agentId", "Stable agent identifier from the original agent onboarding run. Required when reissuing a missing local session."),
       stringOption("agent-label", "agentLabel", "Human-readable agent label."),
       stringOption("agent-email", "agentEmail", "Broker identity email for the agent."),
@@ -6201,6 +6202,7 @@ ${workspace}`;
     ],
     schema: external_exports.object({
       workspace: optionalString,
+      inviteCode: optionalString,
       bootstrapToken: optionalString,
       agentId: optionalString,
       agentLabel: optionalString,
@@ -6214,6 +6216,7 @@ ${workspace}`;
     risk: "write",
     execute: (runtime, input2) => runtime.agentLogin({
       workspace: input2.workspace,
+      inviteCode: input2.inviteCode,
       bootstrapToken: input2.bootstrapToken,
       agentId: input2.agentId,
       agentLabel: input2.agentLabel,
@@ -9100,10 +9103,11 @@ async function createRuntime(globalFlags) {
     agentLogin: async (options) => {
       const session = await getLocalSession();
       if (!session) {
+        const inviteCode = String(options.inviteCode ?? "").trim();
         const workspaceId = String(options.workspace ?? globalFlags.workspace ?? "").trim();
-        if (!workspaceId) {
+        if (!workspaceId && !inviteCode) {
           throw authError(
-            "No local Mere Business agent session found. Reissue the existing workspace session with `mere business auth agent-login --workspace <workspace-id> --agent-id <same-agent-id> --bootstrap-token <token> --json`."
+            "No local Mere Business agent session found. Reissue with `mere business auth agent-login --workspace <workspace-id> --agent-id <same-agent-id> --json`, or recover from the original claimed invite with `--invite-code <code>`."
           );
         }
         const agentId = String(options.agentId ?? "").trim();
@@ -9112,29 +9116,33 @@ async function createRuntime(globalFlags) {
             "No local Mere Business agent session found. Pass --agent-id with the stable agent id from the original `onboard agent-start` run to reissue the existing workspace session."
           );
         }
+        const agent = compactObject({
+          id: agentId,
+          label: options.agentLabel,
+          email: options.agentEmail,
+          emailLocalPart: options.agentEmailLocalPart,
+          toolKey: options.agentToolKey,
+          jobId: options.agentJobId,
+          sessionId: options.agentSessionId
+        });
         const bootstrapToken = String(options.bootstrapToken ?? "").trim() || env.MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN?.trim() || env.AGENT_ONBOARDING_BOOTSTRAP_SECRET?.trim() || "";
-        if (!bootstrapToken) {
-          throw authError(
-            "No local Mere Business agent session found and no bootstrap token is available. Set MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN or pass --bootstrap-token to reissue the existing workspace session."
-          );
-        }
         const baseUrl = normalizeConsoleUrl();
-        const result = await reissueConsoleAgentSession({
+        const result = inviteCode ? await bootstrapConsoleAgentOnboarding({
+          baseUrl,
+          bootstrapToken,
+          code: inviteCode,
+          values: {},
+          agent
+        }) : await reissueConsoleAgentSession({
           baseUrl,
           bootstrapToken,
           workspaceId,
-          agent: compactObject({
-            id: agentId,
-            label: options.agentLabel,
-            email: options.agentEmail,
-            emailLocalPart: options.agentEmailLocalPart,
-            toolKey: options.agentToolKey,
-            jobId: options.agentJobId,
-            sessionId: options.agentSessionId
-          })
+          agent
         });
         if (!result.session) {
-          throw authError("Business agent session reissue did not return a session.");
+          throw authError(
+            inviteCode ? "Business agent invite recovery did not return a session. Confirm the invite was claimed by this same agent id." : "Business agent workspace-claim reissue did not return a session."
+          );
         }
         const next = await writeSession(
           createLocalSession2(result.session, {
