@@ -4,8 +4,8 @@
   "adapters": [
     {
       "app": "business",
-      "sourceRepoPath": "business",
-      "sourceArtifactPath": "business/packages/cli/dist/index.js",
+      "sourceRepoPath": "mere-business",
+      "sourceArtifactPath": "mere-business/packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
       "builtAt": "2026-06-04T16:56:40.732Z"
     },
@@ -70,6 +70,13 @@
       "sourceRepoPath": "email",
       "sourceArtifactPath": "email/dist/run.js",
       "adapterPath": "adapters/email/run.js",
+      "builtAt": "2026-06-04T16:56:40.732Z"
+    },
+    {
+      "app": "im",
+      "sourceRepoPath": "mere-im",
+      "sourceArtifactPath": "mere-im/dist/run.js",
+      "adapterPath": "adapters/im/run.js",
       "builtAt": "2026-06-04T16:56:40.732Z"
     },
     {

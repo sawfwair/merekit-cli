@@ -55,6 +55,44 @@ console.log(JSON.stringify({ args, marker: process.env.FAKE_CLI_MARKER ?? null }
   );
 }
 
+async function writeFakeBusinessCli(fake) {
+  await mkdir(path.dirname(fake), { recursive: true });
+  await writeFile(
+    fake,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'commands') {
+  console.log(JSON.stringify({
+    schemaVersion: 1,
+    app: 'mere-business',
+    namespace: 'business',
+    aliases: ['business', 'zerosmb'],
+    auth: { kind: 'browser' },
+    baseUrlEnv: ['BUSINESS_BASE_URL'],
+    sessionPath: null,
+    globalFlags: ['json', 'workspace', 'base-url'],
+    commands: [
+      { id: 'onboard.agentStart', path: ['onboard', 'agent-start'], summary: 'Start agentic onboarding.', auth: 'none', risk: 'write', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: ['code'], flags: ['bootstrap-token', 'agent-email'] },
+      { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
+    ]
+  }));
+  process.exit(0);
+}
+if (args[0] === '--version') {
+  console.log('fake-business');
+  process.exit(0);
+}
+if (args[0] === 'completion') {
+  console.log('complete');
+  process.exit(0);
+}
+console.log(JSON.stringify({ args, marker: 'real-business' }));
+`,
+    'utf8',
+  );
+  await chmod(fake, 0o755);
+}
+
 async function writeFakeHelpVersionCli(fake) {
   await mkdir(path.dirname(fake), { recursive: true });
   await writeFile(
@@ -353,11 +391,13 @@ test('renders help and completion', async () => {
   assert.match(help.stdout, /mere onboard --interactive/);
   assert.match(help.stdout, /mere business waitlist join --email EMAIL/);
   assert.match(help.stdout, /Operator\/agent first run:/);
+  assert.match(help.stdout, /mere business onboard agent-start INVITE_CODE --json/);
   assert.match(help.stdout, /mere help agent/);
   const agentHelp = await run(['help', 'agent']);
   assert.equal(agentHelp.code, 0);
   assert.match(agentHelp.stdout, /mere agent guide/);
   assert.match(agentHelp.stdout, /Human first-use:/);
+  assert.match(agentHelp.stdout, /mere business onboard agent-start INVITE_CODE --json/);
   assert.match(agentHelp.stdout, /Operating loop:/);
   const completion = await run(['completion', 'bash']);
   assert.equal(completion.code, 0);
@@ -624,7 +664,7 @@ test('onboard --interactive preserves first-use non-interactive guidance', async
   assert.equal(result.code, 1);
   assert.match(result.stderr, /interactive onboarding requires an interactive terminal/);
   assert.match(result.stderr, /mere business waitlist join --email EMAIL/);
-  assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
+  assert.match(result.stderr, /mere business onboard agent-start INVITE_CODE --json/);
   assert.match(result.stderr, /mere onboard --workspace WORKSPACE_ID --json/);
 });
 
@@ -632,7 +672,7 @@ test('onboard invite-code without interactive points to the bootstrap path', asy
   const result = await run(['onboard', '--invite-code', 'zcli_code_123', '--json']);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /Invite codes require interactive onboarding/);
-  assert.match(result.stderr, /mere business onboard start INVITE_CODE --json/);
+  assert.match(result.stderr, /mere business onboard agent-start INVITE_CODE --json/);
 });
 
 test('discovers local skills for registry publishing', async () => {
@@ -833,6 +873,34 @@ test('MERE_CLI_SOURCE can force bundled or local resolution', async () => {
   });
   assert.equal(local.code, 0, local.stderr);
   assert.equal(JSON.parse(local.stdout).apps.find((app) => app.app === 'projects').source, 'local');
+});
+
+test('business local resolution prefers a usable mere-business checkout over a partial business folder', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-business-root-'));
+  await mkdir(path.join(root, 'business', 'packages', 'auth-client'), { recursive: true });
+  const businessRoot = path.join(root, 'mere-business');
+  await mkdir(businessRoot, { recursive: true });
+  await writeFile(path.join(businessRoot, 'package.json'), '{"name":"mere-business","private":true}\n', 'utf8');
+  const businessCli = path.join(businessRoot, 'packages', 'cli', 'dist', 'index.js');
+  await writeFakeBusinessCli(businessCli);
+
+  const listed = await run(['apps', 'list', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(listed.code, 0, listed.stderr);
+  const business = JSON.parse(listed.stdout).apps.find((app) => app.app === 'business');
+  assert.equal(business.source, 'local');
+  assert.equal(business.cli, businessCli);
+
+  const result = await run(['business', 'onboard', 'agent-start', 'zcli_code_123', '--json'], {
+    MERE_ROOT: root,
+    MERE_CLI_SOURCE: 'local',
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.marker, 'real-business');
+  assert.deepEqual(payload.args, ['onboard', 'agent-start', 'zcli_code_123', '--json']);
 });
 
 test('missing forced bundled adapters return actionable errors', async () => {

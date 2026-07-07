@@ -15,6 +15,7 @@ Bundled adapters in this build:
 - `video`
 - `network`
 - `email`
+- `im`
 - `gives`
 - `works`
 - `media`
