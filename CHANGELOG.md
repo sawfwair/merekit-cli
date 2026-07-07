@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.4 - 2026-07-07
+
+- Published the bundled Business adapter fix so browserless agent onboarding persists the returned workspace-scoped Business CLI session locally while keeping session material out of JSON output.
+
 ## 0.5.3 - 2026-07-07
 
 - Added the browserless `mere business onboard agent-start` invite bootstrap path to the bundled Business adapter and root agent guidance.
