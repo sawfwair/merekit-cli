@@ -2515,7 +2515,7 @@ async function cmdAuthAgentLogin(args, json, ctx) {
     defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
   });
   await saveStoredSession(ctx, session);
-  if (json) return writeJson(ctx, session);
+  if (json) return writeJson(ctx, redactedSessionPayload(session, ctx));
   ctx.stdout(`${renderSessionSummary(session, ctx)}
 `);
   return 0;
@@ -2559,6 +2559,20 @@ function renderSessionSummary(session, ctx) {
     `Session file: ${sessionFilePath(ctx)}`,
     `Expires: ${formatDate(session.expiresAt)}`
   ].join("\n");
+}
+function redactedSessionPayload(session, ctx) {
+  return {
+    ok: true,
+    authenticated: true,
+    appAccessReady: true,
+    user: session.user,
+    baseUrl: session.baseUrl,
+    workspace: session.workspace ?? null,
+    workspaces: session.workspaces,
+    defaultWorkspaceId: session.defaultWorkspaceId ?? null,
+    expiresAt: session.expiresAt,
+    sessionFile: sessionFilePath(ctx)
+  };
 }
 async function readJsonObjectFromArgs(args) {
   const inline = readFlag(args, "data");
@@ -2669,7 +2683,7 @@ async function cmdAuthLogin(baseUrl, args, json, ctx) {
 `)
   });
   await saveStoredSession(ctx, session);
-  if (json) return writeJson(ctx, session);
+  if (json) return writeJson(ctx, redactedSessionPayload(session, ctx));
   ctx.stdout(`${renderSessionSummary(session, ctx)}
 `);
   return 0;

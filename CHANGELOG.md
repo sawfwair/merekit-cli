@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.16 - 2026-07-07
+
+- Published the bundled IM adapter fix so `auth login --json` and `auth agent-login --json` return a redacted session summary instead of local access/refresh tokens.
+
 ## 0.5.15 - 2026-07-07
 
 - Published the bundled Business adapter with production-grade AgentsIdentify-backed agent onboarding: invite bootstrap now requires a persistent AgentsIdentify proof, Business owns the workspace-agent identity binding, and session reissue is authorized through that binding instead of a distributed bootstrap token.
