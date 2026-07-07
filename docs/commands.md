@@ -222,7 +222,7 @@ This matrix is generated from the current local app manifests.
 | `zone` | 35 | 8 | 17 read, 11 write, 2 destructive, 5 external | `base-url`, `workspace`, `data-plane`, `plane`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
 | `video` | 43 | 10 | 24 read, 13 write, 1 destructive, 5 external | `base-url`, `workspace`, `token`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token` |
 | `network` | 88 | 7 | 38 read, 28 write, 11 destructive, 11 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token` |
-| `email` | 38 | 5 | 18 read, 13 write, 3 destructive, 4 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
+| `email` | 40 | 6 | 19 read, 13 write, 3 destructive, 5 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
 | `im` | 36 | 3 | 15 read, 18 write, 2 destructive, 1 external | `base-url`, `workspace`, `json`, `cookie`, `session-cookie`, `bearer`, `token`, `internal-token`, `data`, `data-file`, `yes`, `confirm` |
 | `gives` | 45 | 9 | 24 read, 14 write, 5 destructive, 2 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
 | `works` | 48 | 0 | 17 read, 24 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `token` |
