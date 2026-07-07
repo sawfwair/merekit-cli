@@ -1453,11 +1453,11 @@ import os4 from "node:os";
 import path6 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/client.ts
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -1468,7 +1468,7 @@ var CLI_AUTH_CODE_QUERY_PARAM = "code";
 var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os2 from "node:os";
 import path2 from "node:path";
@@ -1570,7 +1570,7 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_3e33aa21815955fd111aa71f2a8f3f47/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -1953,6 +1953,7 @@ Usage:
 
 Global flags:
   --base-url URL        Override MERE_MEDIA_BASE_URL
+  --business-base-url URL Override Mere Business for browserless agent login
   --store MODE          cloud (default) or local
   --ai MODE             local (default) or cloud
   --local-db PATH       Override local SQLite database path
@@ -1968,6 +1969,7 @@ Commands:
   mere-media completion [bash|zsh|fish]
   mere-media store info [--store local|cloud] [--json]
   mere-media auth login [--base-url URL] [--workspace WORKSPACE_ID]
+  mere-media auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business]
   mere-media auth whoami [--json]
   mere-media auth logout [--json]
   mere-media items list [query] [--json]
@@ -1984,6 +1986,7 @@ Commands:
 `;
 var GLOBAL_FLAGS = {
   "base-url": "string",
+  "business-base-url": "string",
   store: "string",
   ai: "string",
   "local-db": "string",
@@ -2047,6 +2050,19 @@ var MANIFEST_COMMANDS = [
     requiresConfirm: false,
     positionals: [],
     flags: ["base-url", "workspace"]
+  },
+  {
+    id: "auth.agent-login",
+    path: ["auth", "agent-login"],
+    summary: "Create a mere.media session from a Business agent session.",
+    auth: "none",
+    risk: "write",
+    supportsJson: true,
+    supportsData: false,
+    requiresYes: false,
+    requiresConfirm: false,
+    positionals: [],
+    flags: ["workspace", "business-base-url", "base-url"]
   },
   {
     id: "auth.whoami",
@@ -2229,14 +2245,14 @@ function commandManifest(env) {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_MEDIA_BASE_URL"],
     sessionPath: sessionFilePath(env),
-    globalFlags: ["base-url", "store", "ai", "local-db", "workspace", "token", "json"],
+    globalFlags: ["base-url", "business-base-url", "store", "ai", "local-db", "workspace", "token", "json"],
     commands: MANIFEST_COMMANDS
   };
 }
 function renderCompletion(shell) {
   const topWords = ["auth", "commands", "completion", "export", "import", "items", "process", "search", "store", "transcript"].sort().join(" ");
   const subcommands = {
-    auth: ["login", "logout", "whoami"],
+    auth: ["agent-login", "login", "logout", "whoami"],
     completion: ["bash", "fish", "zsh"],
     import: ["audiobook", "bundle", "file", "folder", "youtube"],
     items: ["get", "list"],
@@ -2552,6 +2568,124 @@ function parseArgs(argv, flagSpec) {
 function baseUrl(options, env) {
   return String(options["base-url"] ?? env.MERE_MEDIA_BASE_URL ?? "https://mere.media");
 }
+function normalizeBaseUrl3(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+function businessWorkspaceSelector(options, env) {
+  return typeof options.workspace === "string" ? options.workspace : env.MERE_MEDIA_WORKSPACE_ID ?? env.MERE_WORKSPACE_ID;
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new Error("Option --workspace is required when the Business session has multiple workspaces.");
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new Error("Mere Business did not return a Media base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new Error("Mere Business did not return a Media CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(args, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new Error(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, businessWorkspaceSelector(args.options, io.env));
+  const base = normalizeBaseUrl3(
+    typeof args.options["business-base-url"] === "string" ? args.options["business-base-url"] : current.baseUrl
+  );
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl: base };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl: base,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl: base,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl: base
+  };
+}
+async function agentLogin(args, io) {
+  const business = await loadRefreshedBusinessSession(args, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "media",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl3(
+      typeof args.options["base-url"] === "string" ? args.options["base-url"] : product.baseUrl
+    ),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
+}
 function localDbPath(options) {
   return typeof options["local-db"] === "string" ? options["local-db"] : void 0;
 }
@@ -2651,6 +2785,17 @@ async function runAuth(command, args, io) {
     writeJson(io, { ok: true, user: session.user, workspaces: session.workspaces });
     return 0;
   }
+  if (command === "agent-login") {
+    const session = await agentLogin(args, io);
+    writeJson(io, {
+      ok: true,
+      user: session.user,
+      baseUrl: session.baseUrl,
+      workspace: session.workspace,
+      workspaces: session.workspaces
+    });
+    return 0;
+  }
   if (command === "whoami") {
     const session = await loadSession(io.env);
     writeJson(io, { ok: true, authenticated: Boolean(session), user: session?.user ?? null, workspace: session?.workspace ?? null });
@@ -2660,7 +2805,7 @@ async function runAuth(command, args, io) {
     writeJson(io, { ok: await logoutRemote({ fetchImpl: io.fetchImpl, env: io.env }) });
     return 0;
   }
-  throw new Error("Usage: mere-media auth login|whoami|logout");
+  throw new Error("Usage: mere-media auth login|agent-login|whoami|logout");
 }
 async function runStore(command, args, io) {
   if (command !== "info") {
@@ -3074,7 +3219,13 @@ async function runCli(argv, io) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (argv.includes("--json")) {
-      writeJson(io, { ok: false, error: message });
+      writeJson(io, {
+        ok: false,
+        error: {
+          code: message.includes("No local Mere Business session") ? "auth_error" : "cli_error",
+          message
+        }
+      });
     } else {
       io.stderr(`${message}
 `);

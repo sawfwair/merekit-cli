@@ -6174,6 +6174,27 @@ ${workspace}`;
     }
   },
   {
+    path: ["auth", "agent-login"],
+    summary: "Refresh and verify a local Business agent session without opening a browser.",
+    options: [stringOption("workspace", "workspace", "Workspace id, slug, or host to select.")],
+    schema: external_exports.object({
+      workspace: optionalString
+    }),
+    auth: "none",
+    risk: "write",
+    execute: (runtime, input2) => runtime.agentLogin({
+      workspace: input2.workspace
+    }),
+    format: (data) => {
+      const session = data;
+      const workspace = session.workspace ? `workspace: ${session.workspace.name} (${session.workspace.id})
+slug: ${session.workspace.slug}
+host: ${session.workspace.host}` : "workspace: none yet";
+      return `Business agent session ready for ${session.user.email}
+${workspace}`;
+    }
+  },
+  {
     path: ["auth", "device", "start"],
     summary: "Start a device-code login for clients that cannot receive a browser callback.",
     options: [stringOption("console-url", "consoleUrl", "Override the mere console URL.")],
@@ -9023,6 +9044,30 @@ async function createRuntime(globalFlags) {
       await clearSession(paths);
       sessionCache = null;
       return true;
+    },
+    agentLogin: async (options) => {
+      const session = await getLocalSession();
+      if (!session) {
+        throw authError(
+          "No local Mere Business agent session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+        );
+      }
+      const selector = options.workspace ?? globalFlags.workspace ?? session.defaultWorkspaceId ?? session.workspace?.id;
+      const workspace = requireWorkspaceSelection2(session.workspaces, selector);
+      if (!sessionNeedsRefresh2(session, workspace.id)) {
+        const next = {
+          ...session,
+          workspace,
+          defaultWorkspaceId: session.defaultWorkspaceId ?? workspace.id
+        };
+        return writeSession(next);
+      }
+      return writeSession(
+        await refreshRemoteSession2(session, {
+          workspace: workspace.id,
+          persistDefaultWorkspace: false
+        })
+      );
     },
     getLocalSession,
     switchWorkspace: async (selector) => {

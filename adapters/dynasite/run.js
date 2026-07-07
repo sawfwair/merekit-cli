@@ -1493,14 +1493,143 @@ async function handleLocalRecordGroup(type, action, args, options, io) {
   });
 }
 
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d8a7e4e697715c4418477c3ed91e9ced/node_modules/@mere/cli-auth/src/client.ts
+import { spawn } from "child_process";
+import { createServer } from "http";
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d8a7e4e697715c4418477c3ed91e9ced/node_modules/@mere/cli-auth/src/contract.ts
+var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d8a7e4e697715c4418477c3ed91e9ced/node_modules/@mere/cli-auth/src/session.ts
+import { chmod, mkdir as mkdir3, readFile as readFile2, rm, writeFile as writeFile2 } from "fs/promises";
+import os3 from "os";
+import path3 from "path";
+function stateHome2(env) {
+  const homeDir = env.HOME?.trim() || os3.homedir();
+  return env.XDG_STATE_HOME?.trim() || path3.join(homeDir, ".local", "state");
+}
+function normalizeBaseUrl(raw) {
+  const url = new URL(raw);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+function resolveCliPaths(appName, env = process.env) {
+  const stateDir = path3.join(stateHome2(env), appName);
+  return {
+    stateDir,
+    sessionFile: path3.join(stateDir, "session.json")
+  };
+}
+async function loadCliSession(input) {
+  const env = input.env ?? process.env;
+  const appNames = [input.appName, ...input.legacyAppNames ?? []];
+  for (const appName of appNames) {
+    const paths = resolveCliPaths(appName, env);
+    try {
+      const raw = await readFile2(paths.sessionFile, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed?.version === 1) {
+        return parsed;
+      }
+      return null;
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+  return null;
+}
+async function saveCliSession(input) {
+  const paths = resolveCliPaths(input.appName, input.env ?? process.env);
+  await mkdir3(paths.stateDir, { recursive: true });
+  await writeFile2(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+`, "utf8");
+  await chmod(paths.sessionFile, 384).catch(() => void 0);
+}
+async function clearCliSession(input) {
+  const env = input.env ?? process.env;
+  const appNames = [input.appName, ...input.legacyAppNames ?? []];
+  for (const appName of appNames) {
+    const paths = resolveCliPaths(appName, env);
+    await rm(paths.sessionFile, { force: true });
+  }
+}
+function resolveWorkspaceSelection(workspaces, selector) {
+  const normalized = selector?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return workspaces.find(
+    (workspace2) => workspace2.id.toLowerCase() === normalized || workspace2.slug.toLowerCase() === normalized || workspace2.host.toLowerCase() === normalized
+  ) ?? null;
+}
+function requireWorkspaceSelection(workspaces, selector) {
+  const workspace2 = resolveWorkspaceSelection(workspaces, selector);
+  if (!workspace2) {
+    throw new Error(`Workspace ${selector ?? "(missing)"} is not available in this session.`);
+  }
+  return workspace2;
+}
+function sessionNeedsRefresh(session, targetWorkspaceId, now = Date.now()) {
+  const currentWorkspaceId = session.workspace?.id ?? null;
+  if ((targetWorkspaceId ?? null) !== currentWorkspaceId) {
+    return true;
+  }
+  const expiresAtMs = session.accessTokenClaims.exp * 1e3 || Date.parse(session.expiresAt);
+  return !Number.isFinite(expiresAtMs) || expiresAtMs - now <= 6e4;
+}
+function mergeSessionPayload(current, payload, options = {}) {
+  const nextDefaultWorkspaceId = options.persistDefaultWorkspace ? payload.workspace?.id ?? payload.defaultWorkspaceId : current.defaultWorkspaceId ?? payload.defaultWorkspaceId;
+  return {
+    ...current,
+    ...payload,
+    baseUrl: normalizeBaseUrl(options.baseUrl ?? current.baseUrl),
+    defaultWorkspaceId: nextDefaultWorkspaceId ?? null,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d8a7e4e697715c4418477c3ed91e9ced/node_modules/@mere/cli-auth/src/client.ts
+async function parseJson(response) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload;
+}
+async function postJson(fetchImpl2, input, body) {
+  return parseJson(
+    await fetchImpl2(input, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+async function refreshRemoteSession(input) {
+  const refreshUrl = new URL(CLI_AUTH_REFRESH_PATH, normalizeBaseUrl(input.baseUrl));
+  return postJson(input.fetchImpl ?? fetch, refreshUrl, {
+    refreshToken: input.refreshToken,
+    workspace: input.workspace ?? null
+  });
+}
+
 // cli/mere-dynasite.ts
 var DEFAULT_BASE_URL = "https://sites.merekit.com";
+var APP_NAME = "mere-dynasite";
+var activeSession = null;
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["discover", "dry-run", "e2e", "help", "json", "version", "yes"]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "action",
   "alt",
   "ai",
   "base-url",
+  "business-base-url",
   "bundle-id",
   "confirm",
   "cookie",
@@ -1550,10 +1679,10 @@ var HttpError = class extends CliError {
     this.name = "HttpError";
   }
 };
-function manifestCommand(path3, summary, options = {}) {
+function manifestCommand(path4, summary, options = {}) {
   return {
-    id: path3.join("."),
-    path: path3,
+    id: path4.join("."),
+    path: path4,
     summary,
     auth: options.auth ?? "session",
     risk: options.risk ?? "read",
@@ -1573,9 +1702,10 @@ var COMMAND_MANIFEST = {
   aliases: ["dynasite", "mere-dynasite", "sites"],
   auth: { kind: "mixed" },
   baseUrlEnv: ["DYNASITE_BASE_URL", "MERE_DYNASITE_BASE_URL"],
-  sessionPath: null,
+  sessionPath: "~/.local/state/mere-dynasite/session.json",
   globalFlags: [
     "base-url",
+    "business-base-url",
     "workspace",
     "json",
     "token",
@@ -1660,6 +1790,15 @@ var COMMAND_MANIFEST = {
     manifestCommand(["auth", "whoami"], "Show the current Dynasite session user.", {
       flags: []
     }),
+    manifestCommand(["auth", "agent-login"], "Create a Dynasite session from a Business agent session.", {
+      auth: "none",
+      risk: "write",
+      flags: ["workspace", "business-base-url", "base-url"]
+    }),
+    manifestCommand(["auth", "logout"], "Clear the local Dynasite CLI session.", {
+      risk: "write",
+      flags: []
+    }),
     manifestCommand(["businesses", "list"], "List researched business requests.", {
       flags: ["status", "limit"],
       auditDefault: false
@@ -1739,8 +1878,8 @@ var COMMAND_MANIFEST = {
   ]
 };
 async function cliVersion() {
-  const { readFile: readFile2 } = await import("fs/promises");
-  const raw = await readFile2(new URL("../package.json", import.meta.url), "utf8");
+  const { readFile: readFile3 } = await import("fs/promises");
+  const raw = await readFile3(new URL("../package.json", import.meta.url), "utf8");
   const parsed = JSON.parse(raw);
   return parsed.version?.trim() || "0.0.0";
 }
@@ -1819,9 +1958,9 @@ function envValue(env, names) {
   return void 0;
 }
 function baseUrl(parsed, ctx) {
-  return flag(parsed, "base-url")?.trim() ?? envValue(ctx.env, ["DYNASITE_BASE_URL", "MERE_DYNASITE_BASE_URL"]) ?? DEFAULT_BASE_URL;
+  return flag(parsed, "base-url")?.trim() ?? envValue(ctx.env, ["DYNASITE_BASE_URL", "MERE_DYNASITE_BASE_URL"]) ?? activeSession?.baseUrl ?? DEFAULT_BASE_URL;
 }
-function normalizeBaseUrl(raw) {
+function normalizeBaseUrl2(raw) {
   const url = new URL(raw);
   url.pathname = "";
   url.search = "";
@@ -1829,7 +1968,7 @@ function normalizeBaseUrl(raw) {
   return url.toString().replace(/\/$/, "");
 }
 function authToken(parsed, ctx) {
-  return flag(parsed, "token")?.trim() || envValue(ctx.env, ["DYNASITE_SESSION_TOKEN", "MERE_DYNASITE_SESSION_TOKEN"]);
+  return flag(parsed, "token")?.trim() || envValue(ctx.env, ["DYNASITE_SESSION_TOKEN", "MERE_DYNASITE_SESSION_TOKEN"]) || activeSession?.accessToken;
 }
 function cookieHeader(parsed, ctx) {
   return flag(parsed, "cookie")?.trim() || envValue(ctx.env, ["DYNASITE_COOKIE", "MERE_DYNASITE_COOKIE"]);
@@ -1844,8 +1983,118 @@ function workspace(parsed, ctx) {
 function fetchImpl(ctx) {
   return ctx.fetchImpl ?? fetch;
 }
-async function fetchJson(parsed, ctx, path3, options = {}) {
-  const url = new URL(path3, normalizeBaseUrl(baseUrl(parsed, ctx)));
+function sessionEnv(ctx) {
+  return ctx.env;
+}
+async function loadStoredSession(ctx) {
+  activeSession = await loadCliSession({ appName: APP_NAME, env: sessionEnv(ctx) });
+  return activeSession;
+}
+async function saveStoredSession(ctx, session) {
+  await saveCliSession({ appName: APP_NAME, session, env: sessionEnv(ctx) });
+  activeSession = session;
+}
+async function clearStoredSession(ctx) {
+  await clearCliSession({ appName: APP_NAME, env: sessionEnv(ctx) });
+  activeSession = null;
+}
+function sessionFilePath(ctx) {
+  return resolveCliPaths(APP_NAME, sessionEnv(ctx)).sessionFile;
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.", 2);
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Dynasite base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Dynasite CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(parsed, ctx) {
+  const current = await loadCliSession({ appName: "mere-business", env: sessionEnv(ctx) });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first.",
+      2
+    );
+  }
+  const selectedWorkspace = selectBusinessWorkspace(current, workspace(parsed, ctx));
+  const businessBaseUrl = normalizeBaseUrl2(flag(parsed, "business-base-url") ?? current.baseUrl);
+  if (!sessionNeedsRefresh(current, selectedWorkspace.id)) {
+    return { session: current, workspace: selectedWorkspace, baseUrl: businessBaseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl: businessBaseUrl,
+    refreshToken: current.refreshToken,
+    workspace: selectedWorkspace.id,
+    fetchImpl: fetchImpl(ctx)
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl: businessBaseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: sessionEnv(ctx) });
+  return {
+    session,
+    workspace: session.workspace ?? selectedWorkspace,
+    baseUrl: businessBaseUrl
+  };
+}
+function renderCliSession(session, ctx) {
+  const selectedWorkspace = session.workspace ?? session.workspaces.find((candidate) => candidate.id === session.defaultWorkspaceId) ?? null;
+  return [
+    `Signed in as ${session.user.displayName || session.user.primaryEmail || session.user.email}`,
+    `Base URL: ${session.baseUrl}`,
+    `Workspace: ${selectedWorkspace ? selectedWorkspace.slug : "none"}`,
+    `Workspaces: ${session.workspaces.length}`,
+    `Session file: ${sessionFilePath(ctx)}`,
+    `Expires: ${session.expiresAt}`
+  ].join("\n");
+}
+async function fetchJson(parsed, ctx, path4, options = {}) {
+  const url = new URL(path4, normalizeBaseUrl2(baseUrl(parsed, ctx)));
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value) url.searchParams.set(key, value);
   }
@@ -1915,6 +2164,16 @@ function listOptions(parsed) {
 function printJson(ctx, data) {
   ctx.stdout(JSON.stringify(data, null, 2) + "\n");
   return 0;
+}
+function printJsonError(ctx, message, exitCode2 = 1) {
+  ctx.stdout(JSON.stringify({
+    ok: false,
+    error: {
+      code: message.includes("No local Mere Business session") ? "auth_error" : "cli_error",
+      message
+    }
+  }, null, 2) + "\n");
+  return exitCode2;
 }
 function formatDate(value) {
   if (typeof value !== "string") return "";
@@ -1988,14 +2247,14 @@ function safeBundlePath(pathname) {
 }
 async function packStaticBundle(parsed) {
   const { join, relative, resolve } = await import("path");
-  const { readdir, readFile: readFile2, stat } = await import("fs/promises");
+  const { readdir, readFile: readFile3, stat } = await import("fs/promises");
   const title = flag(parsed, "title") ?? null;
   const entryPath = flag(parsed, "entry-path") ?? "index.html";
   const zip = flag(parsed, "zip");
   const sourceDir = flag(parsed, "source-dir");
   if (zip && sourceDir) throw new CliError("Use either --source-dir or --zip, not both.", 2);
   if (zip) {
-    const data = await readFile2(zip);
+    const data = await readFile3(zip);
     return {
       title,
       entryPath,
@@ -2019,11 +2278,11 @@ async function packStaticBundle(parsed) {
       }
       if (!entry.isFile()) continue;
       const absolute = join(dir, entry.name);
-      const path3 = safeBundlePath(relative(root, absolute));
-      const data = await readFile2(absolute);
+      const path4 = safeBundlePath(relative(root, absolute));
+      const data = await readFile3(absolute);
       files.push({
-        path: path3,
-        contentType: inferContentType(path3),
+        path: path4,
+        contentType: inferContentType(path4),
         dataBase64: data.toString("base64"),
         sizeBytes: data.byteLength
       });
@@ -2037,8 +2296,8 @@ async function packStaticBundle(parsed) {
     files
   };
 }
-async function postFormJson(parsed, ctx, path3, formData, options = {}) {
-  const url = new URL(path3, normalizeBaseUrl(baseUrl(parsed, ctx)));
+async function postFormJson(parsed, ctx, path4, formData, options = {}) {
+  const url = new URL(path4, normalizeBaseUrl2(baseUrl(parsed, ctx)));
   const headers = { accept: "application/json" };
   const token = authToken(parsed, ctx);
   const cookie = cookieHeader(parsed, ctx);
@@ -2095,6 +2354,8 @@ function printHelp(ctx) {
     about                    Show CLI and service metadata
     status                   Show app and session status
     auth whoami              Show current session user
+    auth agent-login          Create CLI session from Mere Business agent session
+    auth logout               Clear local CLI session
     businesses list          List business research records
     sites list               List generated sites
     sites get --site-id ID    Show one generated site payload
@@ -2116,6 +2377,7 @@ function printHelp(ctx) {
 
   Flags:
     --base-url <url>         Override API base
+    --business-base-url <url> Override Mere Business for browserless agent login
     --workspace <id>         Forward workspace context as x-mere-workspace
     --store local|cloud      Choose supported local/cloud data-plane commands
     --ai local|cloud         Choose AI plane for local-plane inspection
@@ -2166,7 +2428,7 @@ function printManifest(ctx) {
 function printCompletion(shell, ctx) {
   const topWords = ["about", "auth", "businesses", "commands", "completion", "help", "outreach", "sites", "status"].sort().join(" ");
   const subcommands = {
-    auth: ["whoami"],
+    auth: ["agent-login", "logout", "whoami"],
     businesses: ["list"],
     completion: ["bash", "fish", "zsh"],
     outreach: ["list"],
@@ -2211,7 +2473,7 @@ function aboutPayload(parsed, ctx) {
   return {
     app: "mere-dynasite",
     namespace: "dynasite",
-    baseUrl: normalizeBaseUrl(baseUrl(parsed, ctx)),
+    baseUrl: normalizeBaseUrl2(baseUrl(parsed, ctx)),
     workspace: workspace(parsed, ctx) ?? null,
     service: {
       defaultBaseUrl: DEFAULT_BASE_URL,
@@ -2243,7 +2505,7 @@ async function cmdStatus(parsed, ctx) {
   const data = await fetchJson(parsed, ctx, "/api/auth/session");
   const payload = {
     ok: true,
-    baseUrl: normalizeBaseUrl(baseUrl(parsed, ctx)),
+    baseUrl: normalizeBaseUrl2(baseUrl(parsed, ctx)),
     workspace: workspace(parsed, ctx) ?? null,
     session: data
   };
@@ -2282,6 +2544,54 @@ async function cmdWhoami(parsed, ctx) {
   const user = asObject(session.user);
   ctx.stdout(`User: ${valueText(user.primaryEmail ?? user.email ?? user.userId)}
 `);
+  return 0;
+}
+async function cmdAgentLogin(parsed, ctx) {
+  const business = await loadRefreshedBusinessSession(parsed, ctx);
+  const response = await fetchImpl(ctx)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "dynasite",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CliError(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl2(flag(parsed, "base-url") ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveStoredSession(ctx, session);
+  if (boolFlag(parsed, "json")) {
+    return printJson(ctx, {
+      ok: true,
+      user: session.user,
+      baseUrl: session.baseUrl,
+      workspace: session.workspace,
+      workspaces: session.workspaces
+    });
+  }
+  ctx.stdout(`${renderCliSession(session, ctx)}
+`);
+  return 0;
+}
+async function cmdAuthLogout(parsed, ctx) {
+  const hadSession = Boolean(activeSession ?? await loadStoredSession(ctx));
+  await clearStoredSession(ctx);
+  if (boolFlag(parsed, "json")) {
+    return printJson(ctx, { ok: true, loggedOut: hadSession });
+  }
+  ctx.stdout(hadSession ? "Logged out.\n" : "No local session found.\n");
   return 0;
 }
 async function cmdBusinesses(parsed, ctx) {
@@ -2395,8 +2705,8 @@ async function cmdSiteMediaUpload(parsed, ctx) {
   const file = flag(parsed, "file")?.trim();
   if (!file) throw new CliError("--file is required.", 2);
   const { basename } = await import("path");
-  const { readFile: readFile2 } = await import("fs/promises");
-  const data = await readFile2(file);
+  const { readFile: readFile3 } = await import("fs/promises");
+  const data = await readFile3(file);
   const form = new FormData();
   form.set("file", new Blob([data], { type: inferContentType(file) }), basename(file));
   form.set("alt", flag(parsed, "alt") ?? basename(file));
@@ -2630,6 +2940,9 @@ async function runCli(rawArgs, ctx) {
     parsed = parseArgs(rawArgs);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (rawArgs.includes("--json")) {
+      return printJsonError(ctx, message, error instanceof CliError ? error.exitCode : 1);
+    }
     ctx.stderr(`Error: ${message}
 `);
     return error instanceof CliError ? error.exitCode : 1;
@@ -2654,6 +2967,7 @@ async function runCli(rawArgs, ctx) {
     return printHelp(ctx);
   }
   try {
+    await loadStoredSession(ctx);
     if (await handleLocalDataCommand(parsed, ctx)) return 0;
     switch (key) {
       case "about":
@@ -2662,6 +2976,10 @@ async function runCli(rawArgs, ctx) {
         return await cmdStatus(parsed, ctx);
       case "auth whoami":
         return await cmdWhoami(parsed, ctx);
+      case "auth agent-login":
+        return await cmdAgentLogin(parsed, ctx);
+      case "auth logout":
+        return await cmdAuthLogout(parsed, ctx);
       case "businesses list":
         return await cmdBusinesses(parsed, ctx);
       case "sites list":
@@ -2700,6 +3018,9 @@ async function runCli(rawArgs, ctx) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (boolFlag(parsed, "json")) {
+      return printJsonError(ctx, message, error instanceof CliError ? error.exitCode : 1);
+    }
     ctx.stderr(`Error: ${message}
 `);
     return error instanceof CliError ? error.exitCode : 1;
