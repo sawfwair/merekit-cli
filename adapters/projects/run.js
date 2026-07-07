@@ -2876,7 +2876,9 @@ async function logoutRemote(input = {}) {
 
 // cli/projects.ts
 var DEFAULT_BASE_URL = process.env.PROJECTS_BASE_URL?.trim() || process.env.PASTPERF_BASE_URL?.trim() || "https://projects.meresmb.com";
+var DEFAULT_BUSINESS_BASE_URL = process.env.MERE_BUSINESS_BASE_URL?.trim() || process.env.BUSINESS_BASE_URL?.trim() || "https://mere.business";
 var APP_ID = "mere-projects";
+var BUSINESS_APP_ID = "mere-business";
 var DEFAULT_LOCAL_SUMMARY_MODEL = "text-chat-q35-nano";
 var LOCAL_PROJECT_SUMMARY_PROMPT_VERSION = "projects-local-summary-v1";
 var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
@@ -2926,6 +2928,13 @@ var HttpError = class extends CliError {
 };
 function normalizeBaseUrl2(raw) {
   const url = new URL(raw?.trim() || DEFAULT_BASE_URL);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+function normalizeExplicitBaseUrl(raw) {
+  const url = new URL(raw.trim());
   url.pathname = "";
   url.search = "";
   url.hash = "";
@@ -3101,6 +3110,7 @@ function commandManifest() {
     globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create a Projects session from a Business agent session.", { auth: "none", risk: "write", flags: ["workspace", "business-base-url", "base-url"] }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["store", "info"], "Inspect local/cloud data and AI plane configuration.", { auth: "none", auditDefault: true }),
@@ -3183,6 +3193,7 @@ function printHelp(write) {
 
 Usage:
   mere-projects auth login [--base-url https://projects.meresmb.com] [--workspace id|slug|host]
+  mere-projects auth agent-login --workspace id [--business-base-url https://mere.business]
   mere-projects auth whoami [--json]
   mere-projects workspace list|current|use
   mere-projects completion [bash|zsh|fish]
@@ -3191,6 +3202,8 @@ Usage:
 
 Global flags:
   --base-url <url>        Base URL for auth login (default: PROJECTS_BASE_URL or production)
+  --business-base-url <url>
+                          Mere Business URL for browserless agent login
   --workspace <id|slug|host>
                           Target workspace for login or this command
   --json                  Print JSON
@@ -3316,6 +3329,114 @@ function sessionOutput(session) {
     sessionPath: sessionFilePath()
   };
 }
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.", 2);
+}
+function resolveBusinessBaseUrl(parsed, io, session) {
+  return normalizeExplicitBaseUrl(
+    readFlag(parsed, "business-base-url") ?? io.env.MERE_BUSINESS_BASE_URL ?? io.env.BUSINESS_BASE_URL ?? session.baseUrl ?? DEFAULT_BUSINESS_BASE_URL
+  );
+}
+async function loadRefreshedBusinessSession(input) {
+  const current = await loadCliSession({ appName: BUSINESS_APP_ID, env: input.io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first.",
+      3
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, readFlag(input.parsed, "workspace"));
+  const baseUrl = resolveBusinessBaseUrl(input.parsed, input.io, current);
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: input.io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: BUSINESS_APP_ID, session, env: input.io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Projects base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Projects CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+async function agentLogin(parsed, io) {
+  const business = await loadRefreshedBusinessSession({ parsed, io });
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "projects",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new HttpError(
+      productSessionErrorMessage(payload, `Request failed with status ${response.status}.`),
+      response.status
+    );
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession(product.session, {
+    baseUrl: normalizeBaseUrl2(readFlag(parsed, "base-url") ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
+}
 async function ensureSession(parsed, io) {
   const current = await loadSession(io.env);
   if (!current) {
@@ -3424,7 +3545,12 @@ async function parseErrorResponse(response) {
   try {
     const payload = JSON.parse(text);
     const message = payload.error ?? payload.message;
-    return typeof message === "string" ? message : text;
+    if (typeof message === "string") return message;
+    if (message && typeof message === "object" && !Array.isArray(message)) {
+      const nested = message;
+      if (typeof nested.message === "string") return nested.message;
+    }
+    return text;
   } catch {
     return text;
   }
@@ -4850,6 +4976,9 @@ async function handleAuth(parsed, io) {
       env: io.env
     });
     return sessionOutput(session);
+  }
+  if (action === "agent-login") {
+    return sessionOutput(await agentLogin(parsed, io));
   }
   if (action === "logout") {
     return { loggedOut: await logoutRemote({ fetchImpl: io.fetchImpl, env: io.env }) };
