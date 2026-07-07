@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.6 - 2026-07-07
+
+- Published bundled Works and Zone adapters with `auth agent-login`, letting browserless agents exchange a workspace-scoped Business session for product CLI sessions without opening a browser.
+
 ## 0.5.5 - 2026-07-07
 
 - Published the bundled Projects adapter with `mere projects auth agent-login` so browserless agents can exchange a workspace-scoped Business session for a Projects CLI session without opening a browser.

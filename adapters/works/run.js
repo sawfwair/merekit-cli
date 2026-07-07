@@ -1816,6 +1816,9 @@ function boolFlag(parsed, name) {
 function defaultBaseUrl(env) {
   return env.WORKS_BASE_URL?.trim() || env.MERE_WORKS_BASE_URL?.trim() || "https://mere.works";
 }
+function defaultBusinessBaseUrl(env) {
+  return env.MERE_BUSINESS_BASE_URL?.trim() || env.BUSINESS_BASE_URL?.trim() || "https://mere.business";
+}
 function requestBaseUrl(parsed, io, session) {
   return flag(parsed, "base-url")?.trim() || session?.baseUrl || defaultBaseUrl(io.env);
 }
@@ -1950,6 +1953,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-works/session.json",
     globalFlags: [
       "base-url",
+      "business-base-url",
       "workspace",
       "store",
       "ai",
@@ -1961,6 +1965,7 @@ function commandManifest() {
     ],
     commands: [
       command(["auth", "login"], "Start browser login.", { auth: "none", risk: "write", flags: ["workspace"] }),
+      command(["auth", "agent-login"], "Create a Works session from a Business agent session.", { auth: "none", risk: "write", flags: ["workspace", "business-base-url", "base-url"] }),
       command(["auth", "whoami"], "Show current user and workspace."),
       command(["auth", "logout"], "Clear the local session.", { risk: "write" }),
       command(["workspace", "list"], "List available workspaces."),
@@ -2301,6 +2306,121 @@ function renderSession(session) {
 Workspace: ${workspace}
 Session: ${sessionFilePath()}`;
 }
+function sessionOutput(session) {
+  return {
+    authenticated: true,
+    version: session.version,
+    user: session.user,
+    workspace: session.workspace,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    workspaces: session.workspaces,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt,
+    sessionPath: sessionFilePath()
+  };
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.", 2);
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Works base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Works CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+async function loadRefreshedBusinessSession(parsed, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first.",
+      3
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, flag(parsed, "workspace"));
+  const baseUrl = normalizeBaseUrl2(
+    flag(parsed, "business-base-url") ?? current.baseUrl ?? defaultBusinessBaseUrl(io.env)
+  );
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(parsed, io) {
+  const business = await loadRefreshedBusinessSession(parsed, io);
+  const response = await io.fetchImpl(new URL("/api/cli/v1/auth/product-sessions", business.baseUrl), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${business.session.accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      app: "works",
+      workspaceId: business.workspace.id
+    })
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new HttpError(
+      productSessionErrorMessage(payload, `Request failed (${response.status})`),
+      response.status
+    );
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession(product.session, {
+    baseUrl: normalizeBaseUrl2(flag(parsed, "base-url") ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
+}
 async function requireSession(parsed, io) {
   const stored = await loadSession(io.env);
   if (!stored) {
@@ -2404,6 +2524,12 @@ async function handleAuth(command, parsed, io) {
       env: io.env
     });
     writeMaybeJson(io, parsed, session, () => `${renderSession(session)}
+`);
+    return 0;
+  }
+  if (command === "agent-login") {
+    const session = await agentLogin(parsed, io);
+    writeMaybeJson(io, parsed, sessionOutput(session), () => `${renderSession(session)}
 `);
     return 0;
   }
