@@ -216,7 +216,7 @@ This matrix is generated from the current local app manifests.
 | `business` | 163 | 2 | 60 read, 71 write, 15 destructive, 17 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json` |
 | `dynasite` | 31 | 3 | 14 read, 13 write, 4 external | `base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db` |
-| `projects` | 75 | 5 | 30 read, 28 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
+| `projects` | 76 | 5 | 30 read, 29 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
 | `agent` | 32 | 7 | 12 read, 13 write, 4 destructive, 3 external | `base-url`, `workspace`, `store`, `data-plane`, `ai`, `ai-plane`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
 | `today` | 63 | 5 | 24 read, 26 write, 10 destructive, 3 external | `base-url`, `workspace`, `json`, `yes`, `confirm`, `data`, `data-file`, `tenant`, `remote`, `local`, `db`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `persist-to` |
 | `zone` | 35 | 8 | 17 read, 11 write, 2 destructive, 5 external | `base-url`, `workspace`, `data-plane`, `plane`, `ai`, `local-db`, `json`, `yes`, `confirm`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run` |
