@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.10 - 2026-07-07
+
+- Refreshed the bundled adapters after the final Network and Media `auth agent-login` deploy fixes, preserving legacy local-boundary stderr behavior outside agent login and keeping Media on typed JSON boundary parsing.
+
 ## 0.5.9 - 2026-07-07
 
 - Published bundled Business, Dynasite, Network, Email, IM, and Media adapters with browserless `auth agent-login`, plus consistent JSON auth errors for agent automation.
