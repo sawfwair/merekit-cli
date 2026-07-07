@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.13 - 2026-07-07
+
+- Published the bundled Business adapter stale-session fix so `business auth agent-login --workspace ... --agent-id ...` can reissue an agent session even when an unrelated local Business session already exists.
+
 ## 0.5.12 - 2026-07-07
 
 - Published the bundled Business adapter with tokenless existing-workspace `auth agent-login` reissue, plus claimed-invite recovery and bootstrap-token fallback for admin recovery.
