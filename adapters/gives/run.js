@@ -4,6 +4,21 @@
 import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname as dirname2, resolve as resolvePath2 } from "node:path";
 
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/client.ts
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/contract.ts
+var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
+var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
+var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
+var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
+var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
+var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
+var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
+
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -105,21 +120,6 @@ function mergeSessionPayload(current, payload, options = {}) {
     lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/client.ts
-import { spawn } from "node:child_process";
-import { createServer } from "node:http";
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/contract.ts
-var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
-var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
-var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
-var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
-var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
-var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
-var CLI_AUTH_CODE_QUERY_PARAM = "code";
-var CLI_AUTH_ERROR_QUERY_PARAM = "error";
-var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d58c11277d08e28fc88399d6fc968ff2/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
@@ -1755,6 +1755,7 @@ var CliError = class extends Error {
 var DEFAULT_BASE_URL = "https://mere.gives";
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
+  "business-base-url": "string",
   token: "string",
   workspace: "string",
   store: "string",
@@ -1774,6 +1775,7 @@ Usage:
 
 Global flags:
   --base-url URL       Override MERE_GIVES_BASE_URL
+  --business-base-url URL Override Mere Business for browserless agent login
   --token TOKEN        Override MERE_GIVES_TOKEN
   --workspace ID       Preferred ZeroSMB workspace during auth login
   --store local|cloud  Choose supported local/cloud data-plane commands
@@ -1789,6 +1791,7 @@ Global flags:
 Auth:
   completion [bash|zsh|fish]
   auth login
+  auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business]
   auth whoami
   auth logout
   store info
@@ -1862,9 +1865,14 @@ function commandManifest() {
     auth: { kind: "browser" },
     baseUrlEnv: ["MERE_GIVES_BASE_URL"],
     sessionPath: "~/.local/state/mere-gives/session.json",
-    globalFlags: ["base-url", "workspace", "store", "ai", "local-db", "json", "yes", "confirm"],
+    globalFlags: ["base-url", "business-base-url", "workspace", "store", "ai", "local-db", "json", "yes", "confirm"],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create a Gives session from a Business agent session.", {
+        auth: "none",
+        risk: "write",
+        flags: ["workspace", "business-base-url", "base-url"]
+      }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -2171,6 +2179,117 @@ function renderSessionSummary(session) {
 function renderWorkspaceLabel(workspace) {
   return `${workspace.name} (${workspace.slug}, ${workspace.host}, ${workspace.role})`;
 }
+function normalizeBaseUrl2(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.");
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Gives base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Gives CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(globalOptions, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, resolveRequestedWorkspace(globalOptions, io.env));
+  const baseUrl = normalizeBaseUrl2(trimOption2(asString2(globalOptions["business-base-url"])) ?? current.baseUrl);
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(globalOptions, io) {
+  const business = await loadRefreshedBusinessSession(globalOptions, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "gives",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CliError(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl2(trimOption2(asString2(globalOptions["base-url"])) ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
+}
 async function readResponsePayload(response) {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
@@ -2286,6 +2405,18 @@ async function handleAuthCommand(positionals, globalOptions, io, wantsJson) {
       workspaces: session.workspaces
     } : renderSessionSummary(session);
   }
+  if (action === "agent-login") {
+    const session = await agentLogin(globalOptions, io);
+    activeSession = session;
+    return wantsJson ? {
+      user: session.user,
+      baseUrl: session.baseUrl,
+      expiresAt: session.expiresAt,
+      defaultWorkspaceId: session.defaultWorkspaceId,
+      workspace: session.workspace,
+      workspaces: session.workspaces
+    } : renderSessionSummary(session);
+  }
   if (action === "whoami") {
     const session = activeSession ?? await loadSession(io.env);
     if (!session) {
@@ -2308,7 +2439,7 @@ async function handleAuthCommand(positionals, globalOptions, io, wantsJson) {
     activeSession = null;
     return wantsJson ? { loggedOut } : loggedOut ? "Logged out of mere-gives." : "No local session found.";
   }
-  throw new CliError("Unknown auth action: expected login, whoami, or logout.");
+  throw new CliError("Unknown auth action: expected login, agent-login, whoami, or logout.");
 }
 async function handleTenantCommand(argv, globalOptions, io) {
   const action = argv[1];
@@ -2839,7 +2970,7 @@ async function runCli(argv, io) {
           usage: "mere-gives [global flags] <group> <command> [args]",
           commands: {
             completion: ["bash", "zsh", "fish"],
-            auth: ["login", "whoami", "logout"],
+            auth: ["login", "agent-login", "whoami", "logout"],
             store: ["info"],
             export: ["--output"],
             import: ["--file", "--dry-run"],

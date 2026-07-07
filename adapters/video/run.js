@@ -1210,6 +1210,21 @@ var StdioAgent = class {
 // cli/meets.ts
 init_json();
 
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/client.ts
+import { spawn as spawn2 } from "node:child_process";
+import { createServer } from "node:http";
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/contract.ts
+var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
+var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
+var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
+var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
+var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
+var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
+var CLI_AUTH_CODE_QUERY_PARAM = "code";
+var CLI_AUTH_ERROR_QUERY_PARAM = "error";
+var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
+
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -1310,6 +1325,157 @@ function mergeSessionPayload(current, payload, options = {}) {
     defaultWorkspaceId: nextDefaultWorkspaceId ?? null,
     lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/client.ts
+function maybeOpenBrowser(url) {
+  try {
+    if (process.platform === "darwin") {
+      const child2 = spawn2("open", [url], { detached: true, stdio: "ignore" });
+      child2.unref();
+      return true;
+    }
+    if (process.platform === "win32") {
+      const child2 = spawn2("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
+      child2.unref();
+      return true;
+    }
+    const child = spawn2("xdg-open", [url], { detached: true, stdio: "ignore" });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function parseJson(response) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload;
+}
+async function fetchJson(fetchImpl, input) {
+  return parseJson(await fetchImpl(input));
+}
+async function postJson(fetchImpl, input, body) {
+  return parseJson(
+    await fetchImpl(input, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    })
+  );
+}
+async function waitForCallback(input) {
+  return new Promise((resolve, reject) => {
+    const server = createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (requestUrl.pathname !== "/callback") {
+        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Not found.");
+        return;
+      }
+      const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
+      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
+      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
+      if (authError) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
+        );
+        clearTimeout(timeout);
+        server.close();
+        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
+        return;
+      }
+      const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
+      if (!requestId || !code) {
+        response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Missing request or code.");
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(
+        `<!doctype html><html><body><h1>${input.productLabel} login complete.</h1><p>You can close this window.</p></body></html>`
+      );
+      void (async () => {
+        clearTimeout(timeout);
+        server.close();
+        try {
+          const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
+          resolve(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
+        } catch (error) {
+          reject(error);
+        }
+      })();
+    });
+    server.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    server.listen(0, "127.0.0.1", () => {
+      void (async () => {
+        try {
+          const address = server.address();
+          if (!address) {
+            throw new Error("Local login callback server could not bind to a port.");
+          }
+          const callbackUrl = new URL(`http://127.0.0.1:${address.port}/callback`);
+          const startUrl = new URL(CLI_AUTH_START_PATH, input.baseUrl);
+          startUrl.searchParams.set(CLI_AUTH_CALLBACK_URL_QUERY_PARAM, callbackUrl.toString());
+          if (input.workspace?.trim()) {
+            startUrl.searchParams.set("workspace", input.workspace.trim());
+          }
+          if (input.inviteCode?.trim()) {
+            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
+          }
+          const started = await fetchJson(input.fetchImpl, startUrl);
+          const opened = maybeOpenBrowser(started.authorizeUrl);
+          input.notify(
+            opened ? `Opened your browser to complete ${input.productLabel} login.` : `Open this URL to complete ${input.productLabel} login:`
+          );
+          input.notify(started.authorizeUrl);
+        } catch (error) {
+          clearTimeout(timeout);
+          server.close();
+          reject(error);
+        }
+      })();
+    });
+    const timeout = setTimeout(() => {
+      server.close();
+      reject(new Error("Timed out waiting for the browser login callback."));
+    }, 12e4);
+  });
+}
+async function loginWithBrowser(input) {
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const payload = await waitForCallback({
+    baseUrl,
+    fetchImpl: input.fetchImpl ?? fetch,
+    notify: input.notify,
+    workspace: input.workspace,
+    inviteCode: input.inviteCode,
+    productLabel: input.productLabel
+  });
+  return createLocalSession(payload, {
+    baseUrl,
+    defaultWorkspaceId: payload.workspace?.id ?? payload.defaultWorkspaceId
+  });
+}
+async function refreshRemoteSession(input) {
+  const refreshUrl = new URL(CLI_AUTH_REFRESH_PATH, normalizeBaseUrl(input.baseUrl));
+  return postJson(input.fetchImpl ?? fetch, refreshUrl, {
+    refreshToken: input.refreshToken,
+    workspace: input.workspace ?? null
+  });
+}
+async function logoutRemoteSession(input) {
+  const logoutUrl = new URL(CLI_AUTH_LOGOUT_PATH, normalizeBaseUrl(input.baseUrl));
+  await postJson(input.fetchImpl ?? fetch, logoutUrl, {
+    refreshToken: input.refreshToken
+  });
 }
 
 // cli/client.ts
@@ -1577,172 +1743,6 @@ var MeetsCliClient = class {
     return parser(payload);
   }
 };
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/client.ts
-import { spawn as spawn2 } from "node:child_process";
-import { createServer } from "node:http";
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/contract.ts
-var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
-var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
-var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
-var CLI_AUTH_LOGOUT_PATH = "/api/cli/v1/auth/logout";
-var CLI_AUTH_CALLBACK_URL_QUERY_PARAM = "callback_url";
-var CLI_AUTH_REQUEST_QUERY_PARAM = "request";
-var CLI_AUTH_CODE_QUERY_PARAM = "code";
-var CLI_AUTH_ERROR_QUERY_PARAM = "error";
-var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
-
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/client.ts
-function maybeOpenBrowser(url) {
-  try {
-    if (process.platform === "darwin") {
-      const child2 = spawn2("open", [url], { detached: true, stdio: "ignore" });
-      child2.unref();
-      return true;
-    }
-    if (process.platform === "win32") {
-      const child2 = spawn2("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
-      child2.unref();
-      return true;
-    }
-    const child = spawn2("xdg-open", [url], { detached: true, stdio: "ignore" });
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function parseJson(response) {
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload) {
-    const message = payload && typeof payload === "object" ? payload.error ?? payload.message ?? `Request failed (${response.status}).` : `Request failed (${response.status}).`;
-    throw new Error(message);
-  }
-  return payload;
-}
-async function fetchJson(fetchImpl, input) {
-  return parseJson(await fetchImpl(input));
-}
-async function postJson(fetchImpl, input, body) {
-  return parseJson(
-    await fetchImpl(input, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    })
-  );
-}
-async function waitForCallback(input) {
-  return new Promise((resolve, reject) => {
-    const server = createServer((request, response) => {
-      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (requestUrl.pathname !== "/callback") {
-        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-        response.end("Not found.");
-        return;
-      }
-      const requestId = requestUrl.searchParams.get(CLI_AUTH_REQUEST_QUERY_PARAM)?.trim();
-      const authError = requestUrl.searchParams.get(CLI_AUTH_ERROR_QUERY_PARAM)?.trim();
-      const errorDescription = requestUrl.searchParams.get(CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM)?.trim();
-      if (authError) {
-        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        response.end(
-          `<!doctype html><html><body><h1>${input.productLabel} login could not complete.</h1><p>You can close this window and return to the terminal.</p></body></html>`
-        );
-        clearTimeout(timeout);
-        server.close();
-        reject(new Error(errorDescription ? `${authError}: ${errorDescription}` : authError));
-        return;
-      }
-      const code = requestUrl.searchParams.get(CLI_AUTH_CODE_QUERY_PARAM)?.trim();
-      if (!requestId || !code) {
-        response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-        response.end("Missing request or code.");
-        return;
-      }
-      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      response.end(
-        `<!doctype html><html><body><h1>${input.productLabel} login complete.</h1><p>You can close this window.</p></body></html>`
-      );
-      void (async () => {
-        clearTimeout(timeout);
-        server.close();
-        try {
-          const exchangeUrl = new URL(CLI_AUTH_EXCHANGE_PATH, input.baseUrl);
-          resolve(await postJson(input.fetchImpl, exchangeUrl, { requestId, code }));
-        } catch (error) {
-          reject(error);
-        }
-      })();
-    });
-    server.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    server.listen(0, "127.0.0.1", () => {
-      void (async () => {
-        try {
-          const address = server.address();
-          if (!address) {
-            throw new Error("Local login callback server could not bind to a port.");
-          }
-          const callbackUrl = new URL(`http://127.0.0.1:${address.port}/callback`);
-          const startUrl = new URL(CLI_AUTH_START_PATH, input.baseUrl);
-          startUrl.searchParams.set(CLI_AUTH_CALLBACK_URL_QUERY_PARAM, callbackUrl.toString());
-          if (input.workspace?.trim()) {
-            startUrl.searchParams.set("workspace", input.workspace.trim());
-          }
-          if (input.inviteCode?.trim()) {
-            startUrl.searchParams.set("invite_code", input.inviteCode.trim());
-          }
-          const started = await fetchJson(input.fetchImpl, startUrl);
-          const opened = maybeOpenBrowser(started.authorizeUrl);
-          input.notify(
-            opened ? `Opened your browser to complete ${input.productLabel} login.` : `Open this URL to complete ${input.productLabel} login:`
-          );
-          input.notify(started.authorizeUrl);
-        } catch (error) {
-          clearTimeout(timeout);
-          server.close();
-          reject(error);
-        }
-      })();
-    });
-    const timeout = setTimeout(() => {
-      server.close();
-      reject(new Error("Timed out waiting for the browser login callback."));
-    }, 12e4);
-  });
-}
-async function loginWithBrowser(input) {
-  const baseUrl = normalizeBaseUrl(input.baseUrl);
-  const payload = await waitForCallback({
-    baseUrl,
-    fetchImpl: input.fetchImpl ?? fetch,
-    notify: input.notify,
-    workspace: input.workspace,
-    inviteCode: input.inviteCode,
-    productLabel: input.productLabel
-  });
-  return createLocalSession(payload, {
-    baseUrl,
-    defaultWorkspaceId: payload.workspace?.id ?? payload.defaultWorkspaceId
-  });
-}
-async function refreshRemoteSession(input) {
-  const refreshUrl = new URL(CLI_AUTH_REFRESH_PATH, normalizeBaseUrl(input.baseUrl));
-  return postJson(input.fetchImpl ?? fetch, refreshUrl, {
-    refreshToken: input.refreshToken,
-    workspace: input.workspace ?? null
-  });
-}
-async function logoutRemoteSession(input) {
-  const logoutUrl = new URL(CLI_AUTH_LOGOUT_PATH, normalizeBaseUrl(input.baseUrl));
-  await postJson(input.fetchImpl ?? fetch, logoutUrl, {
-    refreshToken: input.refreshToken
-  });
-}
 
 // cli/session.ts
 var APP_NAME = "mere-video";
@@ -3519,6 +3519,7 @@ Usage:
 
 Global flags:
   --base-url URL        Override MEETS_BASE_URL
+  --business-base-url URL Override Mere Business for browserless agent login
   --workspace ID        Override MEETS_DEFAULT_WORKSPACE_ID
   --token TOKEN         Override MEETS_INTERNAL_TOKEN
   --store local|cloud   Choose supported local/cloud data-plane commands
@@ -3535,6 +3536,7 @@ Global flags:
 
 Commands:
   mere-video auth login [--base-url URL] [--workspace WORKSPACE_ID] [--json]
+  mere-video auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business] [--json]
   mere-video auth whoami [--json]
   mere-video auth logout [--json]
   mere-video completion [bash|zsh|fish]
@@ -3588,6 +3590,7 @@ Local plane:
 `;
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
+  "business-base-url": "string",
   workspace: "string",
   token: "string",
   store: "string",
@@ -3646,6 +3649,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-video/session.json",
     globalFlags: [
       "base-url",
+      "business-base-url",
       "workspace",
       "token",
       "store",
@@ -3659,6 +3663,11 @@ function commandManifest() {
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create a Video session from a Business agent session.", {
+        auth: "none",
+        risk: "write",
+        flags: ["workspace", "business-base-url", "base-url"]
+      }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -3993,6 +4002,118 @@ function pickWorkspaceSession(session, requestedWorkspace) {
     ...session,
     defaultWorkspaceId: match.id
   };
+}
+function normalizeBaseUrl3(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.", 2);
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Video base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Video CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(options, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first.",
+      3
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, asString2(options.workspace));
+  const baseUrl = normalizeBaseUrl3(asString2(options["business-base-url"]) ?? current.baseUrl);
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(options, io) {
+  const business = await loadRefreshedBusinessSession(options, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "video",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CliError(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl3(asString2(options["base-url"]) ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
 }
 function invitePayload(client, slug) {
   return {
@@ -4875,6 +4996,38 @@ async function runCli(argv, io) {
           }
           return 0;
         }
+        case "agent-login": {
+          const { options: localOptions, positionals } = parseFlags(args, {
+            workspace: "string",
+            "base-url": "string",
+            "business-base-url": "string",
+            json: "boolean",
+            help: "boolean"
+          });
+          const options = mergeOptions(globalOptions, localOptions);
+          if (asBoolean2(options.help)) {
+            writeText(io, HELP_TEXT);
+            return 0;
+          }
+          if (positionals.length > 0) {
+            throw new CliError("auth agent-login does not accept positional arguments.");
+          }
+          const session = await agentLogin(options, io);
+          activeSession = session;
+          if (asBoolean2(options.json)) {
+            writeJson(io, {
+              user: session.user,
+              baseUrl: session.baseUrl,
+              expiresAt: session.expiresAt,
+              defaultWorkspaceId: session.defaultWorkspaceId,
+              workspace: session.workspace,
+              workspaces: session.workspaces
+            });
+          } else {
+            writeText(io, renderSessionSummary(session));
+          }
+          return 0;
+        }
         case "whoami": {
           const { options: localOptions, positionals } = parseFlags(args, {
             json: "boolean",
@@ -4924,7 +5077,7 @@ async function runCli(argv, io) {
           return 0;
         }
         default:
-          throw new CliError(`Unknown auth command: ${action ?? "(missing)"}.`);
+          throw new CliError("Unknown auth command: expected login, agent-login, whoami, or logout.");
       }
     }
     if (group === "workspace") {
