@@ -6,6 +6,10 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.7 - 2026-07-07
+
+- Published the bundled Today adapter with `auth agent-login`, letting browserless agents exchange a workspace-scoped Business session for a Today CLI session without opening a browser.
+
 ## 0.5.6 - 2026-07-07
 
 - Published bundled Works and Zone adapters with `auth agent-login`, letting browserless agents exchange a workspace-scoped Business session for product CLI sessions without opening a browser.

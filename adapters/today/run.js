@@ -262,6 +262,22 @@ async function clearCliSession(input) {
     await rm(paths.sessionFile, { force: true });
   }
 }
+function resolveWorkspaceSelection(workspaces, selector) {
+  const normalized = selector?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return workspaces.find(
+    (workspace) => workspace.id.toLowerCase() === normalized || workspace.slug.toLowerCase() === normalized || workspace.host.toLowerCase() === normalized
+  ) ?? null;
+}
+function requireWorkspaceSelection(workspaces, selector) {
+  const workspace = resolveWorkspaceSelection(workspaces, selector);
+  if (!workspace) {
+    throw new Error(`Workspace ${selector ?? "(missing)"} is not available in this session.`);
+  }
+  return workspace;
+}
 function sessionNeedsRefresh(session, targetWorkspaceId, now = Date.now()) {
   const currentWorkspaceId = session.workspace?.id ?? null;
   if ((targetWorkspaceId ?? null) !== currentWorkspaceId) {
@@ -506,6 +522,9 @@ function getActiveSession() {
 function resolveAuthBaseUrl(parsed, io) {
   return readStringFlag(parsed, "base-url") ?? io.env.YOURTIME_BASE_URL ?? activeSession?.baseUrl ?? "https://mere.today";
 }
+function normalizeBaseUrl2(value) {
+  return value.trim().replace(/\/+$/, "");
+}
 function resolveRequestedWorkspace(parsed) {
   return readStringFlag(parsed, "workspace");
 }
@@ -537,6 +556,116 @@ function pickWorkspaceSession(session, requestedWorkspace) {
     defaultWorkspaceId: match.id
   };
 }
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new Error("Option --workspace is required when the Business session has multiple workspaces.");
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new Error("Mere Business did not return a Today base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new Error("Mere Business did not return a Today CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+function createLocalSession2(payload, options) {
+  return {
+    ...payload,
+    version: 1,
+    baseUrl: options.baseUrl,
+    defaultWorkspaceId: options.defaultWorkspaceId,
+    lastRefreshAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function loadRefreshedBusinessSession(parsed, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new Error(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, resolveRequestedWorkspace(parsed));
+  const baseUrl = normalizeBaseUrl2(
+    readStringFlag(parsed, "business-base-url") ?? current.baseUrl
+  );
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(parsed, io) {
+  const business = await loadRefreshedBusinessSession(parsed, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "today",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(productSessionErrorMessage(payload, `Request failed (${response.status.toString()})`));
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession2(product.session, {
+    baseUrl: normalizeBaseUrl2(readStringFlag(parsed, "base-url") ?? product.baseUrl),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  return session;
+}
 async function handleAuthCommand(parsed, io) {
   const action = parsed.positionals[1];
   if (action === "login") {
@@ -563,6 +692,18 @@ async function handleAuthCommand(parsed, io) {
       workspaces: session.workspaces
     };
   }
+  if (action === "agent-login") {
+    const session = await agentLogin(parsed, io);
+    activeSession = session;
+    return {
+      user: session.user,
+      baseUrl: session.baseUrl,
+      expiresAt: session.expiresAt,
+      defaultWorkspaceId: session.defaultWorkspaceId,
+      workspace: session.workspace,
+      workspaces: session.workspaces
+    };
+  }
   if (action === "whoami") {
     const session = activeSession ?? await loadSession(io.env);
     if (!session) {
@@ -585,7 +726,7 @@ async function handleAuthCommand(parsed, io) {
     activeSession = null;
     return { loggedOut };
   }
-  throw new Error("Unknown auth action: expected login, whoami, or logout");
+  throw new Error("Unknown auth action: expected login, agent-login, whoami, or logout");
 }
 async function resolveAuthenticatedSession(parsed, io) {
   const session = activeSession ?? await loadSession(io.env);
@@ -4922,6 +5063,7 @@ function printHelp(write = (text) => process3.stdout.write(text)) {
 
 Usage:
   mere-today auth login [--base-url https://mere.today] [--workspace ID] [--json]
+  mere-today auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business] [--json]
   mere-today auth whoami [--json]
   mere-today auth logout [--json]
   mere-today completion [bash|zsh|fish]
@@ -4930,6 +5072,7 @@ Usage:
 
 Global flags:
   --base-url <url>        Override YOURTIME_BASE_URL for browser auth
+  --business-base-url <url> Override Mere Business for browserless agent login
   --workspace <id>        Preferred workspace for browser auth
   --store <local|cloud>   Choose supported local/cloud data-plane commands
   --ai <local|cloud>      Choose AI plane for local-plane inspection
@@ -5069,6 +5212,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-today/session.json",
     globalFlags: [
       "base-url",
+      "business-base-url",
       "workspace",
       "json",
       "yes",
@@ -5088,6 +5232,11 @@ function commandManifest() {
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create a Today session from a Business agent session.", {
+        auth: "none",
+        risk: "write",
+        flags: ["workspace", "business-base-url", "base-url"]
+      }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["db", "query"], "Run a local D1 query.", { auth: "none", risk: "write", flags: ["sql"] }),
