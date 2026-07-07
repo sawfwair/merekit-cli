@@ -2063,6 +2063,7 @@ var CliError = class extends Error {
 var DEFAULT_BASE_URL = "https://mere.zone";
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
+  "business-base-url": "string",
   token: "string",
   workspace: "string",
   "data-plane": "string",
@@ -2106,7 +2107,8 @@ Global flags:
   --help               Show this help
 
 Auth:
-  auth login
+	auth login
+  auth agent-login --workspace WORKSPACE_ID [--business-base-url https://mere.business]
   auth whoami
   auth logout
   completion [bash|zsh|fish]
@@ -2181,6 +2183,7 @@ function commandManifest() {
     sessionPath: "~/.local/state/mere-zone/session.json",
     globalFlags: [
       "base-url",
+      "business-base-url",
       "workspace",
       "data-plane",
       "plane",
@@ -2197,6 +2200,11 @@ function commandManifest() {
     ],
     commands: [
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
+      manifestCommand(["auth", "agent-login"], "Create a Zone session from a Business agent session.", {
+        auth: "none",
+        risk: "write",
+        flags: ["workspace", "business-base-url", "base-url"]
+      }),
       manifestCommand(["auth", "whoami"], "Show current user and workspace.", { auth: "session", auditDefault: true }),
       manifestCommand(["auth", "logout"], "Clear the local session.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "list"], "List workspaces.", { auth: "session", auditDefault: true }),
@@ -2460,6 +2468,9 @@ async function cliVersion() {
 function resolveBaseUrl(options, env) {
   return trimOption2(asString2(options["base-url"])) ?? trimOption2(env.MERE_ZONE_BASE_URL) ?? trimOption2(env.MEREZONE_BASE_URL) ?? activeSession?.baseUrl ?? DEFAULT_BASE_URL;
 }
+function resolveBusinessBaseUrl(options, env, session) {
+  return trimOption2(asString2(options["business-base-url"])) ?? trimOption2(env.MERE_BUSINESS_BASE_URL) ?? trimOption2(env.BUSINESS_BASE_URL) ?? session?.baseUrl ?? "https://mere.business";
+}
 function resolveRequestedWorkspace(options, env) {
   return trimOption2(asString2(options.workspace)) ?? trimOption2(env.MERE_ZONE_WORKSPACE_ID) ?? trimOption2(env.MEREZONE_WORKSPACE_ID);
 }
@@ -2539,8 +2550,125 @@ function renderSessionSummary(session) {
     `session: ${sessionFilePath()}`
   ].join("\n");
 }
+function sessionOutput(session) {
+  return {
+    authenticated: true,
+    version: session.version,
+    user: session.user,
+    workspace: session.workspace,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    workspaces: session.workspaces,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt,
+    sessionPath: sessionFilePath()
+  };
+}
 function renderWorkspaceLabel(workspace) {
   return `${workspace.name} (${workspace.slug}, ${workspace.host}, ${workspace.role})`;
+}
+function selectBusinessWorkspace(session, selector) {
+  if (selector) {
+    return requireWorkspaceSelection(session.workspaces, selector);
+  }
+  if (session.workspace) {
+    return session.workspace;
+  }
+  if (session.defaultWorkspaceId) {
+    return requireWorkspaceSelection(session.workspaces, session.defaultWorkspaceId);
+  }
+  if (session.workspaces.length === 1) {
+    return session.workspaces[0];
+  }
+  throw new CliError("Option --workspace is required when the Business session has multiple workspaces.", 2);
+}
+function productSessionErrorMessage(payload, fallback) {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const record = payload;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    return productSessionErrorMessage(record.error, fallback);
+  }
+  return fallback;
+}
+function readProductSessionPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new CliError("Mere Business returned an invalid product session response.");
+  }
+  const record = payload;
+  if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
+    throw new CliError("Mere Business did not return a Zone base URL.");
+  }
+  if (!record.session || typeof record.session !== "object" || Array.isArray(record.session)) {
+    throw new CliError("Mere Business did not return a Zone CLI session.");
+  }
+  return {
+    baseUrl: record.baseUrl,
+    session: record.session
+  };
+}
+async function loadRefreshedBusinessSession(options, io) {
+  const current = await loadCliSession({ appName: "mere-business", env: io.env });
+  if (!current) {
+    throw new CliError(
+      "No local Mere Business session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first.",
+      3
+    );
+  }
+  const workspace = selectBusinessWorkspace(current, resolveRequestedWorkspace(options, io.env));
+  const baseUrl = resolveBusinessBaseUrl(options, io.env, current);
+  if (!sessionNeedsRefresh(current, workspace.id)) {
+    return { session: current, workspace, baseUrl };
+  }
+  const payload = await refreshRemoteSession({
+    baseUrl,
+    refreshToken: current.refreshToken,
+    workspace: workspace.id,
+    fetchImpl: io.fetchImpl
+  });
+  const session = mergeSessionPayload(current, payload, {
+    baseUrl,
+    persistDefaultWorkspace: false
+  });
+  await saveCliSession({ appName: "mere-business", session, env: io.env });
+  return {
+    session,
+    workspace: session.workspace ?? workspace,
+    baseUrl
+  };
+}
+async function agentLogin(options, io) {
+  const business = await loadRefreshedBusinessSession(options, io);
+  const response = await (io.fetchImpl ?? fetch)(
+    new URL("/api/cli/v1/auth/product-sessions", business.baseUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${business.session.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        app: "zone",
+        workspaceId: business.workspace.id
+      })
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CliError(
+      productSessionErrorMessage(payload, `Request failed with status ${response.status}.`),
+      response.status === 401 || response.status === 403 ? 3 : 1
+    );
+  }
+  const product = readProductSessionPayload(payload);
+  const session = createLocalSession(product.session, {
+    baseUrl: resolveBaseUrl({ ...options, "base-url": trimOption2(asString2(options["base-url"])) ?? product.baseUrl }, io.env),
+    defaultWorkspaceId: product.session.workspace?.id ?? product.session.defaultWorkspaceId ?? business.workspace.id
+  });
+  await saveSession(session, io.env);
+  activeSession = session;
+  return session;
 }
 var COMPLETION_WORDS = [
   "auth",
@@ -2610,6 +2738,10 @@ async function handleAuth(action, globalOptions, io) {
     });
     activeSession = session;
     return session;
+  }
+  if (action === "agent-login") {
+    const session = await agentLogin(globalOptions, io);
+    return sessionOutput(session);
   }
   if (action === "logout") {
     const loggedOut = await logoutRemote({
