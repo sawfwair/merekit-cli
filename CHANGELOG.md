@@ -6,6 +6,12 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.17 - 2026-07-10
+
+- Fixed root-to-adapter global flag ordering so Business and other bundled apps receive explicit workspace and data flags in their canonical leading position.
+- Published Email offline-local reads that remain available when hosted auth expires, plus Contract v1 snapshot and invocation descriptors with structured auth, safety, custody, and locality evidence.
+- Corrected Email custody tunnel liveness so process heartbeats and unauthenticated probes cannot masquerade as authenticated client activity.
+
 ## 0.5.16 - 2026-07-07
 
 - Published the bundled IM adapter fix so `auth login --json` and `auth agent-login --json` return a redacted session summary instead of local access/refresh tokens.
