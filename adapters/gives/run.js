@@ -1777,7 +1777,7 @@ Global flags:
   --base-url URL       Override MERE_GIVES_BASE_URL
   --business-base-url URL Override Mere Business for browserless agent login
   --token TOKEN        Override MERE_GIVES_TOKEN
-  --workspace ID       Preferred ZeroSMB workspace during auth login
+  --workspace ID       Preferred Mere workspace during auth login
   --store local|cloud  Choose supported local/cloud data-plane commands
   --ai local|cloud     Choose AI plane for local-plane inspection
   --local-db PATH      Override the shared Mere local-plane SQLite path
@@ -1826,13 +1826,13 @@ Team admin:
   team add --tenant TENANT_ID --user USER_ID [--role owner|admin]
   team remove --tenant TENANT_ID --membership MEMBERSHIP_ID
 
-ZeroSMB:
+Mere:
   workspace provision --workspace-id ID --slug SLUG --name NAME [--webhook-url URL] [--callback-bearer-token TOKEN]
 
 Environment:
   MERE_GIVES_BASE_URL  Worker URL, for example https://mere.gives or http://127.0.0.1:8787
   MERE_GIVES_TOKEN     Bearer token override for admin/session requests
-  MERE_GIVES_WORKSPACE_ID  Default ZeroSMB workspace for browser auth login
+  MERE_GIVES_WORKSPACE_ID  Default Mere workspace for browser auth login
   ZERODONATE_INTERNAL_TOKEN Internal token for workspace provisioning
 
 Local plane:
@@ -2938,6 +2938,7 @@ async function handleWorkspaceCommand(argv, globalOptions, io) {
     method: "POST",
     path: `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/provision`,
     body: {
+      workspaceId,
       zerosmbWorkspaceId: workspaceId,
       slug: readRequiredStringOption(options, "slug"),
       name: readRequiredStringOption(options, "name"),
