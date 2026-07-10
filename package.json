@@ -52,18 +52,20 @@
     "access": "public"
   },
   "overrides": {
+    "esbuild": "0.28.1",
     "fast-uri": "3.1.2",
-    "hono": "4.12.23",
-    "qs": "6.15.2"
+    "hono": "4.12.28",
+    "qs": "6.15.2",
+    "vite": "6.4.3"
   },
   "pnpm": {
     "overrides": {
       "@vitejs/plugin-vue": "6.0.6",
-      "esbuild": "0.28.0",
+      "esbuild": "0.28.1",
       "fast-uri": "3.1.2",
-      "hono": "4.12.23",
+      "hono": "4.12.28",
       "qs": "6.15.2",
-      "vite": "6.4.2"
+      "vite": "6.4.3"
     }
   },
   "scripts": {
@@ -103,7 +105,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "25.9.1",
     "c8": "11.0.0",
-    "esbuild": "0.28.0",
+    "esbuild": "0.28.1",
     "eslint": "10.3.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.59.2",
