@@ -598,7 +598,7 @@ function normalizeProjectionEnvelope(input) {
   const event = nestedRecord(envelope2, "event") ?? envelope2;
   const eventType = stringField(envelope2, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
   if (!eventType) throw new Error("Projection envelope eventType is required.");
-  const workspaceId = stringField(envelope2, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  const workspaceId = stringField(envelope2, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "tenantId");
   if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
   const product = stringField(envelope2, "product") ?? stringField(envelope2, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
   const appId = input.appId?.trim() || stringField(envelope2, "appId") || defaultAppIdForProjection(product, eventType);
@@ -1408,7 +1408,7 @@ var init_local_store = __esm({
           };
         });
         const payload = {
-          zerosmbTenantId: workspace.workspace_id,
+          tenantId: workspace.workspace_id,
           slug: workspace.slug,
           baseDomain: workspace.base_domain ?? DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN,
           mailboxes,
@@ -1431,7 +1431,7 @@ var init_local_store = __esm({
         this.db.exec("BEGIN");
         try {
           upsertPlaneWorkspace(this.db, this.config.appId, {
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             slug: payload.slug,
             name: workspaceName,
             dataPlane: this.config.data,
@@ -1445,7 +1445,7 @@ var init_local_store = __esm({
              base_domain = excluded.base_domain,
              imported_at = excluded.imported_at,
              updated_at = excluded.updated_at`
-          ).run(payload.zerosmbTenantId, payload.slug, payload.baseDomain ?? null, now, now);
+          ).run(payload.tenantId, payload.slug, payload.baseDomain ?? null, now, now);
           const upsertMailbox = this.db.prepare(
             `INSERT INTO email_local_mailboxes (
            id, workspace_id, address, display_name, type, visibility, owner_user_id, owner_email, updated_at
@@ -1464,7 +1464,7 @@ var init_local_store = __esm({
           for (const mailbox of payload.mailboxes) {
             upsertMailbox.run(
               mailbox.id,
-              payload.zerosmbTenantId,
+              payload.tenantId,
               mailbox.address,
               mailbox.displayName,
               mailbox.type,
@@ -1544,7 +1544,7 @@ var init_local_store = __esm({
           for (const item of payload.threads) {
             upsertThread.run(
               item.thread.id,
-              payload.zerosmbTenantId,
+              payload.tenantId,
               item.thread.mailboxId,
               item.thread.subject,
               json(item.thread.participants),
@@ -1562,7 +1562,7 @@ var init_local_store = __esm({
               messageCount += 1;
               upsertMessage.run(
                 message.id,
-                payload.zerosmbTenantId,
+                payload.tenantId,
                 message.threadId,
                 message.mailboxId,
                 message.messageIdHeader,
@@ -1585,11 +1585,11 @@ var init_local_store = __esm({
                 message.attachmentCount,
                 message.createdAt
               );
-              this.db.prepare("DELETE FROM email_local_attachments WHERE workspace_id = ? AND message_id = ?").run(payload.zerosmbTenantId, message.id);
+              this.db.prepare("DELETE FROM email_local_attachments WHERE workspace_id = ? AND message_id = ?").run(payload.tenantId, message.id);
               for (const attachment of message.attachments) {
                 upsertAttachment.run(
                   attachment.id,
-                  payload.zerosmbTenantId,
+                  payload.tenantId,
                   message.id,
                   attachment.filename,
                   attachment.mimeType,
@@ -1603,7 +1603,7 @@ var init_local_store = __esm({
           }
           recordPlaneTransfer(this.db, {
             appId: this.config.appId,
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             direction: "import",
             source: transfer.source,
             destination: { data: this.config.data, ai: this.config.ai },
@@ -1614,7 +1614,7 @@ var init_local_store = __esm({
           return {
             ok: true,
             store: "local",
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             slug: payload.slug,
             mailboxCount: payload.mailboxes.length,
             threadCount: payload.threads.length,
@@ -6256,7 +6256,7 @@ var EmailWorkspaceLifecycleStateSchema = external_exports.enum(
   EMAIL_WORKSPACE_LIFECYCLE_STATES
 );
 var EmailWorkspaceProvisionInputSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+  tenantId: nonEmptyString("tenantId"),
   slug: nonEmptyString("slug"),
   baseDomain: external_exports.string().trim().default(DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN),
   name: nonEmptyString("name"),
@@ -6279,7 +6279,7 @@ var EmailWorkspaceLifecycleResponseSchema = external_exports.object({
   lastError: external_exports.string().trim().nullable()
 });
 var EmailWorkspaceSyncRequestSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+  tenantId: nonEmptyString("tenantId"),
   callbackUrl: optionalNullableString,
   callbackBearerToken: optionalNullableString,
   lifecycleState: EmailWorkspaceLifecycleStateSchema.optional(),
@@ -6355,7 +6355,7 @@ var EmailImportThreadExportSchema = external_exports.object({
   messages: external_exports.array(EmailImportMessageSchema).default([])
 });
 var EmailWorkspaceImportRequestSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+  tenantId: nonEmptyString("tenantId"),
   slug: nonEmptyString("slug"),
   baseDomain: nonEmptyString("baseDomain").default(DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN),
   mailboxes: external_exports.array(EmailImportMailboxSchema).default([]),
@@ -6473,7 +6473,7 @@ var DomainContactPrefillResponseSchema = external_exports.object({
 var EmailWorkspaceImportStatusSchema = external_exports.object({
   runId: nonEmptyString("runId"),
   workspaceId: nonEmptyString("workspaceId"),
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+  tenantId: nonEmptyString("tenantId"),
   status: EmailWorkspaceImportRunStatusSchema,
   error: external_exports.string().trim().nullable(),
   requestedMailboxes: external_exports.number().int().nonnegative(),
@@ -7423,7 +7423,7 @@ var EmailCliClient = class {
     );
   }
   workspacePath(workspaceId, suffix) {
-    return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
+    return `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
   isAgentMailPath(path7) {
     return path7.includes("/agent-mail/");
@@ -8134,7 +8134,7 @@ function renderImportStatus(status) {
   return formatKeyValue([
     ["run id", status.runId],
     ["workspace", status.workspaceId],
-    ["tenant", status.zerosmbTenantId],
+    ["tenant", status.tenantId],
     ["status", status.status],
     ["error", formatNullable(status.error)],
     ["mailboxes", formatProgress(status.importedMailboxes, status.requestedMailboxes)],
@@ -9933,7 +9933,7 @@ function resolveDataMode(options, env) {
 function wrapEmailWorkspaceTransfer(payload, config) {
   return createPlaneTransferBundle({
     appId: config.appId,
-    workspaceId: payload.zerosmbTenantId,
+    workspaceId: payload.tenantId,
     plane: config,
     payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
     payload
@@ -9966,7 +9966,7 @@ function planEmailWorkspaceImport(payload, bundle, config) {
     cloudProjection: config.cloudProjection,
     transferPlan: createPlaneTransferImportPlan({
       appId: config.appId,
-      workspaceId: payload.zerosmbTenantId,
+      workspaceId: payload.tenantId,
       payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
       payload,
       bundle,
@@ -10043,7 +10043,7 @@ function buildWorkspacePullPayload(workspaceId, mailboxes, threads) {
     ownerEmail: mailbox.ownerEmail ?? null
   }));
   return {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     slug: resolveWorkspaceSlug(workspaceId),
     baseDomain: inferBaseDomain(normalizedMailboxes),
     mailboxes: normalizedMailboxes,
@@ -10179,7 +10179,7 @@ function buildLocalPublicationPayload(input) {
       version: EMAIL_PRODUCT_EVENT_VERSION,
       event: {
         type: "mail.publication.upserted",
-        zerosmbTenantId: input.workspaceId,
+        tenantId: input.workspaceId,
         mailbox: input.state.mailbox,
         thread: input.state.thread,
         publication,
@@ -10211,7 +10211,7 @@ function buildLocalPublicationRevocationEnvelope(input) {
       version: EMAIL_PRODUCT_EVENT_VERSION,
       event: {
         type: "mail.publication.revoked",
-        zerosmbTenantId: input.workspaceId,
+        tenantId: input.workspaceId,
         mailbox: input.state.mailbox,
         thread: input.state.thread,
         publication: built.publication
@@ -10435,7 +10435,7 @@ async function handleWorkspaceProvision(io, globalOptions, args) {
   const lifecycleState = parseLifecycleState2(readOptionalStringOption(options, "lifecycle-state"));
   const mailboxAddress = readOptionalStringOption(options, "mailbox-address");
   const input = {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     slug: readRequiredStringOption(options, "slug"),
     baseDomain: parseBaseDomain(readOptionalStringOption(options, "base-domain")),
     name: readRequiredStringOption(options, "name"),
@@ -10477,7 +10477,7 @@ async function handleWorkspaceSync(io, globalOptions, args) {
   const workspaceId = resolveWorkspace(globalOptions, io.env);
   const lifecycleState = parseLifecycleState2(readOptionalStringOption(options, "lifecycle-state"));
   const input = {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     ...lifecycleState ? { lifecycleState } : {},
     ...readOptionalNullableStringOption(options, "trial-ends-at") !== void 0 ? { trialEndsAt: readOptionalNullableStringOption(options, "trial-ends-at") } : {},
     ...readOptionalNullableStringOption(options, "grace-ends-at") !== void 0 ? { graceEndsAt: readOptionalNullableStringOption(options, "grace-ends-at") } : {},
@@ -11972,9 +11972,9 @@ async function handleImport(io, globalOptions, args) {
   const { payload, bundle } = parseEmailWorkspaceTransfer(
     await readJsonFile(readRequiredStringOption(options, "file"))
   );
-  if (workspaceId && payload.zerosmbTenantId !== workspaceId) {
+  if (workspaceId && payload.tenantId !== workspaceId) {
     throw new CliError(
-      `Import payload tenant ${payload.zerosmbTenantId} does not match workspace ${workspaceId}.`
+      `Import payload tenant ${payload.tenantId} does not match workspace ${workspaceId}.`
     );
   }
   const config = resolveEmailPlaneConfig(globalOptions, io.env);
