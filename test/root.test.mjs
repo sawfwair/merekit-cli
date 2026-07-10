@@ -41,11 +41,18 @@ if (args[0] === '--version') {
   console.log('fake-projects');
   process.exit(0);
 }
-if (args[0] === 'completion') {
+const globalValueFlags = new Set(['workspace', 'confirm', 'ai', 'projection-url']);
+let commandIndex = 0;
+while (args[commandIndex]?.startsWith('--')) {
+  const [name, inlineValue] = args[commandIndex].slice(2).split('=', 2);
+  commandIndex += inlineValue !== undefined || !globalValueFlags.has(name) ? 1 : 2;
+}
+const commandArgs = args.slice(commandIndex);
+if (commandArgs[0] === 'completion') {
   console.log('complete');
   process.exit(0);
 }
-if (args[0] === 'auth' && args[1] === 'whoami') {
+if (commandArgs[0] === 'auth' && commandArgs[1] === 'whoami') {
   console.log(JSON.stringify({ args, accessToken: 'eyJabc.def.ghi', refreshToken: 'zcli_refresh_secret' }));
   process.exit(0);
 }
@@ -123,11 +130,18 @@ if (args[0] === '--version') {
   console.log('  auth whoami');
   process.exit(0);
 }
-if (args[0] === 'completion') {
+const globalValueFlags = new Set(['workspace']);
+let commandIndex = 0;
+while (args[commandIndex]?.startsWith('--')) {
+  const [name, inlineValue] = args[commandIndex].slice(2).split('=', 2);
+  commandIndex += inlineValue !== undefined || !globalValueFlags.has(name) ? 1 : 2;
+}
+const commandArgs = args.slice(commandIndex);
+if (commandArgs[0] === 'completion') {
   console.log('complete');
   process.exit(0);
 }
-if (args[0] === 'auth' && args[1] === 'whoami') {
+if (commandArgs[0] === 'auth' && commandArgs[1] === 'whoami') {
   console.log(JSON.stringify({ ok: true }));
   process.exit(0);
 }
@@ -165,11 +179,18 @@ if (args[0] === '--version') {
   console.log('fake-auth');
   process.exit(0);
 }
-if (args[0] === 'completion') {
+const globalValueFlags = new Set(['workspace']);
+let commandIndex = 0;
+while (args[commandIndex]?.startsWith('--')) {
+  const [name, inlineValue] = args[commandIndex].slice(2).split('=', 2);
+  commandIndex += inlineValue !== undefined || !globalValueFlags.has(name) ? 1 : 2;
+}
+const commandArgs = args.slice(commandIndex);
+if (commandArgs[0] === 'completion') {
   console.log('complete');
   process.exit(0);
 }
-if (args[0] === 'auth' && args[1] === 'whoami') {
+if (commandArgs[0] === 'auth' && commandArgs[1] === 'whoami') {
   console.log(JSON.stringify({ ...${JSON.stringify(payload)}, args }));
   process.exit(${exitCode});
 }
@@ -200,6 +221,7 @@ async function writeFakeSelectorCli(fake, app) {
   await writeFile(
     fake,
     `#!/usr/bin/env node
+const { appendFileSync } = require('node:fs');
 const args = process.argv.slice(2);
 if (args[0] === 'commands') {
   console.log(JSON.stringify({
@@ -215,23 +237,33 @@ if (args[0] === 'commands') {
   }));
   process.exit(0);
 }
+if (process.env.FAKE_SELECTOR_TRACE) {
+  appendFileSync(process.env.FAKE_SELECTOR_TRACE, JSON.stringify(args) + '\\n');
+}
 if (args[0] === '--version') {
   console.log('fake-${app}');
   process.exit(0);
 }
-if (args[0] === 'completion') {
+const globalValueFlags = new Set(['workspace', 'tenant', 'store']);
+let commandIndex = 0;
+while (args[commandIndex]?.startsWith('--')) {
+  const [name, inlineValue] = args[commandIndex].slice(2).split('=', 2);
+  commandIndex += inlineValue !== undefined || !globalValueFlags.has(name) ? 1 : 2;
+}
+const commandArgs = args.slice(commandIndex);
+if (commandArgs[0] === 'completion') {
   console.log('complete');
   process.exit(0);
 }
-if (args[0] === 'tenant' && args[1] === 'resolve') {
+if (commandArgs[0] === 'tenant' && commandArgs[1] === 'resolve') {
   console.log(JSON.stringify({ tenant: { id: 'ten_1' }, args }));
   process.exit(0);
 }
-if (args[0] === 'store' && args[1] === 'list') {
+if (commandArgs[0] === 'store' && commandArgs[1] === 'list') {
   console.log(JSON.stringify({ current: { storeId: 'store_1' }, stores: [{ storeId: 'store_1' }], args }));
   process.exit(0);
 }
-if (args[0] === 'stripe' && args[1] === 'status' && args.includes('--store')) {
+if (commandArgs[0] === 'stripe' && commandArgs[1] === 'status' && commandIndex === 0 && args.includes('--store')) {
   console.error('Unknown option: --store');
   process.exit(1);
 }
@@ -900,7 +932,7 @@ test('business local resolution prefers a usable mere-business checkout over a p
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.marker, 'real-business');
-  assert.deepEqual(payload.args, ['onboard', 'agent-start', 'zcli_code_123', '--json']);
+  assert.deepEqual(payload.args, ['--json', 'onboard', 'agent-start', 'zcli_code_123']);
 });
 
 test('missing forced bundled adapters return actionable errors', async () => {
@@ -924,7 +956,7 @@ test('delegates supported pass-through flags only', async () => {
   });
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.deepEqual(payload.args, ['project', 'list', '--json', '--workspace', 'ws_1']);
+  assert.deepEqual(payload.args, ['--json', '--workspace', 'ws_1', 'project', 'list']);
 });
 
 test('passes --ai and --projection-url through to apps that declare them as global', async () => {
@@ -956,16 +988,20 @@ test('passes --help through to a delegated app instead of showing root help', as
   assert.match(rootHelp.stdout, /Human first run:/);
 });
 
-test('retries manifest global flags in leading position when adapters require it', async () => {
+test('passes manifest global flags in leading position on the first adapter invocation', async () => {
   const root = await fakeMereRoot();
   const zoneCli = path.join(root, 'fake-zone.js');
+  const trace = path.join(root, 'zone-invocations.ndjson');
   await writeFakeSelectorCli(zoneCli, 'zone');
   const result = await run(['zone', 'stripe', 'status', '--store', 'store_2', '--json'], {
     MERE_ROOT: root,
     MERE_ZONE_CLI: zoneCli,
+    FAKE_SELECTOR_TRACE: trace,
   });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout).args, ['--store', 'store_2', '--json', 'stripe', 'status']);
+  const invocations = (await readFile(trace, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(invocations, [['--store', 'store_2', '--json', 'stripe', 'status']]);
 });
 
 test('workspace snapshot runs read-only audit defaults for a workspace', async () => {
@@ -1100,7 +1136,7 @@ test('auth status uses stored workspace context when no workspace flag is passed
   const status = JSON.parse(result.stdout).results[0];
   assert.equal(status.ok, true);
   assert.equal(status.workspace, 'ws_active');
-  assert.deepEqual(JSON.parse(status.stdout).args, ['auth', 'whoami', '--json', '--workspace', 'ws_active']);
+  assert.deepEqual(JSON.parse(status.stdout).args, ['--json', '--workspace', 'ws_active', 'auth', 'whoami']);
 });
 
 test('ops doctor uses the same auth usability semantics as auth status', async () => {
@@ -1282,7 +1318,7 @@ test('finance auth login delegates when explicitly selected', async () => {
   assert.equal(payload.results[0].app, 'finance');
   assert.equal(payload.results[0].ok, true);
   const stdout = JSON.parse(payload.results[0].stdout);
-  assert.deepEqual(stdout.args, ['auth', 'login', '--base-url', 'https://finance.test', '--profile', 'books', '--json']);
+  assert.deepEqual(stdout.args, ['--base-url', 'https://finance.test', '--profile', 'books', '--json', 'auth', 'login']);
 });
 
 test('finance profile wrappers read and update local config', async () => {
@@ -1314,7 +1350,7 @@ test('finance profile login stores profile and delegates auth login', async () =
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.currentProfile, 'books');
   assert.equal(payload.baseUrl, 'https://finance.test');
-  assert.deepEqual(payload.stdout.args, ['auth', 'login', '--base-url', 'https://finance.test', '--profile', 'books', '--json']);
+  assert.deepEqual(payload.stdout.args, ['--base-url', 'https://finance.test', '--profile', 'books', '--json', 'auth', 'login']);
 });
 
 test('finance profile wrappers require a tenant base URL for new profiles', async () => {
