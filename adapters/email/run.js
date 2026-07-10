@@ -362,8 +362,8 @@ async function loadNodeSqlite() {
 }
 async function openLocalPlaneDatabase(config) {
   await mkdir(path.dirname(config.localDbPath), { recursive: true });
-  const { DatabaseSync } = await loadNodeSqlite();
-  const db = new DatabaseSync(config.localDbPath);
+  const { DatabaseSync: DatabaseSync2 } = await loadNodeSqlite();
+  const db = new DatabaseSync2(config.localDbPath);
   ensureLocalPlaneSchema(db);
   return {
     dbPath: config.localDbPath,
@@ -594,19 +594,19 @@ function normalizeProjectionEnvelope(input) {
     throw new Error("Projection envelope must be a JSON object.");
   }
   const receivedAt = input.receivedAt ?? isoNow2();
-  const envelope = input.envelope;
-  const event = nestedRecord(envelope, "event") ?? envelope;
-  const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
+  const envelope2 = input.envelope;
+  const event = nestedRecord(envelope2, "event") ?? envelope2;
+  const eventType = stringField(envelope2, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
   if (!eventType) throw new Error("Projection envelope eventType is required.");
-  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  const workspaceId = stringField(envelope2, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
   if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
-  const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
-  const appId = input.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
-  const sourceEventId = stringField(envelope, "eventId") ?? stringField(event, "eventId") ?? stringField(event, "id") ?? stringField(envelope, "dedupeKey") ?? `sha256:${hashJson(input.envelope).slice(0, 32)}`;
+  const product = stringField(envelope2, "product") ?? stringField(envelope2, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
+  const appId = input.appId?.trim() || stringField(envelope2, "appId") || defaultAppIdForProjection(product, eventType);
+  const sourceEventId = stringField(envelope2, "eventId") ?? stringField(event, "eventId") ?? stringField(event, "id") ?? stringField(envelope2, "dedupeKey") ?? `sha256:${hashJson(input.envelope).slice(0, 32)}`;
   const inferredExternal = inferExternalObject(event);
-  const externalObjectType = stringField(envelope, "externalObjectType") ?? stringField(event, "externalObjectType") ?? inferredExternal.externalObjectType;
-  const externalObjectId = stringField(envelope, "externalObjectId") ?? stringField(event, "externalObjectId") ?? inferredExternal.externalObjectId;
-  const occurredAt = stringField(envelope, "occurredAt") ?? stringField(event, "occurredAt") ?? stringField(event, "updatedAt") ?? stringField(nestedRecord(event, "publication") ?? {}, "publishedAt") ?? stringField(nestedRecord(event, "projection") ?? {}, "publishedAt") ?? receivedAt;
+  const externalObjectType = stringField(envelope2, "externalObjectType") ?? stringField(event, "externalObjectType") ?? inferredExternal.externalObjectType;
+  const externalObjectId = stringField(envelope2, "externalObjectId") ?? stringField(event, "externalObjectId") ?? inferredExternal.externalObjectId;
+  const occurredAt = stringField(envelope2, "occurredAt") ?? stringField(event, "occurredAt") ?? stringField(event, "updatedAt") ?? stringField(nestedRecord(event, "publication") ?? {}, "publishedAt") ?? stringField(nestedRecord(event, "projection") ?? {}, "publishedAt") ?? receivedAt;
   const envelopeJson = json(input.envelope);
   return {
     appId,
@@ -617,8 +617,8 @@ function normalizeProjectionEnvelope(input) {
     externalObjectType,
     externalObjectId,
     occurredAt,
-    canonicalUrl: stringField(envelope, "canonicalUrl") ?? stringField(event, "canonicalUrl"),
-    dedupeKey: stringField(envelope, "dedupeKey"),
+    canonicalUrl: stringField(envelope2, "canonicalUrl") ?? stringField(event, "canonicalUrl"),
+    dedupeKey: stringField(envelope2, "dedupeKey"),
     source: input.source ?? "manual",
     receivedAt,
     envelopeSha256: createHash2("sha256").update(envelopeJson).digest("hex"),
@@ -1037,7 +1037,7 @@ var local_store_exports = {};
 __export(local_store_exports, {
   LocalEmailStore: () => LocalEmailStore
 });
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID as randomUUID4 } from "node:crypto";
 function parseStringArray(value) {
   const parsed = parseJsonText(value);
   return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
@@ -1057,7 +1057,7 @@ function compactSnippet(value, max = 240) {
   return `${compacted.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
 }
 function makeId(prefix) {
-  return `${prefix}_${randomUUID3().replaceAll("-", "").slice(0, 24)}`;
+  return `${prefix}_${randomUUID4().replaceAll("-", "").slice(0, 24)}`;
 }
 function mapMailbox(row) {
   return {
@@ -1805,7 +1805,7 @@ var init_local_store = __esm({
         );
         return row ? mapPublication(row) : null;
       }
-      recordPublicationProjection(workspaceId, publication, envelope) {
+      recordPublicationProjection(workspaceId, publication, envelope2) {
         this.ensureEmailSchema();
         const now = isoNow2();
         this.db.prepare(
@@ -1845,7 +1845,7 @@ var init_local_store = __esm({
         recordLocalProjectionEnvelope(this.db, {
           appId: this.config.appId,
           source: "local-publish",
-          envelope
+          envelope: envelope2
         });
       }
       getAttachments(workspaceId, messageId) {
@@ -1998,7 +1998,7 @@ var init_local_store = __esm({
 // cli/mere-email.ts
 init_src();
 init_projection();
-import { createHash as createHash6, randomBytes as nodeRandomBytes } from "node:crypto";
+import { createHash as createHash7, randomBytes as nodeRandomBytes } from "node:crypto";
 import { chmod as chmod4, mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
 
@@ -2677,8 +2677,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path6, errorMaps, issueData } = params;
-  const fullPath = [...path6, ...issueData.path || []];
+  const { data, path: path7, errorMaps, issueData } = params;
+  const fullPath = [...path7, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -2794,11 +2794,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path6, key) {
+  constructor(parent, value, path7, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path6;
+    this._path = path7;
     this._key = key;
   }
   get path() {
@@ -7185,14 +7185,14 @@ var EmailCliClient = class {
       { parser: parseDisconnectResult }
     );
   }
-  async pushSealedEnvelope(workspaceId, envelope) {
+  async pushSealedEnvelope(workspaceId, envelope2) {
     return this.request(
       this.workspacePath(workspaceId, "projections/email/sealed"),
       {
         method: "POST",
         body: JSON.stringify({
           type: "email.sealed_envelope.v1",
-          envelope
+          envelope: envelope2
         })
       },
       { parser: parseSealedEnvelopePushResult }
@@ -7425,8 +7425,8 @@ var EmailCliClient = class {
   workspacePath(workspaceId, suffix) {
     return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
-  isAgentMailPath(path6) {
-    return path6.includes("/agent-mail/");
+  isAgentMailPath(path7) {
+    return path7.includes("/agent-mail/");
   }
   agentHeaders() {
     return new Headers({
@@ -7437,14 +7437,14 @@ var EmailCliClient = class {
       "x-mere-tool-key": "mere-email-cli"
     });
   }
-  async request(path6, init, options) {
+  async request(path7, init, options) {
     const requiresToken = options.requiresToken ?? true;
     if (requiresToken && !this.token) {
       throw new CliError("This command requires `mere-email auth login` or MERE_EMAIL_TOKEN.");
     }
     const headers = this.token ? buildBearerHeaders(this.token, init.headers) : new Headers(init.headers);
     headers.set("accept", "application/json");
-    if (this.isAgentMailPath(path6)) {
+    if (this.isAgentMailPath(path7)) {
       const agentHeaders = this.agentHeaders();
       for (const [key, value] of agentHeaders.entries()) {
         headers.set(key, value);
@@ -7453,7 +7453,7 @@ var EmailCliClient = class {
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
-    const response = await this.fetchImpl(new URL(path6, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path7, this.baseUrl), {
       ...init,
       headers
     });
@@ -7490,8 +7490,8 @@ import path4 from "node:path";
 var SEALED_ENVELOPE_VERSION = 1;
 var SEALED_ENVELOPE_ALG = "A256GCM";
 function sealedKeyPath(env) {
-  const stateHome3 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path4.join(env.HOME?.trim() ? env.HOME.trim() : os4.homedir(), ".local", "state");
-  return path4.join(stateHome3, "mere-email", "sealed.key");
+  const stateHome4 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path4.join(env.HOME?.trim() ? env.HOME.trim() : os4.homedir(), ".local", "state");
+  return path4.join(stateHome4, "mere-email", "sealed.key");
 }
 function keyFingerprint(key) {
   return createHash4("sha256").update(key).digest("hex").slice(0, 16);
@@ -7549,21 +7549,21 @@ function sealMessage(sealedKey, input) {
     ct: ciphertext.toString("base64")
   };
 }
-function unsealEnvelope(sealedKey, envelope) {
-  if (envelope.v !== SEALED_ENVELOPE_VERSION || envelope.alg !== SEALED_ENVELOPE_ALG) {
-    throw new Error(`Unsupported sealed envelope format (v${envelope.v}, ${envelope.alg}).`);
+function unsealEnvelope(sealedKey, envelope2) {
+  if (envelope2.v !== SEALED_ENVELOPE_VERSION || envelope2.alg !== SEALED_ENVELOPE_ALG) {
+    throw new Error(`Unsupported sealed envelope format (v${envelope2.v}, ${envelope2.alg}).`);
   }
-  if (envelope.keyId !== sealedKey.keyId) {
-    throw new Error(`Envelope was sealed with key ${envelope.keyId}, not the local key ${sealedKey.keyId}.`);
+  if (envelope2.keyId !== sealedKey.keyId) {
+    throw new Error(`Envelope was sealed with key ${envelope2.keyId}, not the local key ${sealedKey.keyId}.`);
   }
-  const raw = Buffer.from(envelope.ct, "base64");
+  const raw = Buffer.from(envelope2.ct, "base64");
   if (raw.length < 17) {
     throw new Error("Sealed envelope ciphertext is truncated.");
   }
   const tag = raw.subarray(raw.length - 16);
   const ciphertext = raw.subarray(0, raw.length - 16);
-  const decipher = createDecipheriv("aes-256-gcm", sealedKey.key, Buffer.from(envelope.iv, "base64"));
-  decipher.setAAD(envelopeAad(envelope));
+  const decipher = createDecipheriv("aes-256-gcm", sealedKey.key, Buffer.from(envelope2.iv, "base64"));
+  decipher.setAAD(envelopeAad(envelope2));
   decipher.setAuthTag(tag);
   const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   return parseJsonText(plaintext.toString("utf8"), { invalidJsonMessage: "Sealed envelope payload is not valid JSON." });
@@ -7579,8 +7579,8 @@ import { createServer as createServer2 } from "node:http";
 import os5 from "node:os";
 import path5 from "node:path";
 function custodyTunnelTokenPath(env) {
-  const stateHome3 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path5.join(env.HOME?.trim() ? env.HOME.trim() : os5.homedir(), ".local", "state");
-  return path5.join(stateHome3, "mere-email", "tunnel.token");
+  const stateHome4 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path5.join(env.HOME?.trim() ? env.HOME.trim() : os5.homedir(), ".local", "state");
+  return path5.join(stateHome4, "mere-email", "tunnel.token");
 }
 function bearerToken(request) {
   const header = request.headers.authorization;
@@ -7629,8 +7629,8 @@ function parseLimit(value, fallback, max) {
   return Math.min(parsed, max);
 }
 function mapEnvelope(row) {
-  const envelope = parseSealedEnvelope(row.envelopeJson);
-  if (envelope.keyId !== row.keyId || envelope.workspaceId !== row.workspaceId || envelope.threadId !== row.threadId || envelope.messageId !== row.messageId) {
+  const envelope2 = parseSealedEnvelope(row.envelopeJson);
+  if (envelope2.keyId !== row.keyId || envelope2.workspaceId !== row.workspaceId || envelope2.threadId !== row.threadId || envelope2.messageId !== row.messageId) {
     throw new Error(`Sealed envelope row/header mismatch for ${row.messageId}.`);
   }
   return {
@@ -7641,7 +7641,7 @@ function mapEnvelope(row) {
     messageId: row.messageId,
     sealedAt: row.sealedAt,
     remoteEtag: row.remoteEtag,
-    envelope
+    envelope: envelope2
   };
 }
 async function startCustodyTunnelServer(input) {
@@ -7652,7 +7652,7 @@ async function startCustodyTunnelServer(input) {
   const port = input.port ?? 0;
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   let url = "";
-  let lastSeenAt = startedAt;
+  let lastSeenAt = null;
   const markSeen = () => {
     lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
     input.onSeen?.(lastSeenAt);
@@ -7740,13 +7740,13 @@ async function startCustodyTunnelServer(input) {
       server.off("error", reject);
       const address = server.address();
       url = `http://${address.address}:${address.port}`;
-      markSeen();
+      input.onHeartbeat?.(startedAt);
       resolve();
     });
   });
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 15e3;
   const heartbeat = heartbeatIntervalMs > 0 ? setInterval(() => {
-    markSeen();
+    input.onHeartbeat?.((/* @__PURE__ */ new Date()).toISOString());
   }, heartbeatIntervalMs) : null;
   heartbeat?.unref();
   return {
@@ -8269,6 +8269,971 @@ async function logoutRemote(input = {}) {
   return true;
 }
 
+// cli/console-contract.ts
+import { createHash as createHash6, randomUUID as randomUUID3 } from "node:crypto";
+import { existsSync as existsSync3 } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/status.ts
+import { existsSync as existsSync2 } from "node:fs";
+import os6 from "node:os";
+import path6 from "node:path";
+var requiredPlaneTables = [
+  "mere_plane_apps",
+  "mere_plane_workspaces",
+  "mere_plane_app_workspaces",
+  "mere_plane_transfer_schemas",
+  "mere_plane_transfers",
+  "mere_plane_ai_jobs"
+];
+async function loadNodeSqlite2() {
+  return import(["node", "sqlite"].join(":"));
+}
+function stateHome3(env) {
+  const home = env.HOME?.trim() || os6.homedir();
+  return env.XDG_DATA_HOME?.trim() || path6.join(home, ".local", "share");
+}
+function expandHome2(value, env) {
+  const home = env.HOME?.trim() || os6.homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path6.join(home, value.slice(2));
+  return value;
+}
+function envPrefix4(appId) {
+  return appId.trim().toUpperCase().replace(/^@/, "").replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+function resolveLocalPlaneStatusDbPath(input = {}) {
+  const env = input.env ?? process.env;
+  const prefix = input.appId ? envPrefix4(input.appId) : "";
+  const configured = input.localDbPath ?? (prefix ? env[`${prefix}_LOCAL_DB`] : void 0) ?? (prefix ? env[`${prefix}_LOCAL_PLANE_DB`] : void 0) ?? env.MERE_LOCAL_DB ?? env.MERE_LOCAL_PLANE_DB;
+  return path6.resolve(configured?.trim() ? expandHome2(configured, env) : path6.join(stateHome3(env), "mere", "local-plane.db"));
+}
+function emptyLocalPlaneInventory() {
+  return {
+    apps: [],
+    transferSchemas: [],
+    workspaces: [],
+    appWorkspaces: [],
+    transfers: [],
+    counts: {
+      apps: 0,
+      workspaces: 0,
+      transferSchemas: 0,
+      transfers: 0,
+      aiJobs: 0
+    }
+  };
+}
+function countRows2(db, sql, ...params) {
+  return Number(db.prepare(sql).get(...params)?.count ?? 0);
+}
+function tableExists(db, tableName) {
+  return db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName)?.count === 1;
+}
+function appFilterClause2(appId, tableAlias) {
+  return appId ? ` WHERE ${tableAlias}.app_id = ?` : "";
+}
+function planeModeOrNull2(value) {
+  return value === "cloud" || value === "local" ? value : null;
+}
+function scopedWhere(appId, tableAlias, prefix = "WHERE") {
+  return appId ? ` ${prefix} ${tableAlias}.app_id = ?` : "";
+}
+function pushIssue(issues, issue) {
+  issues.push(issue);
+}
+function readInventory(db, options) {
+  const appId = options.appId ?? void 0;
+  if (!tableExists(db, "mere_plane_apps") || !tableExists(db, "mere_plane_workspaces") || !tableExists(db, "mere_plane_app_workspaces")) {
+    return emptyLocalPlaneInventory();
+  }
+  const appParams = appId ? [appId] : [];
+  const transferLimit = Math.max(1, Math.min(options.transferLimit ?? 10, 100));
+  const hasTransfers = tableExists(db, "mere_plane_transfers");
+  const hasAiJobs = tableExists(db, "mere_plane_ai_jobs");
+  const hasTransferSchemas = tableExists(db, "mere_plane_transfer_schemas");
+  const apps = db.prepare(
+    `SELECT
+         a.app_id,
+         a.display_name,
+         a.updated_at,
+         COUNT(DISTINCT aw.workspace_id) AS workspace_count,
+         ${hasTransferSchemas ? "COUNT(DISTINCT s.payload_schema)" : "0"} AS transfer_schema_count,
+         ${hasTransfers ? "COUNT(DISTINCT t.id)" : "0"} AS transfer_count
+       FROM mere_plane_apps AS a
+       LEFT JOIN mere_plane_app_workspaces AS aw ON aw.app_id = a.app_id
+       ${hasTransferSchemas ? "LEFT JOIN mere_plane_transfer_schemas AS s ON s.app_id = a.app_id" : ""}
+       ${hasTransfers ? "LEFT JOIN mere_plane_transfers AS t ON t.app_id = a.app_id" : ""}
+       ${appFilterClause2(appId, "a")}
+       GROUP BY a.app_id
+       ORDER BY a.app_id ASC`
+  ).all(...appParams);
+  const transferSchemas = hasTransferSchemas ? db.prepare(
+    `SELECT *
+           FROM mere_plane_transfer_schemas AS s
+           ${appFilterClause2(appId, "s")}
+           ORDER BY s.app_id ASC, s.payload_schema ASC`
+  ).all(...appParams) : [];
+  const workspaces = db.prepare(
+    `SELECT
+         w.workspace_id,
+         w.slug,
+         w.name,
+         w.updated_at,
+         COUNT(DISTINCT aw.app_id) AS app_count
+       FROM mere_plane_workspaces AS w
+       JOIN mere_plane_app_workspaces AS aw ON aw.workspace_id = w.workspace_id
+       ${appFilterClause2(appId, "aw")}
+       GROUP BY w.workspace_id
+       ORDER BY w.updated_at DESC, w.workspace_id ASC`
+  ).all(...appParams);
+  const appWorkspaces = db.prepare(
+    `SELECT
+         aw.app_id,
+         aw.workspace_id,
+         w.slug,
+         w.name,
+         aw.data_plane,
+         aw.ai_plane,
+         aw.cloud_projection,
+         aw.updated_at
+       FROM mere_plane_app_workspaces AS aw
+       JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${appFilterClause2(appId, "aw")}
+       ORDER BY aw.app_id ASC, w.slug ASC, aw.workspace_id ASC`
+  ).all(...appParams);
+  const transfers = hasTransfers ? db.prepare(
+    `SELECT *
+           FROM mere_plane_transfers AS t
+           ${appFilterClause2(appId, "t")}
+           ORDER BY t.created_at DESC, t.id DESC
+           LIMIT ?`
+  ).all(...appParams, transferLimit) : [];
+  const scopedCount = (table) => appId ? countRows2(db, `SELECT COUNT(*) AS count FROM ${table} WHERE app_id = ?`, appId) : countRows2(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return {
+    apps: apps.map((app) => ({
+      appId: app.app_id,
+      displayName: app.display_name,
+      workspaceCount: Number(app.workspace_count),
+      transferSchemaCount: Number(app.transfer_schema_count),
+      transferCount: Number(app.transfer_count),
+      updatedAt: app.updated_at
+    })),
+    transferSchemas: transferSchemas.map((schema) => ({
+      appId: schema.app_id,
+      payloadSchema: schema.payload_schema,
+      displayName: schema.display_name,
+      description: schema.description,
+      importSupported: schema.import_supported === 1,
+      exportSupported: schema.export_supported === 1,
+      updatedAt: schema.updated_at
+    })),
+    workspaces: workspaces.map((workspace) => ({
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      appCount: Number(workspace.app_count),
+      updatedAt: workspace.updated_at
+    })),
+    appWorkspaces: appWorkspaces.map((workspace) => ({
+      appId: workspace.app_id,
+      workspaceId: workspace.workspace_id,
+      slug: workspace.slug,
+      name: workspace.name,
+      dataPlane: workspace.data_plane,
+      aiPlane: workspace.ai_plane,
+      cloudProjection: workspace.cloud_projection,
+      updatedAt: workspace.updated_at
+    })),
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      appId: transfer.app_id,
+      workspaceId: transfer.workspace_id,
+      direction: transfer.direction,
+      sourceDataPlane: planeModeOrNull2(transfer.source_data_plane),
+      sourceAiPlane: planeModeOrNull2(transfer.source_ai_plane),
+      destinationDataPlane: planeModeOrNull2(transfer.destination_data_plane),
+      destinationAiPlane: planeModeOrNull2(transfer.destination_ai_plane),
+      payloadSchema: transfer.payload_schema,
+      payloadSha256: transfer.payload_sha256,
+      createdAt: transfer.created_at
+    })),
+    counts: {
+      apps: appId ? apps.length : countRows2(db, "SELECT COUNT(*) AS count FROM mere_plane_apps"),
+      workspaces: workspaces.length,
+      transferSchemas: hasTransferSchemas ? appId ? transferSchemas.length : countRows2(db, "SELECT COUNT(*) AS count FROM mere_plane_transfer_schemas") : 0,
+      transfers: hasTransfers ? scopedCount("mere_plane_transfers") : 0,
+      aiJobs: hasAiJobs ? scopedCount("mere_plane_ai_jobs") : 0
+    }
+  };
+}
+async function readLocalPlaneStatusSnapshot(options = {}) {
+  const appId = options.appId ?? null;
+  const dbPath = resolveLocalPlaneStatusDbPath(options);
+  const exists = existsSync2(dbPath);
+  if (!exists) {
+    return {
+      kind: "mere.local-plane.status",
+      dbPath,
+      exists,
+      appId,
+      inventory: emptyLocalPlaneInventory()
+    };
+  }
+  const { DatabaseSync: DatabaseSync2 } = await loadNodeSqlite2();
+  const db = new DatabaseSync2(dbPath, { readOnly: true });
+  try {
+    return {
+      kind: "mere.local-plane.status",
+      dbPath,
+      exists,
+      appId,
+      inventory: readInventory(db, options)
+    };
+  } finally {
+    db.close();
+  }
+}
+function validateLocalPlaneDatabase(db, options) {
+  const appId = options.appId ?? void 0;
+  const issues = [];
+  const missingTables = requiredPlaneTables.filter((tableName) => !tableExists(db, tableName));
+  for (const tableName of missingTables) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "missing_plane_table",
+      message: `Missing local-plane metadata table: ${tableName}`
+    });
+  }
+  if (missingTables.length > 0) {
+    return {
+      inventory: emptyLocalPlaneInventory(),
+      issues
+    };
+  }
+  const appParams = appId ? [appId] : [];
+  const appWorkspaceAppRows = db.prepare(
+    `SELECT aw.app_id, aw.workspace_id
+       FROM mere_plane_app_workspaces AS aw
+       LEFT JOIN mere_plane_apps AS a ON a.app_id = aw.app_id
+       ${scopedWhere(appId, "aw")}
+       ${appId ? "AND" : "WHERE"} a.app_id IS NULL`
+  ).all(...appParams);
+  for (const row of appWorkspaceAppRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "workspace_link_missing_app",
+      message: `Workspace link references unregistered app ${row.app_id}.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id
+    });
+  }
+  const appWorkspaceWorkspaceRows = db.prepare(
+    `SELECT aw.app_id, aw.workspace_id
+       FROM mere_plane_app_workspaces AS aw
+       LEFT JOIN mere_plane_workspaces AS w ON w.workspace_id = aw.workspace_id
+       ${scopedWhere(appId, "aw")}
+       ${appId ? "AND" : "WHERE"} w.workspace_id IS NULL`
+  ).all(...appParams);
+  for (const row of appWorkspaceWorkspaceRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "workspace_link_missing_workspace",
+      message: `Workspace link references unregistered workspace ${row.workspace_id}.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id
+    });
+  }
+  const projectionRows = db.prepare(
+    `SELECT aw.app_id, aw.workspace_id, aw.cloud_projection
+       FROM mere_plane_app_workspaces AS aw
+       ${scopedWhere(appId, "aw")}
+       ${appId ? "AND" : "WHERE"} aw.cloud_projection != 'cloudflare'`
+  ).all(...appParams);
+  for (const row of projectionRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "invalid_cloud_projection",
+      message: `Workspace ${row.workspace_id} for ${row.app_id} uses unsupported projection ${row.cloud_projection}.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id
+    });
+  }
+  const transferSchemaRows = db.prepare(
+    `SELECT t.id, t.app_id, t.workspace_id, t.payload_schema
+       FROM mere_plane_transfers AS t
+       LEFT JOIN mere_plane_transfer_schemas AS s
+         ON s.app_id = t.app_id AND s.payload_schema = t.payload_schema
+       ${scopedWhere(appId, "t")}
+       ${appId ? "AND" : "WHERE"} s.payload_schema IS NULL`
+  ).all(...appParams);
+  for (const row of transferSchemaRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "transfer_schema_unregistered",
+      message: `Transfer ${row.id} references unregistered payload schema ${row.payload_schema}.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id,
+      payloadSchema: row.payload_schema,
+      transferId: row.id
+    });
+  }
+  const unsupportedTransferRows = db.prepare(
+    `SELECT t.id, t.app_id, t.workspace_id, t.direction, t.payload_schema
+       FROM mere_plane_transfers AS t
+       JOIN mere_plane_transfer_schemas AS s
+         ON s.app_id = t.app_id AND s.payload_schema = t.payload_schema
+       ${scopedWhere(appId, "t")}
+       ${appId ? "AND" : "WHERE"} (
+         (t.direction = 'import' AND s.import_supported = 0)
+         OR (t.direction = 'export' AND s.export_supported = 0)
+       )`
+  ).all(...appParams);
+  for (const row of unsupportedTransferRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "transfer_direction_unsupported",
+      message: `Transfer ${row.id} records ${row.direction} for schema ${row.payload_schema}, but that direction is not registered as supported.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id,
+      payloadSchema: row.payload_schema,
+      transferId: row.id
+    });
+  }
+  const transferWorkspaceRows = db.prepare(
+    `SELECT t.id, t.app_id, t.workspace_id
+       FROM mere_plane_transfers AS t
+       LEFT JOIN mere_plane_workspaces AS w ON w.workspace_id = t.workspace_id
+       ${scopedWhere(appId, "t")}
+       ${appId ? "AND" : "WHERE"} w.workspace_id IS NULL`
+  ).all(...appParams);
+  for (const row of transferWorkspaceRows) {
+    pushIssue(issues, {
+      severity: "warning",
+      code: "transfer_workspace_unregistered",
+      message: `Transfer ${row.id} references workspace ${row.workspace_id}, which is not registered in the shared workspace table.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id,
+      transferId: row.id
+    });
+  }
+  const transferWorkspaceLinkRows = db.prepare(
+    `SELECT t.id, t.app_id, t.workspace_id
+       FROM mere_plane_transfers AS t
+       LEFT JOIN mere_plane_app_workspaces AS aw
+         ON aw.app_id = t.app_id AND aw.workspace_id = t.workspace_id
+       ${scopedWhere(appId, "t")}
+       ${appId ? "AND" : "WHERE"} aw.app_id IS NULL`
+  ).all(...appParams);
+  for (const row of transferWorkspaceLinkRows) {
+    pushIssue(issues, {
+      severity: "warning",
+      code: "transfer_workspace_link_missing",
+      message: `Transfer ${row.id} references ${row.app_id}/${row.workspace_id}, but that app/workspace link is not registered.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id,
+      transferId: row.id
+    });
+  }
+  const aiJobAppRows = db.prepare(
+    `SELECT j.id, j.app_id, j.workspace_id
+       FROM mere_plane_ai_jobs AS j
+       LEFT JOIN mere_plane_apps AS a ON a.app_id = j.app_id
+       ${scopedWhere(appId, "j")}
+       ${appId ? "AND" : "WHERE"} a.app_id IS NULL`
+  ).all(...appParams);
+  for (const row of aiJobAppRows) {
+    pushIssue(issues, {
+      severity: "error",
+      code: "ai_job_missing_app",
+      message: `AI job ${row.id} references unregistered app ${row.app_id}.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id ?? void 0,
+      jobId: row.id
+    });
+  }
+  const aiJobWorkspaceRows = db.prepare(
+    `SELECT j.id, j.app_id, j.workspace_id
+       FROM mere_plane_ai_jobs AS j
+       LEFT JOIN mere_plane_app_workspaces AS aw
+         ON aw.app_id = j.app_id AND aw.workspace_id = j.workspace_id
+       WHERE j.workspace_id IS NOT NULL
+       ${appId ? "AND j.app_id = ?" : ""}
+       AND aw.app_id IS NULL`
+  ).all(...appParams);
+  for (const row of aiJobWorkspaceRows) {
+    pushIssue(issues, {
+      severity: "warning",
+      code: "ai_job_workspace_link_missing",
+      message: `AI job ${row.id} references ${row.app_id}/${row.workspace_id}, but that app/workspace link is not registered.`,
+      appId: row.app_id,
+      workspaceId: row.workspace_id,
+      jobId: row.id
+    });
+  }
+  return {
+    inventory: readInventory(db, options),
+    issues
+  };
+}
+async function readLocalPlaneDoctorReport(options = {}) {
+  const appId = options.appId ?? null;
+  const dbPath = resolveLocalPlaneStatusDbPath(options);
+  const exists = existsSync2(dbPath);
+  if (!exists) {
+    const issues = [
+      {
+        severity: "warning",
+        code: "local_plane_not_created",
+        message: "Local plane database has not been created yet; local data remains optional."
+      }
+    ];
+    return {
+      kind: "mere.local-plane.doctor",
+      dbPath,
+      exists,
+      appId,
+      ok: true,
+      checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      inventory: emptyLocalPlaneInventory(),
+      issues
+    };
+  }
+  const { DatabaseSync: DatabaseSync2 } = await loadNodeSqlite2();
+  const db = new DatabaseSync2(dbPath, { readOnly: true });
+  try {
+    const { inventory, issues } = validateLocalPlaneDatabase(db, options);
+    return {
+      kind: "mere.local-plane.doctor",
+      dbPath,
+      exists,
+      appId,
+      ok: !issues.some((issue) => issue.severity === "error"),
+      checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      inventory,
+      issues
+    };
+  } finally {
+    db.close();
+  }
+}
+
+// cli/console-contract.ts
+var CONTRACT_SCHEMA = "mere.console.contract";
+var CONTRACT_VERSION = 1;
+var ADAPTER_ID = "mere-email";
+var APP_ID = "email";
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
+  "cloudflared",
+  "dry-run",
+  "help",
+  "include-archived",
+  "include-future",
+  "no-interactive",
+  "once",
+  "yes"
+]);
+var TRANSPORT_FLAGS = /* @__PURE__ */ new Set(["confirm", "json", "no-interactive", "yes"]);
+var SENSITIVE_FLAGS = /* @__PURE__ */ new Set([
+  "attach",
+  "bcc",
+  "body",
+  "callback-bearer-token",
+  "callback-url",
+  "cc",
+  "data",
+  "data-file",
+  "file",
+  "from-name",
+  "output",
+  "projection-token",
+  "projection-url",
+  "subject",
+  "to",
+  "token"
+]);
+var LOCAL_OFFLINE_COMMANDS = /* @__PURE__ */ new Set([
+  "custody.status",
+  "custody.verify",
+  "export",
+  "import.status",
+  "mailboxes.list",
+  "store.info",
+  "threads.latest",
+  "threads.list",
+  "threads.search",
+  "threads.show"
+]);
+var DRY_RUN_COMMANDS = /* @__PURE__ */ new Set([
+  "custody.push",
+  "custody.seal",
+  "custody.unmirror",
+  "import",
+  "threads.publish",
+  "threads.revoke"
+]);
+var TARGET_RULES = {
+  "custody.grant": { type: "email-custody-grant", source: "device" },
+  "custody.unmirror": { type: "email-custody-mirror", source: "workspace" },
+  "domains.register": { type: "email-domain", source: "domain" },
+  "drafts.discard": { type: "email-draft", source: "first-positional" },
+  "threads.archive": { type: "email-thread", source: "first-positional" },
+  "threads.publish": { type: "email-thread", source: "first-positional" },
+  "threads.revoke": { type: "email-thread", source: "first-positional" },
+  "workspace.disconnect": { type: "email-workspace", source: "workspace" }
+};
+function eventId(kind) {
+  return `evt_email_${kind.replaceAll(".", "_")}_${randomUUID3()}`;
+}
+function contractSource(operation, adapterVersion) {
+  return {
+    owner: "adapter",
+    producer: ADAPTER_ID,
+    operation,
+    instanceId: null,
+    producerVersion: adapterVersion
+  };
+}
+function accountSubject(session) {
+  return session?.user.userId?.trim() || session?.accessTokenClaims.sub?.trim() || null;
+}
+function selectedWorkspace(session, requestedWorkspaceId) {
+  return requestedWorkspaceId?.trim() || session?.workspace?.id?.trim() || session?.defaultWorkspaceId?.trim() || null;
+}
+function contractScope(session, requestedWorkspaceId, target) {
+  const subject = accountSubject(session);
+  return {
+    accountSubject: subject,
+    workspaceId: subject ? selectedWorkspace(session, requestedWorkspaceId) : null,
+    appId: APP_ID,
+    target
+  };
+}
+function envelope(kind, scope, operation, adapterVersion, payload, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  return {
+    schema: CONTRACT_SCHEMA,
+    version: CONTRACT_VERSION,
+    kind,
+    id: eventId(kind),
+    scope,
+    observedAt,
+    source: contractSource(operation, adapterVersion),
+    payload
+  };
+}
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function argumentsDigest(commandName, normalizedArguments) {
+  const canonical = stableJson({ arguments: normalizedArguments, command: commandName });
+  return `sha256:${createHash6("sha256").update(canonical).digest("hex")}`;
+}
+function addOption(options, name, value) {
+  const current = options[name];
+  if (current === void 0) {
+    options[name] = value;
+  } else if (Array.isArray(current)) {
+    current.push(String(value));
+  } else {
+    options[name] = [String(current), String(value)];
+  }
+}
+function normalizeInvocationArguments(tokens) {
+  const flags = {};
+  const positionals = [];
+  const sensitiveFlagsPresent = /* @__PURE__ */ new Set();
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    const [name, inlineValue] = token.slice(2).split("=", 2);
+    const isBoolean = BOOLEAN_FLAGS.has(name);
+    const consumesNext = !isBoolean && inlineValue === void 0;
+    const candidateNext = consumesNext ? tokens[index + 1] : void 0;
+    const nextValue = candidateNext && !candidateNext.startsWith("--") ? candidateNext : void 0;
+    const value = isBoolean ? inlineValue === void 0 ? true : inlineValue === "true" : inlineValue ?? nextValue ?? "";
+    if (consumesNext && nextValue !== void 0) index += 1;
+    if (TRANSPORT_FLAGS.has(name)) continue;
+    if (SENSITIVE_FLAGS.has(name)) {
+      sensitiveFlagsPresent.add(name);
+      continue;
+    }
+    addOption(flags, name, value);
+  }
+  return {
+    flags,
+    positionals,
+    sensitiveFlagsPresent: [...sensitiveFlagsPresent].sort()
+  };
+}
+function hasFlag(tokens, flag) {
+  return tokens.some((token) => token === `--${flag}` || token.startsWith(`--${flag}=`));
+}
+function flagValue(tokens, flag) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.startsWith(`--${flag}=`)) return token.slice(flag.length + 3).trim() || null;
+    if (token === `--${flag}`) {
+      const value = tokens[index + 1];
+      return value && !value.startsWith("--") ? value.trim() || null : null;
+    }
+  }
+  return null;
+}
+function isSessionExpired(session, now = Date.now()) {
+  const expiresAt = Date.parse(session.expiresAt);
+  const claimExpiry = session.accessTokenClaims.exp * 1e3;
+  return Number.isFinite(expiresAt) && expiresAt <= now || claimExpiry <= now;
+}
+function workspaceIsAllowed(session, workspaceId) {
+  const normalized = workspaceId.trim().toLowerCase();
+  return session.workspaces.some(
+    (workspace) => workspace.id.toLowerCase() === normalized || workspace.slug.toLowerCase() === normalized || workspace.host.toLowerCase() === normalized
+  );
+}
+function requiresHostedAuth(command, commandArguments, plane) {
+  if (command.auth === "none") return false;
+  if (plane.data === "local" && DRY_RUN_COMMANDS.has(command.id) && hasFlag(commandArguments, "dry-run")) return false;
+  return plane.data !== "local" || !LOCAL_OFFLINE_COMMANDS.has(command.id);
+}
+function errorCategory(code) {
+  if (code.startsWith("AUTH_")) return "auth";
+  if (code === "VALIDATION_FAILED") return "validation";
+  return "internal";
+}
+function errorAuthCode(code) {
+  if (code === "AUTH_REQUIRED") return "required";
+  if (code === "AUTH_SESSION_EXPIRED") return "session-expired";
+  if (code === "AUTH_WORKSPACE_FORBIDDEN") return "workspace-forbidden";
+  return null;
+}
+function errorResult(input) {
+  return {
+    exitCode: input.code === "INTERNAL_ERROR" ? 1 : 2,
+    envelope: envelope(
+      "error",
+      contractScope(input.session, input.workspaceId, null),
+      input.operation,
+      input.adapterVersion,
+      {
+        code: input.code,
+        category: errorCategory(input.code),
+        message: input.message,
+        retryable: input.retryable ?? false,
+        authCode: errorAuthCode(input.code),
+        details: input.details ?? null
+      }
+    )
+  };
+}
+function tableExists2(db, tableName) {
+  const row = db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName);
+  return row?.present === 1;
+}
+function readEmailStoreEvidence(dbPath) {
+  if (!existsSync3(dbPath)) {
+    return {
+      exists: false,
+      emailSchemaExists: false,
+      custodyTier: null,
+      sealedEnvelopes: 0,
+      mirroredEnvelopes: 0,
+      tunnelLastSeenAt: null
+    };
+  }
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const emailSchemaExists = tableExists2(db, "email_local_settings") && tableExists2(db, "email_local_messages");
+    if (!emailSchemaExists) {
+      return {
+        exists: true,
+        emailSchemaExists: false,
+        custodyTier: null,
+        sealedEnvelopes: 0,
+        mirroredEnvelopes: 0,
+        tunnelLastSeenAt: null
+      };
+    }
+    const setting = (key) => {
+      const row = db.prepare("SELECT value FROM email_local_settings WHERE key = ?").get(key);
+      return row?.value ?? null;
+    };
+    const sealedTableExists = tableExists2(db, "email_local_sealed_envelopes");
+    const sealed = sealedTableExists ? db.prepare("SELECT COUNT(*) AS count FROM email_local_sealed_envelopes").get() : { count: 0 };
+    const mirrored = sealedTableExists ? db.prepare("SELECT COUNT(*) AS count FROM email_local_sealed_envelopes WHERE pushed_at IS NOT NULL AND deleted_at IS NULL").get() : { count: 0 };
+    return {
+      exists: true,
+      emailSchemaExists: true,
+      custodyTier: setting("custody.tier"),
+      sealedEnvelopes: Number(sealed.count),
+      mirroredEnvelopes: Number(mirrored.count),
+      tunnelLastSeenAt: setting("custody.tunnel.lastSeenAt")
+    };
+  } finally {
+    db.close();
+  }
+}
+function evidence(state, observedAt, operation, reasonCode, detail) {
+  return {
+    state,
+    observedAt,
+    source: {
+      owner: "adapter",
+      producer: ADAPTER_ID,
+      operation,
+      evidenceId: null
+    },
+    reasonCode,
+    detail
+  };
+}
+function custodyEvidence(store, observedAt) {
+  const operation = "console snapshot custody";
+  if (!store.exists || !store.emailSchemaExists) {
+    return evidence("unknown", observedAt, operation, "CUSTODY_UNAVAILABLE", "The local Email custody store is not initialized.");
+  }
+  if (!store.custodyTier) {
+    return evidence("unknown", observedAt, operation, "CUSTODY_UNDECLARED", "No custody tier has been recorded by the Email adapter.");
+  }
+  if (store.custodyTier === "plaintext-cloud") {
+    return evidence("provider-managed", observedAt, operation, null, "The recorded Email custody tier is plaintext cloud.");
+  }
+  if (store.custodyTier === "sealed-mirror") {
+    if (store.sealedEnvelopes > 0 && store.mirroredEnvelopes > 0) {
+      return evidence("mixed", observedAt, operation, null, "Local sealed envelopes have been mirrored to the opaque custody receiver.");
+    }
+    return evidence("unknown", observedAt, operation, "CUSTODY_POLICY_NOT_MATERIALIZED", "Sealed-mirror is recorded, but no mirrored envelope is present.");
+  }
+  if (store.custodyTier === "live-tunnel") {
+    const lastSeen = store.tunnelLastSeenAt ? Date.parse(store.tunnelLastSeenAt) : Number.NaN;
+    const recent = Number.isFinite(lastSeen) && Date.now() - lastSeen <= 9e4;
+    if (recent && store.sealedEnvelopes > 0) {
+      return evidence("mixed", observedAt, operation, null, "A recently observed sealed-envelope tunnel is backed by local sealed envelopes.");
+    }
+    return evidence("unknown", observedAt, operation, "CUSTODY_TUNNEL_NOT_CURRENT", "Live-tunnel is recorded without current sealed-envelope evidence.");
+  }
+  if (store.custodyTier === "local-only") {
+    return evidence("unknown", observedAt, operation, "CUSTODY_POLICY_NOT_ENFORCED", "Local-only is recorded as policy, but exclusive custody is not proven by this read-only probe.");
+  }
+  return evidence("unknown", observedAt, operation, "CUSTODY_TIER_UNKNOWN", "The recorded custody tier is not recognized by this contract version.");
+}
+async function snapshotResult(input, session) {
+  const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const status = await readLocalPlaneStatusSnapshot({
+    appId: ADAPTER_ID,
+    env: input.env,
+    localDbPath: input.plane.localDbPath
+  });
+  const doctor = await readLocalPlaneDoctorReport({
+    appId: ADAPTER_ID,
+    env: input.env,
+    localDbPath: input.plane.localDbPath
+  });
+  const store = readEmailStoreEvidence(input.plane.localDbPath);
+  const appRegistered = status.inventory.apps.some((app) => app.appId === ADAPTER_ID);
+  const requestedWorkspace = input.workspaceId?.trim();
+  const sessionWorkspaceMismatch = Boolean(
+    session && requestedWorkspace && !workspaceIsAllowed(session, requestedWorkspace)
+  );
+  const locality = input.plane.data === "cloud" ? evidence("workspace-cloud", observedAt, "console snapshot store", null, "The adapter-selected Email data plane is workspace cloud.") : !status.exists ? evidence("unknown", observedAt, "console snapshot store", "LOCAL_STORE_NOT_CREATED", "The selected local Email store does not exist yet.") : !appRegistered || !store.emailSchemaExists ? evidence("unknown", observedAt, "console snapshot store", "EMAIL_STORE_UNINITIALIZED", "The local plane exists, but the Email store is not initialized.") : evidence("local-device", observedAt, "console snapshot store", null, "The Email adapter found its registered store in the local plane database.");
+  let health;
+  if (sessionWorkspaceMismatch) {
+    health = evidence("degraded", observedAt, "console snapshot auth", "AUTH_WORKSPACE_FORBIDDEN", "The requested workspace is not present in the saved Email session.");
+  } else if (input.plane.data === "cloud" && !session) {
+    health = evidence("unknown", observedAt, "console snapshot auth", "AUTH_REQUIRED", "Hosted Email health was not probed because no saved account session is available.");
+  } else if (input.plane.data === "cloud" && session && isSessionExpired(session)) {
+    health = evidence("degraded", observedAt, "console snapshot auth", "AUTH_SESSION_EXPIRED", "The saved hosted Email access session is expired; no refresh was attempted.");
+  } else if (input.plane.data === "cloud") {
+    health = evidence("unknown", observedAt, "console snapshot health", "NOT_PROBED_OFFLINE", "The read-only contract probe did not contact the hosted Email service.");
+  } else if (!doctor.exists) {
+    health = evidence("unknown", observedAt, "console snapshot doctor", "LOCAL_STORE_NOT_CREATED", "The selected local Email store does not exist yet.");
+  } else if (!doctor.ok) {
+    health = evidence("unhealthy", observedAt, "console snapshot doctor", "LOCAL_STORE_INVALID", "The local-plane doctor reported structural errors.");
+  } else if (!store.emailSchemaExists || !appRegistered) {
+    health = evidence("degraded", observedAt, "console snapshot doctor", "EMAIL_STORE_UNINITIALIZED", "The local-plane database is readable, but Email is not fully initialized.");
+  } else {
+    health = evidence("healthy", observedAt, "console snapshot doctor", null, "The read-only local-plane and Email schema checks passed.");
+  }
+  const payload = {
+    adapterId: ADAPTER_ID,
+    adapterVersion: input.adapterVersion,
+    availability: evidence("available", observedAt, "console snapshot process", null, "The Email adapter is executing this producer-owned probe."),
+    locality,
+    health,
+    custody: custodyEvidence(store, observedAt),
+    capabilities: [
+      "email.command-descriptor",
+      "email.custody-status",
+      "email.local-read",
+      "email.store-status",
+      "email.structured-error"
+    ]
+  };
+  return {
+    exitCode: 0,
+    envelope: envelope(
+      "adapter.snapshot",
+      contractScope(session, input.workspaceId, null),
+      "console snapshot",
+      input.adapterVersion,
+      payload,
+      observedAt
+    )
+  };
+}
+function matchCommand(invocation, commands) {
+  const matches = commands.filter((command2) => command2.path.every((part, index) => invocation[index] === part)).sort((left, right) => right.path.length - left.path.length);
+  const command = matches[0];
+  return command ? { command, arguments: invocation.slice(command.path.length) } : null;
+}
+function safetyForInvocation(command, commandArguments) {
+  if (DRY_RUN_COMMANDS.has(command.id) && hasFlag(commandArguments, "dry-run")) {
+    return {
+      risk: "read",
+      mutatesState: false,
+      crossesTrustBoundary: false,
+      requiresYes: false,
+      requiresConfirm: false,
+      confirmationValue: null
+    };
+  }
+  return {
+    risk: command.risk,
+    mutatesState: command.mutatesState,
+    crossesTrustBoundary: command.crossesTrustBoundary,
+    requiresYes: command.requiresYes,
+    requiresConfirm: command.requiresConfirm,
+    confirmationValue: command.confirmationValue
+  };
+}
+function targetForInvocation(command, commandArguments, workspaceId) {
+  const rule = TARGET_RULES[command.id];
+  if (!rule) return null;
+  const normalized = normalizeInvocationArguments(commandArguments);
+  let id = null;
+  if (rule.source === "first-positional") id = normalized.positionals[0]?.trim() || null;
+  if (rule.source === "device") id = flagValue(commandArguments, "device");
+  if (rule.source === "domain") id = flagValue(commandArguments, "domain");
+  if (rule.source === "workspace") id = workspaceId;
+  return id ? { type: rule.type, id, revision: null } : null;
+}
+function describeResult(input, session) {
+  const invocation = input.argv[0] === "--" ? input.argv.slice(1) : input.argv;
+  const match = matchCommand(invocation, input.commands);
+  if (!match) {
+    return errorResult({
+      code: "VALIDATION_FAILED",
+      message: "The requested Email command is missing or is not present in the adapter manifest.",
+      operation: "console describe",
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: { reason: "unknown-command" }
+    });
+  }
+  const { command, arguments: commandArguments } = match;
+  const operation = `console describe ${command.id}`;
+  const hostedAuth = requiresHostedAuth(command, commandArguments, input.plane);
+  if (hostedAuth && !session) {
+    return errorResult({
+      code: "AUTH_REQUIRED",
+      message: "A saved Email account session is required for this hosted command.",
+      operation,
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: { commandName: `email ${command.path.join(" ")}`, reauthenticationRequired: true }
+    });
+  }
+  if (hostedAuth && session && isSessionExpired(session)) {
+    return errorResult({
+      code: "AUTH_SESSION_EXPIRED",
+      message: "The saved hosted Email access session is expired; no refresh was attempted.",
+      operation,
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      retryable: true,
+      details: { commandName: `email ${command.path.join(" ")}`, reauthenticationRequired: true }
+    });
+  }
+  const workspaceId = selectedWorkspace(session, input.workspaceId);
+  if (hostedAuth && session && workspaceId && !workspaceIsAllowed(session, workspaceId)) {
+    return errorResult({
+      code: "AUTH_WORKSPACE_FORBIDDEN",
+      message: "The requested workspace is not present in the saved Email session.",
+      operation,
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: { commandName: `email ${command.path.join(" ")}` }
+    });
+  }
+  const safety = safetyForInvocation(command, commandArguments);
+  const target = safety.confirmationValue === "target.id" ? targetForInvocation(command, commandArguments, workspaceId) : null;
+  if (safety.confirmationValue === "target.id" && !target) {
+    return errorResult({
+      code: "VALIDATION_FAILED",
+      message: "This Email command requires an exact target before it can be described safely.",
+      operation,
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: { commandName: `email ${command.path.join(" ")}`, targetRequired: true }
+    });
+  }
+  const commandName = `email ${command.path.join(" ")}`;
+  const normalizedArguments = normalizeInvocationArguments(commandArguments);
+  return {
+    exitCode: 0,
+    envelope: envelope(
+      "command.descriptor",
+      contractScope(session, input.workspaceId, target),
+      operation,
+      input.adapterVersion,
+      {
+        name: commandName,
+        argumentsDigest: argumentsDigest(commandName, normalizedArguments),
+        safety
+      }
+    )
+  };
+}
+async function runConsoleContractCommand(input) {
+  const [action, ...remaining] = input.argv;
+  let session = null;
+  try {
+    session = await loadSession(input.env);
+    if (action === "snapshot") return await snapshotResult(input, session);
+    if (action === "describe") return describeResult({ ...input, argv: remaining }, session);
+    return errorResult({
+      code: "VALIDATION_FAILED",
+      message: "Unknown Email console contract command. Expected snapshot or describe.",
+      operation: "console",
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: { reason: "unknown-contract-action" }
+    });
+  } catch {
+    return errorResult({
+      code: "INTERNAL_ERROR",
+      message: "The Email adapter could not produce a safe Console Contract envelope.",
+      operation: action === "snapshot" ? "console snapshot" : "console describe",
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId
+    });
+  }
+}
+
 // cli/mere-email.ts
 var GLOBAL_FLAG_SPEC = {
   "base-url": "string",
@@ -8373,6 +9338,9 @@ Commands:
 
   inbound --file payload.json
 
+  console snapshot
+  console describe -- <command> [args]
+
 Environment:
   MERE_EMAIL_BASE_URL      Worker URL, for example https://mere.email or http://localhost:8787
   MERE_EMAIL_TOKEN         Bearer token override for internal/service access
@@ -8387,6 +9355,7 @@ Environment:
   MERE_BUSINESS_PROJECTION_TOKEN Shared Business projection bearer token
 
 Notes:
+  Console contract commands are read-only, always emit JSON, and never refresh or probe the network.
   Base domains: ${EMAIL_WORKSPACE_BASE_DOMAINS.join(", ")}
   Lifecycle states: ${EMAIL_WORKSPACE_LIFECYCLE_STATES.join(", ")}
   Nullable lifecycle flags accept the literal value "null" to clear a value.
@@ -8435,7 +9404,8 @@ function helpJson() {
       send: "send outbound email, optionally with attachments",
       export: "export workspace data as a local-plane transfer bundle",
       import: ["start import from transfer bundle or raw payload file", "dry-run import plan", "status"],
-      inbound: "simulate inbound mail ingress from file"
+      inbound: "simulate inbound mail ingress from file",
+      console: ["snapshot", "describe -- <command> [args]"]
     },
     environment: {
       MERE_EMAIL_BASE_URL: "Base worker URL",
@@ -8454,17 +9424,26 @@ function helpJson() {
     lifecycleStates: EMAIL_WORKSPACE_LIFECYCLE_STATES
   };
 }
-function manifestCommand(path6, summary, options = {}) {
+function manifestCommand(path7, summary, options = {}) {
+  const risk = options.risk ?? "read";
+  const mutatesState = options.mutatesState ?? risk !== "read";
+  const crossesTrustBoundary = options.crossesTrustBoundary ?? risk === "external";
+  const requiresYes = options.requiresYes ?? risk === "destructive";
+  const requiresConfirm = options.requiresConfirm ?? (risk === "destructive" || risk === "external");
+  const confirmationValue = options.confirmationValue ?? (requiresConfirm ? risk === "destructive" ? "target.id" : "argumentsDigest" : null);
   return {
-    id: path6.join("."),
-    path: path6,
+    id: path7.join("."),
+    path: path7,
     summary,
     auth: options.auth ?? "workspace",
-    risk: options.risk ?? "read",
+    risk,
+    mutatesState,
+    crossesTrustBoundary,
     supportsJson: true,
     supportsData: options.supportsData ?? false,
-    requiresYes: options.requiresYes ?? false,
-    requiresConfirm: options.requiresConfirm ?? false,
+    requiresYes,
+    requiresConfirm,
+    confirmationValue,
     positionals: options.positionals ?? [],
     flags: options.flags ?? [],
     ...options.auditDefault ? { auditDefault: true } : {}
@@ -8486,14 +9465,28 @@ function commandManifest() {
         auth: "none",
         auditDefault: true
       }),
-      manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { risk: "external" }),
-      manifestCommand(["custody", "keygen"], "Generate the local sealing key (never leaves this machine).", { risk: "write" }),
-      manifestCommand(["custody", "seal"], "Seal local mail into AES-256-GCM envelopes the cloud cannot open.", { risk: "write", flags: ["limit", "dry-run"] }),
+      manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { auth: "none", risk: "write" }),
+      manifestCommand(["custody", "keygen"], "Generate the local sealing key (never leaves this machine).", { auth: "none", risk: "write" }),
+      manifestCommand(["custody", "seal"], "Seal local mail into AES-256-GCM envelopes the cloud cannot open.", {
+        auth: "none",
+        risk: "write",
+        requiresConfirm: true,
+        confirmationValue: "argumentsDigest",
+        flags: ["limit", "dry-run"]
+      }),
       manifestCommand(["custody", "push"], "Upload unsent sealed envelopes to the opaque custody receiver.", { risk: "external", flags: ["limit", "dry-run"] }),
-      manifestCommand(["custody", "unmirror"], "Delete mirrored sealed envelopes from the custody receiver.", { risk: "destructive", requiresYes: true, flags: ["dry-run", "yes"] }),
-      manifestCommand(["custody", "grant"], "Approve a browser device-link request by wrapping the local sealing key.", { risk: "external", flags: ["device"] }),
+      manifestCommand(["custody", "unmirror"], "Delete mirrored sealed envelopes from the custody receiver.", {
+        risk: "destructive",
+        crossesTrustBoundary: true,
+        flags: ["dry-run", "yes", "confirm"]
+      }),
+      manifestCommand(["custody", "grant"], "Approve a browser device-link request by wrapping the local sealing key.", {
+        risk: "external",
+        confirmationValue: "target.id",
+        flags: ["device"]
+      }),
       manifestCommand(["custody", "tunnel"], "Serve the Email custody capability over loopback; fronted web access uses sealed envelopes.", { auth: "none", risk: "external", flags: ["host", "port", "cloudflared", "tunnel-name", "once"], positionals: ["serve", "up"] }),
-      manifestCommand(["custody", "verify"], "Unseal a sample of envelopes to prove round-trip integrity.", { flags: ["limit"] }),
+      manifestCommand(["custody", "verify"], "Unseal a sample of envelopes to prove round-trip integrity.", { auth: "none", flags: ["limit"] }),
       manifestCommand(["auth", "login"], "Start browser login.", { auth: "none", risk: "write" }),
       manifestCommand(["auth", "agent-login"], "Create an Email session from a Business agent session.", {
         auth: "none",
@@ -8507,20 +9500,20 @@ function commandManifest() {
       manifestCommand(["workspace", "use"], "Select workspace.", { auth: "session", risk: "write" }),
       manifestCommand(["workspace", "bootstrap"], "Bootstrap workspace.", { risk: "write" }),
       manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", flags: ["slug", "base-domain", "mailbox-address", "name", "organization-id", "callback-url", "callback-bearer-token", "lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
-      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "write", flags: ["lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
+      manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "external", flags: ["lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
       manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "write", flags: ["limit", "mailbox-id", "include-archived"] }),
+      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "external", flags: ["limit", "mailbox-id", "include-archived"] }),
       manifestCommand(["mailboxes", "list"], "List mailboxes.", { auditDefault: true }),
       manifestCommand(["threads", "list"], "List threads with pagination.", { flags: ["limit", "offset", "mailbox-id", "include-archived"] }),
       manifestCommand(["threads", "latest"], "Show latest threads.", { flags: ["limit", "mailbox-id", "include-archived"] }),
       manifestCommand(["threads", "search"], "Search threads.", { flags: ["limit"] }),
       manifestCommand(["threads", "show"], "Show thread."),
       manifestCommand(["threads", "summarize"], "Summarize a local thread with mere.run.", { risk: "write", flags: ["model"] }),
-      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
-      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
       manifestCommand(["threads", "read"], "Mark thread read.", { risk: "write" }),
       manifestCommand(["threads", "star"], "Star thread.", { risk: "write" }),
-      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
+      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", crossesTrustBoundary: true }),
       manifestCommand(["drafts", "create"], "Create draft.", { risk: "write", supportsData: true }),
       manifestCommand(["drafts", "show"], "Show draft."),
       manifestCommand(["drafts", "discard"], "Discard draft.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
@@ -8535,7 +9528,9 @@ function commandManifest() {
       manifestCommand(["import", "status"], "Show import status.", { flags: ["run-id"] }),
       manifestCommand(["inbound"], "Simulate inbound mail ingress from --file.", { risk: "write", flags: ["file"] }),
       manifestCommand(["completion"], "Generate shell completion.", { auth: "none" }),
-      manifestCommand(["commands"], "Print command manifest.", { auth: "none" })
+      manifestCommand(["commands"], "Print command manifest.", { auth: "none" }),
+      manifestCommand(["console", "snapshot"], "Emit the adapter-owned Mere Console Contract v1 snapshot without network access.", { auth: "none", auditDefault: true }),
+      manifestCommand(["console", "describe"], "Describe one exact Email invocation with Mere Console Contract v1 safety metadata.", { auth: "none" })
     ]
   };
 }
@@ -8548,6 +9543,7 @@ var COMPLETION_WORDS = [
   "attachments",
   "auth",
   "completion",
+  "console",
   "domains",
   "drafts",
   "export",
@@ -9140,7 +10136,7 @@ function mergedOptions(globalOptions, options) {
   return { ...globalOptions, ...options };
 }
 function stablePublicationId(input) {
-  const hash = createHash6("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
+  const hash = createHash7("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
   return `pub_${hash}`;
 }
 function selectedPublicationMessages(state, messageId) {
@@ -9731,8 +10727,8 @@ function isEmailCustodyTier(value) {
 function custodyTunnelStatus(store) {
   const url = store.getSetting(CUSTODY_TUNNEL_URL_KEY);
   if (!url) return "unprovisioned";
-  const lastStartedAt = store.getSetting(CUSTODY_TUNNEL_STARTED_AT_KEY);
-  const lastSeenAt = store.getSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY);
+  const lastStartedAt = store.getSetting(CUSTODY_TUNNEL_STARTED_AT_KEY) || null;
+  const lastSeenAt = store.getSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY) || null;
   const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
   const lastSeenSecondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.floor((Date.now() - lastSeenMs) / 1e3)) : null;
   return {
@@ -9916,7 +10912,7 @@ ${payload.path}`
       store.setSetting(CUSTODY_SETTING_KEY, "live-tunnel");
       store.setSetting(CUSTODY_TUNNEL_URL_KEY, server.url);
       store.setSetting(CUSTODY_TUNNEL_STARTED_AT_KEY, startedAt);
-      store.setSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY, startedAt);
+      store.setSetting(CUSTODY_TUNNEL_LAST_SEEN_AT_KEY, "");
       const tunnelName = readOptionalStringOption(options, "tunnel-name");
       const cloudflaredArgs = buildCloudflaredArgs({ localUrl: server.url, tunnelName });
       const cloudflared = tunnelAction === "up" && asBoolean(options.cloudflared) ? startCloudflaredTunnel({ localUrl: server.url, tunnelName }) : null;
@@ -9995,7 +10991,7 @@ ${payload.path}`
         return;
       }
       for (const row of pendingRows) {
-        const envelope = sealMessage(key, {
+        const envelope2 = sealMessage(key, {
           workspaceId: row.workspace_id,
           threadId: row.thread_id,
           messageId: row.id,
@@ -10007,7 +11003,7 @@ ${payload.path}`
           keyId: key.keyId,
           workspaceId: row.workspace_id,
           threadId: row.thread_id,
-          envelopeJson: JSON.stringify(envelope)
+          envelopeJson: JSON.stringify(envelope2)
         });
       }
       writeResult(
@@ -10043,8 +11039,8 @@ ${payload.path}`
       const client = createClient(io, globalOptions);
       let pushed = 0;
       for (const row of pendingRows) {
-        const envelope = parseSealedEnvelope(row.envelopeJson);
-        const receipt = await client.pushSealedEnvelope(row.workspaceId, { ...envelope });
+        const envelope2 = parseSealedEnvelope(row.envelopeJson);
+        const receipt = await client.pushSealedEnvelope(row.workspaceId, { ...envelope2 });
         store.markSealedEnvelopePushed({
           messageId: row.messageId,
           keyId: key.keyId,
@@ -10128,9 +11124,9 @@ ${payload.path}`
       const sample = store.sampleSealedEnvelopes(key.keyId, limit);
       let verified = 0;
       for (const item of sample) {
-        const envelope = parseSealedEnvelope(item.envelopeJson);
-        const payload = unsealEnvelope(key, envelope);
-        if (envelope.messageId !== item.messageId || payload.id !== item.messageId) {
+        const envelope2 = parseSealedEnvelope(item.envelopeJson);
+        const payload = unsealEnvelope(key, envelope2);
+        if (envelope2.messageId !== item.messageId || payload.id !== item.messageId) {
           throw new CliError(`Envelope for ${item.messageId} failed verification.`);
         }
         verified += 1;
@@ -10753,13 +11749,13 @@ async function handleAttachmentsDownload(io, globalOptions, args) {
   const outputPath = readRequiredStringOption(options, "output");
   const workspaceId = resolveWorkspace(globalOptions, io.env);
   const download2 = await createClient(io, globalOptions).downloadAttachment(workspaceId, attachmentId);
-  const path6 = await writeBytesFile(outputPath, download2.bytes);
+  const path7 = await writeBytesFile(outputPath, download2.bytes);
   writeResult(
     io,
     globalOptions,
     {
       attachmentId,
-      path: path6,
+      path: path7,
       filename: download2.filename,
       contentType: download2.contentType,
       bytes: download2.bytes.byteLength
@@ -11066,6 +12062,19 @@ async function runCli(argv, io) {
     if (rest[0] === "commands") {
       writeJson2(io, commandManifest());
       return 0;
+    }
+    if (rest[0] === "console" && !asBoolean(globalOptions.help)) {
+      const manifest = commandManifest();
+      const result = await runConsoleContractCommand({
+        argv: rest.slice(1),
+        env: io.env,
+        plane: resolveEmailPlaneConfig(globalOptions, io.env),
+        workspaceId: resolveWorkspaceOptional(globalOptions, io.env),
+        adapterVersion: await cliVersion(),
+        commands: manifest.commands
+      });
+      writeJson2(io, result.envelope);
+      return result.exitCode;
     }
     if (asBoolean(globalOptions.help) || rest.length === 0 || rest[0] === "help") {
       writeHelp(io, asBoolean(globalOptions.json));
