@@ -507,16 +507,6 @@ function splitPassthroughFlags(flags, supported, leadingNames) {
     }
     return { leading, trailing };
 }
-function shouldRetryWithLeadingGlobals(result, leadingNames) {
-    if (result.code === 0)
-        return false;
-    const text = `${result.stderr}\n${result.stdout}`;
-    for (const match of text.matchAll(/Unknown option: --([a-z0-9-]+)\b/g)) {
-        if (leadingNames.has(match[1] ?? ''))
-            return true;
-    }
-    return false;
-}
 function pickFlags(flags, names) {
     const output = {};
     for (const name of names) {
@@ -553,16 +543,10 @@ export async function delegateToApp(io, entry, appArgs, passthroughFlags, option
     const supported = supportedFlagNames(manifestResult.manifest, command);
     const leadingNames = new Set(['base-url', 'workspace', 'profile', 'json', ...(manifestResult.manifest?.globalFlags ?? [])]);
     const { leading, trailing } = splitPassthroughFlags(passthroughFlags, supported, leadingNames);
-    const trailingArgs = [...resolved.args, ...appArgs, ...flagArgs(passthroughFlags, supported)];
-    const leadingArgs = [...resolved.args, ...flagArgs(leading, supported), ...appArgs, ...flagArgs(trailing, supported)];
+    const finalArgs = [...resolved.args, ...flagArgs(leading, supported), ...appArgs, ...flagArgs(trailing, supported)];
     const cwd = executionCwd(entry, resolved);
     const started = Date.now();
-    let finalArgs = trailingArgs;
-    let result = await runCapture(resolved.command, finalArgs, { cwd, env: io.env });
-    if (shouldRetryWithLeadingGlobals(result, leadingNames) && leadingArgs.join('\0') !== trailingArgs.join('\0')) {
-        finalArgs = leadingArgs;
-        result = await runCapture(resolved.command, finalArgs, { cwd, env: io.env });
-    }
+    const result = await runCapture(resolved.command, finalArgs, { cwd, env: io.env });
     await appendAudit(resolveMerePaths(io.env), {
         timestamp: new Date(started).toISOString(),
         kind: 'delegate',
