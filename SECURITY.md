@@ -10,6 +10,8 @@ The CLI is a client for Mere services. Possession of the CLI source or package d
 
 Bundled adapters intentionally expose command names, API route shape, environment variable names, and default service URLs. Treat those as public interface details, not secrets. All access decisions must be enforced by the Mere services through server-side session, bearer-token, workspace, tenant, role, and internal-service authorization checks.
 
+Published adapter artifacts must be source-first. `pnpm build:adapters:release` accepts only clean live canonical default-branch commits with exact merged-pull-request, non-author approval, and green-check evidence. The generated schema-v2 manifest binds the source commit/tree, reproducible build recipe and toolchain, Contract fixtures when present, and every bundled file hash/size. The publish workflow independently re-hashes that inventory with `pnpm check:adapter-provenance`; legacy or development-mode manifests fail closed.
+
 If a CLI command references an internal-token-only endpoint, the endpoint shape may still be public in this repository. That is acceptable only when the corresponding service rejects missing, invalid, or unauthorized tokens server-side.
 
 ## npm Supply Chain
