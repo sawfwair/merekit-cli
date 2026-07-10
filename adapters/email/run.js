@@ -217,7 +217,7 @@ function resolveCloudProjectionTarget(input) {
       env.MERE_PROJECTION_URL
     ]
   });
-  const bearerToken = readTargetValue({
+  const bearerToken2 = readTargetValue({
     argument: input.bearerToken,
     appValues: [
       env[`${prefix}_PROJECTION_TOKEN`],
@@ -235,17 +235,17 @@ function resolveCloudProjectionTarget(input) {
       `Missing Cloudflare projection receiver URL. Pass a receiver URL or set ${prefix}_PROJECTION_URL.`
     );
   }
-  if (!bearerToken) {
+  if (!bearerToken2) {
     throw new Error(
       `Missing Cloudflare projection bearer token. Pass a bearer token or set ${prefix}_PROJECTION_TOKEN.`
     );
   }
   return {
     receiverUrl: new URL(receiverUrl.value).toString(),
-    bearerToken: bearerToken.value,
+    bearerToken: bearerToken2.value,
     sources: {
       receiverUrl: receiverUrl.source,
-      bearerToken: bearerToken.source
+      bearerToken: bearerToken2.source
     }
   };
 }
@@ -1998,8 +1998,8 @@ var init_local_store = __esm({
 // cli/mere-email.ts
 init_src();
 init_projection();
-import { createHash as createHash5 } from "node:crypto";
-import { mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
+import { createHash as createHash6, randomBytes as nodeRandomBytes } from "node:crypto";
+import { chmod as chmod4, mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
@@ -2677,8 +2677,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -2794,11 +2794,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -7072,7 +7072,7 @@ function parseCustodyKeyGrant(value) {
   const record = expectRecord(value, "custody key grant response");
   const grant = expectRecord(record.grant, "custody key grant");
   const alg = expectString(grant.alg, "alg");
-  if (alg !== "ECDH-P256-A256GCM") {
+  if (alg !== "ECDH-P256-HKDF-SHA256-A256GCM") {
     throw new Error("custody key grant uses an unsupported algorithm");
   }
   const status = expectString(grant.status, "status");
@@ -7425,8 +7425,8 @@ var EmailCliClient = class {
   workspacePath(workspaceId, suffix) {
     return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
-  isAgentMailPath(path5) {
-    return path5.includes("/agent-mail/");
+  isAgentMailPath(path6) {
+    return path6.includes("/agent-mail/");
   }
   agentHeaders() {
     return new Headers({
@@ -7437,14 +7437,14 @@ var EmailCliClient = class {
       "x-mere-tool-key": "mere-email-cli"
     });
   }
-  async request(path5, init, options) {
+  async request(path6, init, options) {
     const requiresToken = options.requiresToken ?? true;
     if (requiresToken && !this.token) {
       throw new CliError("This command requires `mere-email auth login` or MERE_EMAIL_TOKEN.");
     }
     const headers = this.token ? buildBearerHeaders(this.token, init.headers) : new Headers(init.headers);
     headers.set("accept", "application/json");
-    if (this.isAgentMailPath(path5)) {
+    if (this.isAgentMailPath(path6)) {
       const agentHeaders = this.agentHeaders();
       for (const [key, value] of agentHeaders.entries()) {
         headers.set(key, value);
@@ -7453,7 +7453,7 @@ var EmailCliClient = class {
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
-    const response = await this.fetchImpl(new URL(path5, this.baseUrl), {
+    const response = await this.fetchImpl(new URL(path6, this.baseUrl), {
       ...init,
       headers
     });
@@ -7574,7 +7574,26 @@ function parseSealedEnvelope(text) {
 
 // cli/tunnel.ts
 import { spawn as spawn3 } from "node:child_process";
+import { createHash as createHash5, timingSafeEqual } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
+import os5 from "node:os";
+import path5 from "node:path";
+function custodyTunnelTokenPath(env) {
+  const stateHome3 = env.XDG_STATE_HOME?.trim() ? env.XDG_STATE_HOME.trim() : path5.join(env.HOME?.trim() ? env.HOME.trim() : os5.homedir(), ".local", "state");
+  return path5.join(stateHome3, "mere-email", "tunnel.token");
+}
+function bearerToken(request) {
+  const header = request.headers.authorization;
+  if (typeof header !== "string") return null;
+  const match = /^Bearer\s+(.+)$/iu.exec(header.trim());
+  return match ? match[1].trim() : null;
+}
+function tokenMatches(expected, presented) {
+  if (!presented) return false;
+  const a = createHash5("sha256").update(expected).digest();
+  const b = createHash5("sha256").update(presented).digest();
+  return timingSafeEqual(a, b);
+}
 function buildCloudflaredArgs(input) {
   if (input.tunnelName) {
     return ["tunnel", "run", "--url", input.localUrl, input.tunnelName];
@@ -7626,6 +7645,9 @@ function mapEnvelope(row) {
   };
 }
 async function startCustodyTunnelServer(input) {
+  if (!input.token || input.token.length < 32) {
+    throw new Error("Custody tunnel token must be at least 32 characters.");
+  }
   const host = input.host ?? "127.0.0.1";
   const port = input.port ?? 0;
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -7662,14 +7684,23 @@ async function startCustodyTunnelServer(input) {
         writeJson(response, 405, { ok: false, error: "Method not allowed." }, request.method === "HEAD");
         return;
       }
-      markSeen();
+      const authorized = tokenMatches(input.token, bearerToken(request));
+      if (authorized) markSeen();
       const requestUrl = new URL(request.url ?? "/", url || `http://${host}:${port}`);
       const headOnly = request.method === "HEAD";
       if (requestUrl.pathname === "/" || requestUrl.pathname === "/health") {
+        if (!authorized) {
+          writeJson(response, 200, { ok: true, state: "live", requiresAuth: true }, headOnly);
+          return;
+        }
         writeJson(response, 200, snapshot(), headOnly);
         return;
       }
       if (requestUrl.pathname === "/v1/envelopes") {
+        if (!authorized) {
+          writeJson(response, 401, { ok: false, error: "Custody tunnel token required." }, headOnly);
+          return;
+        }
         const rows = input.store.listSealedEnvelopes({
           keyId: input.key.keyId,
           limit: parseLimit(requestUrl.searchParams.get("limit"), 100, 500),
@@ -7737,7 +7768,7 @@ async function startCustodyTunnelServer(input) {
 init_json();
 
 // src/lib/custody/device-grant.ts
-var DEVICE_GRANT_WRAP_ALG = "ECDH-P256-A256GCM";
+var DEVICE_GRANT_WRAP_ALG = "ECDH-P256-HKDF-SHA256-A256GCM";
 function subtleCrypto() {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
@@ -7788,7 +7819,7 @@ async function createDeviceGrantKeyPair() {
   const pair = await subtleCrypto().generateKey(
     { name: "ECDH", namedCurve: "P-256" },
     false,
-    ["deriveKey"]
+    ["deriveKey", "deriveBits"]
   );
   if (!("privateKey" in pair) || !("publicKey" in pair)) {
     throw new Error("WebCrypto did not return an ECDH key pair.");
@@ -7806,12 +7837,23 @@ async function importPublicKey(publicKeyJwk) {
   );
 }
 async function deriveGrantAesKey(privateKey, publicKeyJwk, usage) {
-  return subtleCrypto().deriveKey(
+  const sharedBits = await subtleCrypto().deriveBits(
     {
       name: "ECDH",
       public: await importPublicKey(publicKeyJwk)
     },
     privateKey,
+    256
+  );
+  const hkdfKey = await subtleCrypto().importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+  return subtleCrypto().deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new ArrayBuffer(32),
+      info: new TextEncoder().encode(`mere.email.custody.grant.hkdf.v1:${DEVICE_GRANT_WRAP_ALG}`)
+    },
+    hkdfKey,
     { name: "AES-GCM", length: 256 },
     false,
     [usage]
@@ -8412,10 +8454,10 @@ function helpJson() {
     lifecycleStates: EMAIL_WORKSPACE_LIFECYCLE_STATES
   };
 }
-function manifestCommand(path5, summary, options = {}) {
+function manifestCommand(path6, summary, options = {}) {
   return {
-    id: path5.join("."),
-    path: path5,
+    id: path6.join("."),
+    path: path6,
     summary,
     auth: options.auth ?? "workspace",
     risk: options.risk ?? "read",
@@ -9098,7 +9140,7 @@ function mergedOptions(globalOptions, options) {
   return { ...globalOptions, ...options };
 }
 function stablePublicationId(input) {
-  const hash = createHash5("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
+  const hash = createHash6("sha256").update(input.workspaceId).update("\0").update(input.threadId).update("\0").update(input.messageIds.join("\0")).update("\0").update(input.includeFutureMessages ? "future" : "current").digest("hex").slice(0, 24);
   return `pub_${hash}`;
 }
 function selectedPublicationMessages(state, messageId) {
@@ -9213,11 +9255,23 @@ function writeJson2(io, value) {
   io.stdout(`${JSON.stringify(value, null, 2)}
 `);
 }
+function stableCliErrorCode(message) {
+  switch (message) {
+    case "CLI refresh session has expired.":
+      return "AUTH_SESSION_EXPIRED";
+    case "CLI refresh session has been revoked.":
+      return "AUTH_SESSION_REVOKED";
+    case "CLI refresh session is invalid.":
+      return "AUTH_SESSION_INVALID";
+    default:
+      return message.includes("No local Mere Business session") ? "auth_error" : "cli_error";
+  }
+}
 function writeJsonError(io, message) {
   writeJson2(io, {
     ok: false,
     error: {
-      code: message.includes("No local Mere Business session") ? "auth_error" : "cli_error",
+      code: stableCliErrorCode(message),
       message
     }
   });
@@ -9843,9 +9897,16 @@ ${payload.path}`
       const host = readOptionalStringOption(options, "host") ?? "127.0.0.1";
       const port = parseIntegerOption(readOptionalStringOption(options, "port"), "--port", { min: 0, max: 65535 }) ?? 0;
       const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+      const tunnelToken = io.env.MERE_EMAIL_TUNNEL_TOKEN?.trim() || nodeRandomBytes(32).toString("hex");
+      const tokenPath = custodyTunnelTokenPath(io.env);
+      await mkdir4(dirname(tokenPath), { recursive: true });
+      await writeFile3(tokenPath, `${tunnelToken}
+`, { mode: 384 });
+      await chmod4(tokenPath, 384);
       const server = await startCustodyTunnelServer({
         store,
         key,
+        token: tunnelToken,
         host,
         port,
         onSeen: (seenAt) => {
@@ -9880,6 +9941,8 @@ ${payload.path}`
         remoteDataPolicy: "sealed-required",
         payloadClass: "sealed-envelope",
         url: server.url,
+        auth: "bearer",
+        tokenPath,
         keyId: key.keyId,
         sealedEnvelopes: store.countSealedEnvelopes(key.keyId),
         pendingSealableMessages: store.countMessagesToSeal(key.keyId),
@@ -10690,13 +10753,13 @@ async function handleAttachmentsDownload(io, globalOptions, args) {
   const outputPath = readRequiredStringOption(options, "output");
   const workspaceId = resolveWorkspace(globalOptions, io.env);
   const download2 = await createClient(io, globalOptions).downloadAttachment(workspaceId, attachmentId);
-  const path5 = await writeBytesFile(outputPath, download2.bytes);
+  const path6 = await writeBytesFile(outputPath, download2.bytes);
   writeResult(
     io,
     globalOptions,
     {
       attachmentId,
-      path: path5,
+      path: path6,
       filename: download2.filename,
       contentType: download2.contentType,
       bytes: download2.bytes.byteLength
