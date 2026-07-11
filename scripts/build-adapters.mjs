@@ -47,7 +47,7 @@ Maintainers regenerate these files from the Mere app repositories with \`pnpm bu
 }
 
 const appBuilds = [
-	{ repo: 'business', args: ['--dir', repo('business'), '--filter', '@zerosmb/cli', 'build'] },
+	{ repo: 'business', args: ['--dir', repo('business'), '--filter', '@mere/cli', 'build'] },
 	{ repo: 'finance', script: 'build:cli' },
 	{ repo: 'dynasite', script: 'build:cli' },
 	{ repo: 'projects', script: 'build:cli' },

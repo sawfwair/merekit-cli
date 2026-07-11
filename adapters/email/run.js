@@ -598,7 +598,7 @@ function normalizeProjectionEnvelope(input) {
   const event = nestedRecord(envelope2, "event") ?? envelope2;
   const eventType = stringField(envelope2, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
   if (!eventType) throw new Error("Projection envelope eventType is required.");
-  const workspaceId = stringField(envelope2, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  const workspaceId = stringField(envelope2, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "tenantId");
   if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
   const product = stringField(envelope2, "product") ?? stringField(envelope2, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
   const appId = input.appId?.trim() || stringField(envelope2, "appId") || defaultAppIdForProjection(product, eventType);
@@ -1408,7 +1408,7 @@ var init_local_store = __esm({
           };
         });
         const payload = {
-          zerosmbTenantId: workspace.workspace_id,
+          tenantId: workspace.workspace_id,
           slug: workspace.slug,
           baseDomain: workspace.base_domain ?? DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN,
           mailboxes,
@@ -1431,7 +1431,7 @@ var init_local_store = __esm({
         this.db.exec("BEGIN");
         try {
           upsertPlaneWorkspace(this.db, this.config.appId, {
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             slug: payload.slug,
             name: workspaceName,
             dataPlane: this.config.data,
@@ -1445,7 +1445,7 @@ var init_local_store = __esm({
              base_domain = excluded.base_domain,
              imported_at = excluded.imported_at,
              updated_at = excluded.updated_at`
-          ).run(payload.zerosmbTenantId, payload.slug, payload.baseDomain ?? null, now, now);
+          ).run(payload.tenantId, payload.slug, payload.baseDomain ?? null, now, now);
           const upsertMailbox = this.db.prepare(
             `INSERT INTO email_local_mailboxes (
            id, workspace_id, address, display_name, type, visibility, owner_user_id, owner_email, updated_at
@@ -1464,7 +1464,7 @@ var init_local_store = __esm({
           for (const mailbox of payload.mailboxes) {
             upsertMailbox.run(
               mailbox.id,
-              payload.zerosmbTenantId,
+              payload.tenantId,
               mailbox.address,
               mailbox.displayName,
               mailbox.type,
@@ -1544,7 +1544,7 @@ var init_local_store = __esm({
           for (const item of payload.threads) {
             upsertThread.run(
               item.thread.id,
-              payload.zerosmbTenantId,
+              payload.tenantId,
               item.thread.mailboxId,
               item.thread.subject,
               json(item.thread.participants),
@@ -1562,7 +1562,7 @@ var init_local_store = __esm({
               messageCount += 1;
               upsertMessage.run(
                 message.id,
-                payload.zerosmbTenantId,
+                payload.tenantId,
                 message.threadId,
                 message.mailboxId,
                 message.messageIdHeader,
@@ -1585,11 +1585,11 @@ var init_local_store = __esm({
                 message.attachmentCount,
                 message.createdAt
               );
-              this.db.prepare("DELETE FROM email_local_attachments WHERE workspace_id = ? AND message_id = ?").run(payload.zerosmbTenantId, message.id);
+              this.db.prepare("DELETE FROM email_local_attachments WHERE workspace_id = ? AND message_id = ?").run(payload.tenantId, message.id);
               for (const attachment of message.attachments) {
                 upsertAttachment.run(
                   attachment.id,
-                  payload.zerosmbTenantId,
+                  payload.tenantId,
                   message.id,
                   attachment.filename,
                   attachment.mimeType,
@@ -1603,7 +1603,7 @@ var init_local_store = __esm({
           }
           recordPlaneTransfer(this.db, {
             appId: this.config.appId,
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             direction: "import",
             source: transfer.source,
             destination: { data: this.config.data, ai: this.config.ai },
@@ -1614,7 +1614,7 @@ var init_local_store = __esm({
           return {
             ok: true,
             store: "local",
-            workspaceId: payload.zerosmbTenantId,
+            workspaceId: payload.tenantId,
             slug: payload.slug,
             mailboxCount: payload.mailboxes.length,
             threadCount: payload.threads.length,
@@ -6255,8 +6255,8 @@ var EmailWorkspaceBaseDomainSchema = external_exports.enum(EMAIL_WORKSPACE_BASE_
 var EmailWorkspaceLifecycleStateSchema = external_exports.enum(
   EMAIL_WORKSPACE_LIFECYCLE_STATES
 );
-var EmailWorkspaceProvisionInputSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+var EmailWorkspaceProvisionInputBaseSchema = external_exports.object({
+  tenantId: nonEmptyString("tenantId"),
   slug: nonEmptyString("slug"),
   baseDomain: external_exports.string().trim().default(DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN),
   name: nonEmptyString("name"),
@@ -6278,8 +6278,8 @@ var EmailWorkspaceLifecycleResponseSchema = external_exports.object({
   health: EmailBridgeHealthSchema,
   lastError: external_exports.string().trim().nullable()
 });
-var EmailWorkspaceSyncRequestSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+var EmailWorkspaceSyncRequestBaseSchema = external_exports.object({
+  tenantId: nonEmptyString("tenantId"),
   callbackUrl: optionalNullableString,
   callbackBearerToken: optionalNullableString,
   lifecycleState: EmailWorkspaceLifecycleStateSchema.optional(),
@@ -6354,13 +6354,14 @@ var EmailImportThreadExportSchema = external_exports.object({
   thread: EmailImportThreadSchema,
   messages: external_exports.array(EmailImportMessageSchema).default([])
 });
-var EmailWorkspaceImportRequestSchema = external_exports.object({
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+var EmailWorkspaceImportRequestBaseSchema = external_exports.object({
+  tenantId: nonEmptyString("tenantId"),
   slug: nonEmptyString("slug"),
   baseDomain: nonEmptyString("baseDomain").default(DEFAULT_EMAIL_WORKSPACE_BASE_DOMAIN),
   mailboxes: external_exports.array(EmailImportMailboxSchema).default([]),
   threads: external_exports.array(EmailImportThreadExportSchema).default([])
 });
+var EmailWorkspaceImportRequestSchema = EmailWorkspaceImportRequestBaseSchema;
 var EmailWorkspaceImportRunStatusSchema = external_exports.enum([
   "queued",
   "staging",
@@ -6473,7 +6474,7 @@ var DomainContactPrefillResponseSchema = external_exports.object({
 var EmailWorkspaceImportStatusSchema = external_exports.object({
   runId: nonEmptyString("runId"),
   workspaceId: nonEmptyString("workspaceId"),
-  zerosmbTenantId: nonEmptyString("zerosmbTenantId"),
+  tenantId: nonEmptyString("tenantId"),
   status: EmailWorkspaceImportRunStatusSchema,
   error: external_exports.string().trim().nullable(),
   requestedMailboxes: external_exports.number().int().nonnegative(),
@@ -7423,7 +7424,7 @@ var EmailCliClient = class {
     );
   }
   workspacePath(workspaceId, suffix) {
-    return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
+    return `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/${suffix}`;
   }
   isAgentMailPath(path7) {
     return path7.includes("/agent-mail/");
@@ -8134,7 +8135,7 @@ function renderImportStatus(status) {
   return formatKeyValue([
     ["run id", status.runId],
     ["workspace", status.workspaceId],
-    ["tenant", status.zerosmbTenantId],
+    ["tenant", status.tenantId],
     ["status", status.status],
     ["error", formatNullable(status.error)],
     ["mailboxes", formatProgress(status.importedMailboxes, status.requestedMailboxes)],
@@ -8733,24 +8734,11 @@ var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
   "once",
   "yes"
 ]);
-var TRANSPORT_FLAGS = /* @__PURE__ */ new Set(["confirm", "json", "no-interactive", "yes"]);
-var SENSITIVE_FLAGS = /* @__PURE__ */ new Set([
-  "attach",
-  "bcc",
-  "body",
-  "callback-bearer-token",
-  "callback-url",
-  "cc",
-  "data",
-  "data-file",
-  "file",
-  "from-name",
-  "output",
-  "projection-token",
-  "projection-url",
-  "subject",
-  "to",
-  "token"
+var TRANSPORT_FLAGS = /* @__PURE__ */ new Map([
+  ["confirm", "string"],
+  ["json", "boolean"],
+  ["no-interactive", "boolean"],
+  ["yes", "boolean"]
 ]);
 var LOCAL_OFFLINE_COMMANDS = /* @__PURE__ */ new Set([
   "custody.status",
@@ -8774,8 +8762,7 @@ var DRY_RUN_COMMANDS = /* @__PURE__ */ new Set([
 ]);
 var TARGET_RULES = {
   "custody.grant": { type: "email-custody-grant", source: "device" },
-  "custody.unmirror": { type: "email-custody-mirror", source: "workspace" },
-  "domains.register": { type: "email-domain", source: "domain" },
+  "custody.set": { type: "email-custody-tier", source: "first-positional" },
   "drafts.discard": { type: "email-draft", source: "first-positional" },
   "threads.archive": { type: "email-thread", source: "first-positional" },
   "threads.publish": { type: "email-thread", source: "first-positional" },
@@ -8829,8 +8816,33 @@ function stableJson(value) {
   }
   return JSON.stringify(value);
 }
-function argumentsDigest(commandName, normalizedArguments) {
-  const canonical = stableJson({ arguments: normalizedArguments, command: commandName });
+function canonicalInvocationArguments(tokens) {
+  const canonical = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token.startsWith("--")) {
+      canonical.push(token);
+      continue;
+    }
+    const equalsIndex = token.indexOf("=");
+    const name = token.slice(2, equalsIndex === -1 ? void 0 : equalsIndex);
+    const transportKind = TRANSPORT_FLAGS.get(name);
+    if (transportKind === void 0) {
+      canonical.push(token);
+      continue;
+    }
+    if (transportKind === "string" && equalsIndex === -1) {
+      const next = tokens[index + 1];
+      if (next !== void 0 && !next.startsWith("--")) index += 1;
+    }
+  }
+  return canonical;
+}
+function argumentsDigest(commandName, commandArguments) {
+  const canonical = stableJson({
+    arguments: canonicalInvocationArguments(commandArguments),
+    commandName
+  });
   return `sha256:${createHash6("sha256").update(canonical).digest("hex")}`;
 }
 function addOption(options, name, value) {
@@ -8846,14 +8858,15 @@ function addOption(options, name, value) {
 function normalizeInvocationArguments(tokens) {
   const flags = {};
   const positionals = [];
-  const sensitiveFlagsPresent = /* @__PURE__ */ new Set();
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (!token.startsWith("--")) {
       positionals.push(token);
       continue;
     }
-    const [name, inlineValue] = token.slice(2).split("=", 2);
+    const equalsIndex = token.indexOf("=");
+    const name = token.slice(2, equalsIndex === -1 ? void 0 : equalsIndex);
+    const inlineValue = equalsIndex === -1 ? void 0 : token.slice(equalsIndex + 1);
     const isBoolean = BOOLEAN_FLAGS.has(name);
     const consumesNext = !isBoolean && inlineValue === void 0;
     const candidateNext = consumesNext ? tokens[index + 1] : void 0;
@@ -8861,17 +8874,15 @@ function normalizeInvocationArguments(tokens) {
     const value = isBoolean ? inlineValue === void 0 ? true : inlineValue === "true" : inlineValue ?? nextValue ?? "";
     if (consumesNext && nextValue !== void 0) index += 1;
     if (TRANSPORT_FLAGS.has(name)) continue;
-    if (SENSITIVE_FLAGS.has(name)) {
-      sensitiveFlagsPresent.add(name);
-      continue;
-    }
     addOption(flags, name, value);
   }
   return {
     flags,
-    positionals,
-    sensitiveFlagsPresent: [...sensitiveFlagsPresent].sort()
+    positionals
   };
+}
+function booleanFlagEnabled(tokens, flag) {
+  return tokens.some((token) => token === `--${flag}` || token === `--${flag}=true`);
 }
 function hasFlag(tokens, flag) {
   return tokens.some((token) => token === `--${flag}` || token.startsWith(`--${flag}=`));
@@ -9094,7 +9105,7 @@ function matchCommand(invocation, commands) {
   return command ? { command, arguments: invocation.slice(command.path.length) } : null;
 }
 function safetyForInvocation(command, commandArguments) {
-  if (DRY_RUN_COMMANDS.has(command.id) && hasFlag(commandArguments, "dry-run")) {
+  if (hasFlag(commandArguments, "help") || DRY_RUN_COMMANDS.has(command.id) && hasFlag(commandArguments, "dry-run")) {
     return {
       risk: "read",
       mutatesState: false,
@@ -9113,6 +9124,24 @@ function safetyForInvocation(command, commandArguments) {
     confirmationValue: command.confirmationValue
   };
 }
+function consoleInvocationConfirmation(invocation, commands, workspaceId) {
+  const match = matchCommand(invocation, commands);
+  if (!match) return null;
+  const { command, arguments: commandArguments } = match;
+  const safety = safetyForInvocation(command, commandArguments);
+  const commandName = `email ${command.path.join(" ")}`;
+  const target = safety.confirmationValue === "target.id" ? targetForInvocation(command, commandArguments, workspaceId) : null;
+  const expectedConfirmation = safety.confirmationValue === "argumentsDigest" ? argumentsDigest(commandName, commandArguments) : target?.id ?? null;
+  return {
+    commandName,
+    requiresYes: safety.requiresYes,
+    requiresConfirm: safety.requiresConfirm,
+    confirmationValue: safety.confirmationValue,
+    expectedConfirmation,
+    providedYes: booleanFlagEnabled(commandArguments, "yes"),
+    providedConfirmation: flagValue(commandArguments, "confirm")
+  };
+}
 function targetForInvocation(command, commandArguments, workspaceId) {
   const rule = TARGET_RULES[command.id];
   if (!rule) return null;
@@ -9120,7 +9149,6 @@ function targetForInvocation(command, commandArguments, workspaceId) {
   let id = null;
   if (rule.source === "first-positional") id = normalized.positionals[0]?.trim() || null;
   if (rule.source === "device") id = flagValue(commandArguments, "device");
-  if (rule.source === "domain") id = flagValue(commandArguments, "domain");
   if (rule.source === "workspace") id = workspaceId;
   return id ? { type: rule.type, id, revision: null } : null;
 }
@@ -9177,6 +9205,20 @@ function describeResult(input, session) {
     });
   }
   const safety = safetyForInvocation(command, commandArguments);
+  if ((safety.risk === "destructive" || safety.risk === "external") && (!safety.requiresConfirm || safety.confirmationValue === null)) {
+    return errorResult({
+      code: "VALIDATION_FAILED",
+      message: "This Email command is not available through Console until the adapter enforces exact confirmation.",
+      operation,
+      adapterVersion: input.adapterVersion,
+      session,
+      workspaceId: input.workspaceId,
+      details: {
+        commandName: `email ${command.path.join(" ")}`,
+        reason: "exact-confirmation-not-enforced"
+      }
+    });
+  }
   const target = safety.confirmationValue === "target.id" ? targetForInvocation(command, commandArguments, workspaceId) : null;
   if (safety.confirmationValue === "target.id" && !target) {
     return errorResult({
@@ -9190,7 +9232,6 @@ function describeResult(input, session) {
     });
   }
   const commandName = `email ${command.path.join(" ")}`;
-  const normalizedArguments = normalizeInvocationArguments(commandArguments);
   return {
     exitCode: 0,
     envelope: envelope(
@@ -9200,7 +9241,7 @@ function describeResult(input, session) {
       input.adapterVersion,
       {
         name: commandName,
-        argumentsDigest: argumentsDigest(commandName, normalizedArguments),
+        argumentsDigest: argumentsDigest(commandName, commandArguments),
         safety
       }
     )
@@ -9274,7 +9315,7 @@ Global flags:
   -v                   Show the CLI version
   --no-interactive     Do not attempt interactive prompts
   --yes                Required for destructive automation
-  --confirm ID         Exact target required with --yes for destructive commands
+  --confirm VALUE      Exact target id or arguments digest from console describe
   --help               Show this help
 
 Commands:
@@ -9344,7 +9385,7 @@ Commands:
 Environment:
   MERE_EMAIL_BASE_URL      Worker URL, for example https://mere.email or http://localhost:8787
   MERE_EMAIL_TOKEN         Bearer token override for internal/service access
-  MERE_EMAIL_WORKSPACE_ID  Default ZeroSMB workspace / tenant id
+  MERE_EMAIL_WORKSPACE_ID  Default Mere workspace / tenant id
   MERE_EMAIL_STORE         Default data plane: cloud or local
   MERE_EMAIL_AI_PLANE      Default AI plane: cloud or local
   MERE_EMAIL_LOCAL_DB      App-specific local database path override
@@ -9378,7 +9419,7 @@ function helpJson() {
       "--version": "Show the CLI version",
       "--no-interactive": "Do not attempt interactive prompts",
       "--yes": "Required for destructive automation",
-      "--confirm": "Exact target required with --yes for destructive commands",
+      "--confirm": "Exact target id or arguments digest from console describe",
       "--help": "Show help"
     },
     commands: {
@@ -9410,7 +9451,7 @@ function helpJson() {
     environment: {
       MERE_EMAIL_BASE_URL: "Base worker URL",
       MERE_EMAIL_TOKEN: "Bearer token override for internal/service access",
-      MERE_EMAIL_WORKSPACE_ID: "Default ZeroSMB tenant / workspace id",
+      MERE_EMAIL_WORKSPACE_ID: "Default Mere tenant / workspace id",
       MERE_EMAIL_STORE: "Default data plane",
       MERE_EMAIL_AI_PLANE: "Default AI plane",
       MERE_EMAIL_LOCAL_DB: "App-specific local database path",
@@ -9429,8 +9470,8 @@ function manifestCommand(path7, summary, options = {}) {
   const mutatesState = options.mutatesState ?? risk !== "read";
   const crossesTrustBoundary = options.crossesTrustBoundary ?? risk === "external";
   const requiresYes = options.requiresYes ?? risk === "destructive";
-  const requiresConfirm = options.requiresConfirm ?? (risk === "destructive" || risk === "external");
-  const confirmationValue = options.confirmationValue ?? (requiresConfirm ? risk === "destructive" ? "target.id" : "argumentsDigest" : null);
+  const requiresConfirm = options.requiresConfirm ?? false;
+  const confirmationValue = requiresConfirm ? options.confirmationValue ?? (risk === "destructive" ? "target.id" : "argumentsDigest") : null;
   return {
     id: path7.join("."),
     path: path7,
@@ -9465,7 +9506,12 @@ function commandManifest() {
         auth: "none",
         auditDefault: true
       }),
-      manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", { auth: "none", risk: "write" }),
+      manifestCommand(["custody", "set"], "Record the Email custody tier for this local plane.", {
+        auth: "none",
+        risk: "write",
+        requiresConfirm: true,
+        confirmationValue: "target.id"
+      }),
       manifestCommand(["custody", "keygen"], "Generate the local sealing key (never leaves this machine).", { auth: "none", risk: "write" }),
       manifestCommand(["custody", "seal"], "Seal local mail into AES-256-GCM envelopes the cloud cannot open.", {
         auth: "none",
@@ -9474,7 +9520,12 @@ function commandManifest() {
         confirmationValue: "argumentsDigest",
         flags: ["limit", "dry-run"]
       }),
-      manifestCommand(["custody", "push"], "Upload unsent sealed envelopes to the opaque custody receiver.", { risk: "external", flags: ["limit", "dry-run"] }),
+      manifestCommand(["custody", "push"], "Upload unsent sealed envelopes to the opaque custody receiver.", {
+        risk: "external",
+        requiresConfirm: true,
+        confirmationValue: "argumentsDigest",
+        flags: ["limit", "dry-run"]
+      }),
       manifestCommand(["custody", "unmirror"], "Delete mirrored sealed envelopes from the custody receiver.", {
         risk: "destructive",
         crossesTrustBoundary: true,
@@ -9482,7 +9533,6 @@ function commandManifest() {
       }),
       manifestCommand(["custody", "grant"], "Approve a browser device-link request by wrapping the local sealing key.", {
         risk: "external",
-        confirmationValue: "target.id",
         flags: ["device"]
       }),
       manifestCommand(["custody", "tunnel"], "Serve the Email custody capability over loopback; fronted web access uses sealed envelopes.", { auth: "none", risk: "external", flags: ["host", "port", "cloudflared", "tunnel-name", "once"], positionals: ["serve", "up"] }),
@@ -9502,27 +9552,32 @@ function commandManifest() {
       manifestCommand(["workspace", "provision"], "Provision workspace.", { risk: "write", flags: ["slug", "base-domain", "mailbox-address", "name", "organization-id", "callback-url", "callback-bearer-token", "lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
       manifestCommand(["workspace", "sync"], "Sync workspace.", { risk: "external", flags: ["lifecycle-state", "trial-ends-at", "grace-ends-at", "activated-at", "deletion-scheduled-at"] }),
       manifestCommand(["workspace", "disconnect"], "Disconnect workspace.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
-      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", { risk: "external", flags: ["limit", "mailbox-id", "include-archived"] }),
+      manifestCommand(["sync", "pull"], "Pull remote mail into the local-plane store.", {
+        risk: "external",
+        requiresConfirm: true,
+        confirmationValue: "argumentsDigest",
+        flags: ["limit", "mailbox-id", "include-archived"]
+      }),
       manifestCommand(["mailboxes", "list"], "List mailboxes.", { auditDefault: true }),
       manifestCommand(["threads", "list"], "List threads with pagination.", { flags: ["limit", "offset", "mailbox-id", "include-archived"] }),
       manifestCommand(["threads", "latest"], "Show latest threads.", { flags: ["limit", "mailbox-id", "include-archived"] }),
       manifestCommand(["threads", "search"], "Search threads.", { flags: ["limit"] }),
       manifestCommand(["threads", "show"], "Show thread."),
       manifestCommand(["threads", "summarize"], "Summarize a local thread with mere.run.", { risk: "write", flags: ["model"] }),
-      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
-      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "publish"], "Publish a selected local thread/message projection to Business.", { risk: "external", requiresConfirm: true, confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
+      manifestCommand(["threads", "revoke"], "Revoke a selected local thread/message projection from Business.", { risk: "external", requiresConfirm: true, confirmationValue: "target.id", flags: ["message-id", "include-future", "dry-run", "published-by-user-id", "published-by-email"] }),
       manifestCommand(["threads", "read"], "Mark thread read.", { risk: "write" }),
       manifestCommand(["threads", "star"], "Star thread.", { risk: "write" }),
-      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", crossesTrustBoundary: true }),
+      manifestCommand(["threads", "archive"], "Archive thread.", { risk: "destructive", crossesTrustBoundary: true, requiresConfirm: true }),
       manifestCommand(["drafts", "create"], "Create draft.", { risk: "write", supportsData: true }),
       manifestCommand(["drafts", "show"], "Show draft."),
       manifestCommand(["drafts", "discard"], "Discard draft.", { risk: "destructive", requiresYes: true, requiresConfirm: true }),
       manifestCommand(["attachments", "list"], "List attachments."),
       manifestCommand(["attachments", "download"], "Download attachment.", { flags: ["output"] }),
       manifestCommand(["domains", "search"], "Search domains."),
-      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, requiresYes: true, flags: ["domain", "organization-id", "period"] }),
+      manifestCommand(["domains", "register"], "Register domain.", { risk: "external", supportsData: true, flags: ["domain", "organization-id", "period"] }),
       manifestCommand(["domains", "show"], "Show domain registration."),
-      manifestCommand(["send"], "Send email.", { risk: "external", requiresYes: true, flags: ["to", "cc", "bcc", "attach", "mailbox-id", "from-name", "reply-thread-id", "subject", "body"] }),
+      manifestCommand(["send"], "Send email.", { risk: "external", requiresYes: true, requiresConfirm: true, confirmationValue: "argumentsDigest", flags: ["to", "cc", "bcc", "attach", "mailbox-id", "from-name", "reply-thread-id", "subject", "body"] }),
       manifestCommand(["export"], "Export workspace data as a local-plane transfer bundle."),
       manifestCommand(["import"], "Import workspace data from a transfer bundle or raw payload file via --file; pass --dry-run to plan only.", { risk: "write", flags: ["file", "dry-run"] }),
       manifestCommand(["import", "status"], "Show import status.", { flags: ["run-id"] }),
@@ -9597,7 +9652,9 @@ function parseFlags(args, spec) {
       positionals.push(token);
       continue;
     }
-    const [rawName, inlineValue] = token.slice(2).split("=", 2);
+    const equalsIndex = token.indexOf("=");
+    const rawName = token.slice(2, equalsIndex === -1 ? void 0 : equalsIndex);
+    const inlineValue = equalsIndex === -1 ? void 0 : token.slice(equalsIndex + 1);
     const expectedKind = spec[rawName];
     if (!expectedKind) {
       throw new CliError(`Unknown option: --${rawName}`);
@@ -9643,7 +9700,9 @@ function splitGlobalFlags(argv) {
     if (!token.startsWith("--")) {
       break;
     }
-    const [rawName, inlineValue] = token.slice(2).split("=", 2);
+    const equalsIndex = token.indexOf("=");
+    const rawName = token.slice(2, equalsIndex === -1 ? void 0 : equalsIndex);
+    const inlineValue = equalsIndex === -1 ? void 0 : token.slice(equalsIndex + 1);
     const expectedKind = GLOBAL_FLAG_SPEC[rawName];
     if (!expectedKind) {
       throw new CliError(`Unknown global option: --${rawName}`);
@@ -9697,6 +9756,35 @@ function requireDestructiveConfirmation(globalOptions, options, label, target) {
   const confirm = readOptionalStringOption(options, "confirm") ?? readOptionalStringOption(globalOptions, "confirm");
   if (confirm !== target) {
     throw new CliError(`Refusing to ${label} ${target} without --confirm ${target}.`, 2);
+  }
+}
+function requireConsoleManifestConfirmation(globalOptions, invocation, commands, workspaceId) {
+  const confirmation = consoleInvocationConfirmation(
+    invocation,
+    commands,
+    workspaceId ?? null
+  );
+  if (!confirmation) return;
+  if (!confirmation.requiresConfirm) return;
+  const providedYes = asBoolean(globalOptions.yes) || confirmation.providedYes;
+  if (confirmation.requiresYes && !providedYes) {
+    throw new CliError(
+      `Refusing to run ${confirmation.commandName} without --yes.`,
+      2
+    );
+  }
+  if (confirmation.expectedConfirmation === null) {
+    throw new CliError(
+      `Refusing to run ${confirmation.commandName} because its exact confirmation target is unavailable.`,
+      2
+    );
+  }
+  const providedConfirmation = readOptionalStringOption(globalOptions, "confirm") ?? confirmation.providedConfirmation;
+  if (providedConfirmation !== confirmation.expectedConfirmation) {
+    throw new CliError(
+      `Refusing to run ${confirmation.commandName} without the exact --confirm value from console describe.`,
+      2
+    );
   }
 }
 function readOptionalNullableStringOption(options, name) {
@@ -9933,7 +10021,7 @@ function resolveDataMode(options, env) {
 function wrapEmailWorkspaceTransfer(payload, config) {
   return createPlaneTransferBundle({
     appId: config.appId,
-    workspaceId: payload.zerosmbTenantId,
+    workspaceId: payload.tenantId,
     plane: config,
     payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
     payload
@@ -9966,7 +10054,7 @@ function planEmailWorkspaceImport(payload, bundle, config) {
     cloudProjection: config.cloudProjection,
     transferPlan: createPlaneTransferImportPlan({
       appId: config.appId,
-      workspaceId: payload.zerosmbTenantId,
+      workspaceId: payload.tenantId,
       payloadSchema: EMAIL_WORKSPACE_PAYLOAD_SCHEMA2,
       payload,
       bundle,
@@ -10043,7 +10131,7 @@ function buildWorkspacePullPayload(workspaceId, mailboxes, threads) {
     ownerEmail: mailbox.ownerEmail ?? null
   }));
   return {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     slug: resolveWorkspaceSlug(workspaceId),
     baseDomain: inferBaseDomain(normalizedMailboxes),
     mailboxes: normalizedMailboxes,
@@ -10179,7 +10267,7 @@ function buildLocalPublicationPayload(input) {
       version: EMAIL_PRODUCT_EVENT_VERSION,
       event: {
         type: "mail.publication.upserted",
-        zerosmbTenantId: input.workspaceId,
+        tenantId: input.workspaceId,
         mailbox: input.state.mailbox,
         thread: input.state.thread,
         publication,
@@ -10211,7 +10299,7 @@ function buildLocalPublicationRevocationEnvelope(input) {
       version: EMAIL_PRODUCT_EVENT_VERSION,
       event: {
         type: "mail.publication.revoked",
-        zerosmbTenantId: input.workspaceId,
+        tenantId: input.workspaceId,
         mailbox: input.state.mailbox,
         thread: input.state.thread,
         publication: built.publication
@@ -10435,7 +10523,7 @@ async function handleWorkspaceProvision(io, globalOptions, args) {
   const lifecycleState = parseLifecycleState2(readOptionalStringOption(options, "lifecycle-state"));
   const mailboxAddress = readOptionalStringOption(options, "mailbox-address");
   const input = {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     slug: readRequiredStringOption(options, "slug"),
     baseDomain: parseBaseDomain(readOptionalStringOption(options, "base-domain")),
     name: readRequiredStringOption(options, "name"),
@@ -10477,7 +10565,7 @@ async function handleWorkspaceSync(io, globalOptions, args) {
   const workspaceId = resolveWorkspace(globalOptions, io.env);
   const lifecycleState = parseLifecycleState2(readOptionalStringOption(options, "lifecycle-state"));
   const input = {
-    zerosmbTenantId: workspaceId,
+    tenantId: workspaceId,
     ...lifecycleState ? { lifecycleState } : {},
     ...readOptionalNullableStringOption(options, "trial-ends-at") !== void 0 ? { trialEndsAt: readOptionalNullableStringOption(options, "trial-ends-at") } : {},
     ...readOptionalNullableStringOption(options, "grace-ends-at") !== void 0 ? { graceEndsAt: readOptionalNullableStringOption(options, "grace-ends-at") } : {},
@@ -11972,9 +12060,9 @@ async function handleImport(io, globalOptions, args) {
   const { payload, bundle } = parseEmailWorkspaceTransfer(
     await readJsonFile(readRequiredStringOption(options, "file"))
   );
-  if (workspaceId && payload.zerosmbTenantId !== workspaceId) {
+  if (workspaceId && payload.tenantId !== workspaceId) {
     throw new CliError(
-      `Import payload tenant ${payload.zerosmbTenantId} does not match workspace ${workspaceId}.`
+      `Import payload tenant ${payload.tenantId} does not match workspace ${workspaceId}.`
     );
   }
   const config = resolveEmailPlaneConfig(globalOptions, io.env);
@@ -12064,14 +12152,14 @@ async function runCli(argv, io) {
       return 0;
     }
     if (rest[0] === "console" && !asBoolean(globalOptions.help)) {
-      const manifest = commandManifest();
+      const manifest2 = commandManifest();
       const result = await runConsoleContractCommand({
         argv: rest.slice(1),
         env: io.env,
         plane: resolveEmailPlaneConfig(globalOptions, io.env),
         workspaceId: resolveWorkspaceOptional(globalOptions, io.env),
         adapterVersion: await cliVersion(),
-        commands: manifest.commands
+        commands: manifest2.commands
       });
       writeJson2(io, result.envelope);
       return result.exitCode;
@@ -12081,6 +12169,13 @@ async function runCli(argv, io) {
       return 0;
     }
     activeSession = await loadSession(io.env);
+    const manifest = commandManifest();
+    requireConsoleManifestConfirmation(
+      globalOptions,
+      rest,
+      manifest.commands,
+      resolveWorkspaceOptional(globalOptions, io.env)
+    );
     const [group, action, ...remaining] = rest;
     const localDataMode = resolveDataMode(globalOptions, io.env) === "local";
     const isWorkspaceMetadataCommand = group === "workspace" && ["list", "current", "use"].includes(action ?? "");

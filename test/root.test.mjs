@@ -73,7 +73,7 @@ if (args[0] === 'commands') {
     schemaVersion: 1,
     app: 'mere-business',
     namespace: 'business',
-    aliases: ['business', 'zerosmb'],
+    aliases: ['business', 'mere-business'],
     auth: { kind: 'browser' },
     baseUrlEnv: ['BUSINESS_BASE_URL'],
     sessionPath: null,
@@ -710,7 +710,7 @@ test('onboard invite-code without interactive points to the bootstrap path', asy
 test('discovers local skills for registry publishing', async () => {
   const root = await fakeMereRoot();
   await writeFakeSkill(root);
-  await writeFakeSkill(root, 'business', 'zerosmb-cli');
+  await writeFakeSkill(root, 'business', 'mere-business-cli');
   await writeFakeSkill(root, 'works', 'works-cli');
   const result = await run(['skills', 'list', '--local', '--json'], { MERE_ROOT: root });
   assert.equal(result.code, 0, result.stderr);
@@ -721,7 +721,7 @@ test('discovers local skills for registry publishing', async () => {
   assert.match(skill.url, /https:\/\/merekit\.com\/skills\/mere-onboarding-agent\/SKILL\.md/);
   assert.equal(skill.files.length, 1);
   assert.match(skill.digest, /^sha256:/);
-  assert.equal(payload.skills.some((entry) => entry.name === 'zerosmb-cli'), false);
+  assert.equal(payload.skills.some((entry) => entry.name === 'mere-business-cli'), false);
   const worksSkill = payload.skills.find((entry) => entry.name === 'works-cli');
   assert.ok(worksSkill);
   assert.equal(worksSkill.repo, 'works');

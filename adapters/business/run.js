@@ -865,8 +865,61 @@ async function bootstrapConsoleAgentOnboarding(input2) {
   }
   return postJson2(
     url,
-    { code: input2.code, values: input2.values ?? {}, agent: input2.agent ?? {} },
+    {
+      code: input2.code,
+      values: input2.values ?? {},
+      agent: input2.agent ?? {},
+      ...input2.identityProof?.trim() ? { identityProof: input2.identityProof.trim() } : {}
+    },
     { headers }
+  );
+}
+async function reissueConsoleAgentSession(input2) {
+  const url = new URL("/api/cli/v1/auth/agent-session", input2.baseUrl);
+  const headers = new Headers();
+  if (input2.bootstrapToken?.trim()) {
+    headers.set("authorization", `Bearer ${input2.bootstrapToken.trim()}`);
+  }
+  return postJson2(
+    url,
+    {
+      workspaceId: input2.workspaceId,
+      agent: input2.agent ?? {},
+      ...input2.identityProof?.trim() ? { identityProof: input2.identityProof.trim() } : {}
+    },
+    { headers }
+  );
+}
+async function mintAgentsIdentifyMereProof(input2) {
+  const url = new URL("/api/mere/agent-login-proof", input2.origin);
+  return postJson2(
+    url,
+    {
+      workspaceId: input2.workspaceId,
+      mereAgentId: input2.mereAgentId,
+      audience: input2.audience
+    },
+    {
+      headers: {
+        authorization: `Bearer ${input2.apiKey}`
+      }
+    }
+  );
+}
+async function mintAgentsIdentifyMereBootstrapProof(input2) {
+  const url = new URL("/api/mere/workspace-bootstrap-proof", input2.origin);
+  return postJson2(
+    url,
+    {
+      inviteCode: input2.code,
+      ...input2.mereAgentId?.trim() ? { mereAgentId: input2.mereAgentId.trim() } : {},
+      audience: input2.audience
+    },
+    {
+      headers: {
+        authorization: `Bearer ${input2.apiKey}`
+      }
+    }
   );
 }
 async function createConsoleWorkspace(input2) {
@@ -1406,7 +1459,7 @@ function normalizeProjectionEnvelope(input2) {
   const event = nestedRecord(envelope, "event") ?? envelope;
   const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
   if (!eventType) throw new Error("Projection envelope eventType is required.");
-  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "tenantId");
   if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
   const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
   const appId = input2.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
@@ -5773,35 +5826,6 @@ var globalOptions = [
   stringOption("confirm", "confirm", "Exact confirmation target for high-impact destructive actions."),
   booleanOption("help", "help", "Show help for this command.", "h")
 ];
-var leadingBooleanGlobals = /* @__PURE__ */ new Set(["--json", "--no-interactive", "--yes", "-y", "--help", "-h"]);
-var leadingStringGlobals = /* @__PURE__ */ new Set(["--workspace", "--confirm"]);
-function normalizeGlobalFlagPlacement(argv) {
-  const leading = [];
-  let index = 0;
-  while (index < argv.length) {
-    const argument = argv[index];
-    if (!argument) break;
-    if (leadingBooleanGlobals.has(argument)) {
-      leading.push(argument);
-      index += 1;
-      continue;
-    }
-    if (leadingStringGlobals.has(argument)) {
-      leading.push(argument);
-      const value = argv[index + 1];
-      if (value !== void 0) leading.push(value);
-      index += value === void 0 ? 1 : 2;
-      continue;
-    }
-    if ([...leadingStringGlobals].some((name) => argument.startsWith(`${name}=`))) {
-      leading.push(argument);
-      index += 1;
-      continue;
-    }
-    break;
-  }
-  return leading.length === 0 ? argv : [...argv.slice(index), ...leading];
-}
 var EXTERNAL_COMMANDS = /* @__PURE__ */ new Set([
   "calendar.subscription.sync",
   "campaigns.send",
@@ -6225,15 +6249,53 @@ ${workspace}`;
   },
   {
     path: ["auth", "agent-login"],
-    summary: "Refresh and verify a local Business agent session without opening a browser.",
-    options: [stringOption("workspace", "workspace", "Workspace id, slug, or host to select.")],
+    summary: "Refresh or reissue a local Business agent session without opening a browser.",
+    options: [
+      stringOption("workspace", "workspace", "Workspace id, slug, or host to select. Required for workspace-claim reissue."),
+      stringOption("invite-code", "inviteCode", "Original claimed onboarding invite code for session recovery without a browser."),
+      stringOption("bootstrap-token", "bootstrapToken", "Optional admin recovery bootstrap bearer token. Defaults to MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN."),
+      stringOption("agent-id", "agentId", "Stable agent identifier from the original agent onboarding run. Required when reissuing a missing local session."),
+      stringOption("agent-label", "agentLabel", "Human-readable agent label."),
+      stringOption("agent-email", "agentEmail", "Broker identity email for the agent."),
+      stringOption("agent-email-local-part", "agentEmailLocalPart", "Local part for the default @mere.email agent identity."),
+      stringOption("agent-tool-key", "agentToolKey", "Agent tool key for audit context."),
+      stringOption("agent-job-id", "agentJobId", "Agent job id for audit context."),
+      stringOption("agent-session-id", "agentSessionId", "Agent session id for audit context."),
+      stringOption("agentsidentify-key", "agentsIdentifyKey", "AgentsIdentify ai_ identity key used to mint a short-lived Mere login proof. Defaults to AGENTSIDENTIFY_API_KEY."),
+      stringOption("agentsidentify-origin", "agentsIdentifyOrigin", "AgentsIdentify origin. Defaults to AGENTSIDENTIFY_ORIGIN or https://agentsidentify.com."),
+      stringOption("identity-proof", "identityProof", "Pre-minted AgentsIdentify Mere agent-login proof JWT.")
+    ],
     schema: external_exports.object({
-      workspace: optionalString
+      workspace: optionalString,
+      inviteCode: optionalString,
+      bootstrapToken: optionalString,
+      agentId: optionalString,
+      agentLabel: optionalString,
+      agentEmail: optionalString,
+      agentEmailLocalPart: optionalString,
+      agentToolKey: optionalString,
+      agentJobId: optionalString,
+      agentSessionId: optionalString,
+      agentsIdentifyKey: optionalString,
+      agentsIdentifyOrigin: optionalString,
+      identityProof: optionalString
     }),
     auth: "none",
     risk: "write",
     execute: (runtime, input2) => runtime.agentLogin({
-      workspace: input2.workspace
+      workspace: input2.workspace,
+      inviteCode: input2.inviteCode,
+      bootstrapToken: input2.bootstrapToken,
+      agentId: input2.agentId,
+      agentLabel: input2.agentLabel,
+      agentEmail: input2.agentEmail,
+      agentEmailLocalPart: input2.agentEmailLocalPart,
+      agentToolKey: input2.agentToolKey,
+      agentJobId: input2.agentJobId,
+      agentSessionId: input2.agentSessionId,
+      agentsIdentifyKey: input2.agentsIdentifyKey,
+      agentsIdentifyOrigin: input2.agentsIdentifyOrigin,
+      identityProof: input2.identityProof
     }),
     format: (data) => {
       const session = data;
@@ -6524,6 +6586,9 @@ next: ${payload.nextUrl}` : ""}`;
       stringOption("agent-tool-key", "agentToolKey", "Agent tool key for audit context."),
       stringOption("agent-job-id", "agentJobId", "Agent job id for audit context."),
       stringOption("agent-session-id", "agentSessionId", "Agent session id for audit context."),
+      stringOption("agentsidentify-key", "agentsIdentifyKey", "AgentsIdentify ai_ identity key used to mint a short-lived Mere workspace bootstrap proof. Defaults to AGENTSIDENTIFY_API_KEY."),
+      stringOption("agentsidentify-origin", "agentsIdentifyOrigin", "AgentsIdentify origin. Defaults to AGENTSIDENTIFY_ORIGIN or https://agentsidentify.com."),
+      stringOption("identity-proof", "identityProof", "Pre-minted AgentsIdentify Mere workspace bootstrap proof JWT."),
       booleanOption("no-wait", "noWait", "Return after provisioning starts."),
       stringOption("timeout-seconds", "timeoutSeconds", "Maximum seconds to wait for provisioning."),
       stringOption("poll-seconds", "pollSeconds", "Seconds between provisioning status checks.")
@@ -6548,6 +6613,9 @@ next: ${payload.nextUrl}` : ""}`;
       agentToolKey: optionalString,
       agentJobId: optionalString,
       agentSessionId: optionalString,
+      agentsIdentifyKey: optionalString,
+      agentsIdentifyOrigin: optionalString,
+      identityProof: optionalString,
       noWait: external_exports.boolean().optional(),
       timeoutSeconds: optionalPositiveNumber,
       pollSeconds: optionalPositiveNumber
@@ -8755,18 +8823,16 @@ function startsWithPath(argv, path4) {
   return path4.every((segment, index) => argv[index] === segment);
 }
 function findCommand(argv) {
-  const normalized = normalizeGlobalFlagPlacement(argv);
-  return sortedCommands.find((command) => startsWithPath(normalized, command.path)) ?? null;
+  return sortedCommands.find((command) => startsWithPath(argv, command.path)) ?? null;
 }
 function parseCommand(argv) {
-  const normalized = normalizeGlobalFlagPlacement(argv);
-  const command = findCommand(normalized);
+  const command = findCommand(argv);
   if (!command) {
     throw usageError("Unknown command.");
   }
   const optionSpecs = [...globalOptions, ...command.options ?? []];
   const parsed = parseArgs({
-    args: normalized.slice(command.path.length),
+    args: argv.slice(command.path.length),
     allowPositionals: true,
     strict: true,
     options: Object.fromEntries(
@@ -8971,11 +9037,59 @@ function stripSessionPayload(result) {
   delete next.session;
   return next;
 }
+function agentLoginSummary(session, paths, reissued) {
+  return {
+    ok: true,
+    authenticated: true,
+    user: session.user,
+    workspace: session.workspace,
+    workspaces: session.workspaces,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt,
+    sessionFile: paths.sessionFile,
+    reissued
+  };
+}
 function writeProgress(globalFlags, message) {
   if (!globalFlags.json) {
     stderr.write(`${message}
 `);
   }
+}
+function agentsIdentifyOptions(options) {
+  return {
+    apiKey: String(options.agentsIdentifyKey ?? "").trim() || env.AGENTSIDENTIFY_API_KEY?.trim() || env.AGENTSIDENTIFY_KEY?.trim() || "",
+    origin: String(options.agentsIdentifyOrigin ?? "").trim() || env.AGENTSIDENTIFY_ORIGIN?.trim() || "https://agentsidentify.com"
+  };
+}
+async function mintRequiredAgentsIdentifyProof(input2) {
+  const explicitProof = String(input2.explicitProof ?? "").trim();
+  if (explicitProof) return explicitProof;
+  const { apiKey, origin } = agentsIdentifyOptions(input2.options);
+  if (!apiKey) {
+    throw authError(
+      "AgentsIdentify identity is required. Set AGENTSIDENTIFY_API_KEY, pass --agentsidentify-key, or pass --identity-proof."
+    );
+  }
+  const proofResult = input2.code ? await mintAgentsIdentifyMereBootstrapProof({
+    origin,
+    apiKey,
+    code: input2.code,
+    mereAgentId: input2.agentId,
+    audience: input2.audience
+  }) : await mintAgentsIdentifyMereProof({
+    origin,
+    apiKey,
+    workspaceId: input2.workspaceId ?? "",
+    mereAgentId: input2.agentId ?? "",
+    audience: input2.audience
+  });
+  const proof = String(proofResult.proof?.token ?? "").trim();
+  if (!proof) {
+    throw authError("AgentsIdentify did not return a Mere identity proof.");
+  }
+  return proof;
 }
 async function createRuntime(globalFlags) {
   const paths = resolveCliPaths2();
@@ -9099,10 +9213,67 @@ async function createRuntime(globalFlags) {
     },
     agentLogin: async (options) => {
       const session = await getLocalSession();
-      if (!session) {
-        throw authError(
-          "No local Mere Business agent session found. Run `mere business onboard agent-start <invite> --name <business> --slug <slug> --json` first."
+      const inviteCode = String(options.inviteCode ?? "").trim();
+      const agentId = String(options.agentId ?? "").trim();
+      const shouldReissue = Boolean(agentId || inviteCode || options.bootstrapToken);
+      if (!session || shouldReissue) {
+        const workspaceId = String(
+          options.workspace ?? globalFlags.workspace ?? session?.defaultWorkspaceId ?? session?.workspace?.id ?? ""
+        ).trim();
+        if (!workspaceId && !inviteCode) {
+          throw authError(
+            "No local Mere Business agent session found. Reissue with `mere business auth agent-login --workspace <workspace-id> --agent-id <same-agent-id> --json`, or recover from the original claimed invite with `--invite-code <code>`."
+          );
+        }
+        if (!agentId) {
+          throw authError(
+            "No local Mere Business agent session found. Pass --agent-id with the stable agent id from the original `onboard agent-start` run to reissue the existing workspace session."
+          );
+        }
+        const agent = compactObject({
+          id: agentId,
+          label: options.agentLabel,
+          email: options.agentEmail,
+          emailLocalPart: options.agentEmailLocalPart,
+          toolKey: options.agentToolKey,
+          jobId: options.agentJobId,
+          sessionId: options.agentSessionId
+        });
+        const bootstrapToken = String(options.bootstrapToken ?? "").trim() || env.MERE_BUSINESS_AGENT_BOOTSTRAP_TOKEN?.trim() || env.AGENT_ONBOARDING_BOOTSTRAP_SECRET?.trim() || "";
+        const baseUrl = normalizeConsoleUrl();
+        const identityProof = await mintRequiredAgentsIdentifyProof({
+          explicitProof: String(options.identityProof ?? "").trim(),
+          options,
+          audience: new URL(baseUrl).origin,
+          agentId,
+          ...inviteCode ? { code: inviteCode } : { workspaceId }
+        });
+        const result = inviteCode ? await bootstrapConsoleAgentOnboarding({
+          baseUrl,
+          bootstrapToken,
+          code: inviteCode,
+          values: {},
+          agent,
+          identityProof
+        }) : await reissueConsoleAgentSession({
+          baseUrl,
+          bootstrapToken,
+          workspaceId,
+          agent,
+          identityProof
+        });
+        if (!result.session) {
+          throw authError(
+            inviteCode ? "Business agent invite recovery did not return a session. Confirm the invite was claimed by this same agent id." : "Business agent workspace-claim reissue did not return a session."
+          );
+        }
+        const next = await writeSession(
+          createLocalSession2(result.session, {
+            consoleUrl: baseUrl,
+            defaultWorkspaceId: result.session.workspace?.id ?? result.session.defaultWorkspaceId
+          })
         );
+        return agentLoginSummary(next, paths, true);
       }
       const selector = options.workspace ?? globalFlags.workspace ?? session.defaultWorkspaceId ?? session.workspace?.id;
       const workspace = requireWorkspaceSelection2(session.workspaces, selector);
@@ -9112,14 +9283,14 @@ async function createRuntime(globalFlags) {
           workspace,
           defaultWorkspaceId: session.defaultWorkspaceId ?? workspace.id
         };
-        return writeSession(next);
+        return agentLoginSummary(await writeSession(next), paths, false);
       }
-      return writeSession(
+      return agentLoginSummary(await writeSession(
         await refreshRemoteSession2(session, {
           workspace: workspace.id,
           persistDefaultWorkspace: false
         })
-      );
+      ), paths, false);
     },
     getLocalSession,
     switchWorkspace: async (selector) => {
@@ -9334,13 +9505,21 @@ async function createRuntime(globalFlags) {
         sessionId: input2.agentSessionId
       });
       const baseUrl = normalizeConsoleUrl();
+      const nextIdentityProof = () => mintRequiredAgentsIdentifyProof({
+        explicitProof: String(input2.identityProof ?? "").trim(),
+        options: input2,
+        audience: new URL(baseUrl).origin,
+        code,
+        agentId: String(input2.agentId ?? "").trim() || void 0
+      });
       writeProgress(globalFlags, "Starting agent onboarding...");
       let result = await bootstrapConsoleAgentOnboarding({
         baseUrl,
         bootstrapToken,
         code,
         values,
-        agent
+        agent,
+        identityProof: await nextIdentityProof()
       });
       if (result.session) {
         await writeSession(
@@ -9369,7 +9548,8 @@ async function createRuntime(globalFlags) {
           bootstrapToken,
           code,
           values,
-          agent
+          agent,
+          identityProof: await nextIdentityProof()
         });
         if (result.session) {
           await writeSession(
@@ -9421,7 +9601,6 @@ async function createRuntime(globalFlags) {
   };
 }
 async function run(argv) {
-  argv = normalizeGlobalFlagPlacement(argv);
   if (argv.length === 0) {
     output2.write(`${renderHelp()}
 `);

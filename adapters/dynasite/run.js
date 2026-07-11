@@ -1118,7 +1118,7 @@ var LocalDynasiteStore = class _LocalDynasiteStore {
           "lead names, email addresses, messages, and exact submission times",
           "outreach message bodies and delivery state details",
           "Emdash provisioning state and Cloudflare resource identifiers",
-          "ZeroSMB bridge payloads and callback tokens",
+          "Mere bridge payloads and callback tokens",
           "raw local archive rows",
           "transfer bundle payloads"
         ]
@@ -1245,7 +1245,7 @@ var LocalDynasiteStore = class _LocalDynasiteStore {
 };
 
 // cli/local-plane.ts
-var HOSTED_BOUNDARY = "Dynasite research jobs, source crawling, OpenRouter/Dunes generation, Emdash provisioning, preview hosting, public publishing, static bundle bytes, lead forwarding, ZeroSMB bridge delivery, and the Business projection receiver remain Cloudflare-owned.";
+var HOSTED_BOUNDARY = "Dynasite research jobs, source crawling, OpenRouter/Dunes generation, Emdash provisioning, preview hosting, public publishing, static bundle bytes, lead forwarding, Mere bridge delivery, and the Business projection receiver remain Cloudflare-owned.";
 function asString(value) {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.at(-1);

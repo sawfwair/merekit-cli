@@ -3141,7 +3141,7 @@ async function cmdStatus(baseUrl, args, json, ctx) {
   const session = await fetchJson2(baseUrl, "/api/auth/session", args, ctx);
   let internalHealth = null;
   if (internalTokenFromArgs(args, ctx)?.trim()) {
-    internalHealth = await fetchJson2(baseUrl, "/api/internal/zerosmb/health", args, ctx, { internal: true });
+    internalHealth = await fetchJson2(baseUrl, "/api/internal/mere/health", args, ctx, { internal: true });
   }
   const data = {
     ok: true,
@@ -3556,7 +3556,7 @@ async function cmdWorkspaceHealth(baseUrl, args, json, ctx) {
     ctx.stderr("Missing --internal-token or MERE_IM_INTERNAL_TOKEN for workspace health.\n");
     return 1;
   }
-  const data = await fetchJson2(baseUrl, "/api/internal/zerosmb/health", args, ctx, { internal: true });
+  const data = await fetchJson2(baseUrl, "/api/internal/mere/health", args, ctx, { internal: true });
   if (json) return writeJson(ctx, data);
   ctx.stdout("Workspace bridge health: ok\n");
   return 0;
@@ -3582,7 +3582,7 @@ async function cmdWorkspaceLifecycle(baseUrl, args, action, workspaceId, json, c
   const target = workspaceIdArg(args, workspaceId, `Usage: mere-im workspace ${action} <workspaceId>`);
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/${action}`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/${action}`,
     args,
     ctx,
     {
@@ -3607,7 +3607,7 @@ async function cmdWorkspaceDisconnect(baseUrl, args, workspaceId, json, ctx) {
   requireDestructiveConfirmation(args, "disconnect workspace", target);
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/connection`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/connection`,
     args,
     ctx,
     {
@@ -3631,7 +3631,7 @@ async function cmdWorkspaceShareCard(baseUrl, args, workspaceId, json, ctx) {
   });
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/share-card`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/share-card`,
     args,
     ctx,
     {
@@ -3657,7 +3657,7 @@ async function cmdWorkspaceVideoHandoff(baseUrl, args, workspaceId, json, ctx) {
   });
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/video-handoff`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/video-handoff`,
     args,
     ctx,
     {

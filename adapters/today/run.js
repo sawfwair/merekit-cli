@@ -4581,7 +4581,7 @@ async function handleTenantCommand(context, action, parsed) {
       from_email: readStringFlag(parsed, "from-email") ?? null,
       webhook_url: readStringFlag(parsed, "webhook-url") ?? null,
       webhook_signing_secret: null,
-      zerosmb_tenant_id: readStringFlag(parsed, "zerosmb-tenant-id") ?? null,
+      zerosmb_tenant_id: readStringFlag(parsed, "tenant-id") ?? readStringFlag(parsed, "zerosmb-tenant-id") ?? null,
       status: readStringFlag(parsed, "status") ?? "active",
       created_at: now,
       updated_at: now
@@ -5268,6 +5268,7 @@ function commandManifest() {
           "notify-email",
           "from-email",
           "webhook-url",
+          "tenant-id",
           "zerosmb-tenant-id",
           "status",
           "owner-user",

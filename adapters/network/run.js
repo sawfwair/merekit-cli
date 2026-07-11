@@ -977,7 +977,7 @@ function normalizeProjectionEnvelope(input) {
   const event = nestedRecord(envelope, "event") ?? envelope;
   const eventType = stringField(envelope, "eventType") ?? stringField(event, "type") ?? stringField(event, "eventType");
   if (!eventType) throw new Error("Projection envelope eventType is required.");
-  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "zerosmbWorkspaceId") ?? stringField(event, "zerosmbTenantId");
+  const workspaceId = stringField(envelope, "workspaceId") ?? stringField(event, "workspaceId") ?? stringField(event, "tenantId");
   if (!workspaceId) throw new Error("Projection envelope workspaceId is required.");
   const product = stringField(envelope, "product") ?? stringField(envelope, "appId") ?? stringField(event, "product") ?? defaultAppIdForProjection(null, eventType);
   const appId = input.appId?.trim() || stringField(envelope, "appId") || defaultAppIdForProjection(product, eventType);
@@ -2703,7 +2703,7 @@ function queryFromOptions(options) {
   return params;
 }
 function workspaceBasePath(workspaceId) {
-  return `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}`;
+  return `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 async function handleAuth(io, globalOptions, action) {
   switch (action) {
