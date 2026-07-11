@@ -952,7 +952,7 @@ __export(local_store_exports, {
 });
 import { mkdir as mkdir2 } from "node:fs/promises";
 import path5 from "node:path";
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 import * as sqliteVec from "sqlite-vec";
 function defaultLocalDbPath(env = process.env) {
   return defaultLocalPlaneDbPath(env);
@@ -965,7 +965,7 @@ function resolveLocalDbPath(options = {}) {
   });
 }
 function makeId(prefix) {
-  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
+  return `${prefix}_${randomUUID3().replaceAll("-", "").slice(0, 24)}`;
 }
 function isoNow4() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -1469,7 +1469,8 @@ var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/session.ts
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os2 from "node:os";
 import path2 from "node:path";
 function stateHome2(env) {
@@ -1513,10 +1514,29 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir(paths.stateDir, { recursive: true });
-  await writeFile(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+  await writeCliSessionFile(paths.sessionFile, input.session);
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path2.dirname(sessionFile);
+  const tempFile = path2.join(
+    stateDir,
+    `.${path2.basename(sessionFile)}.${process.pid}.${randomUUID2()}.tmp`
+  );
+  let handle;
+  await mkdir(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
 `, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;
@@ -2306,7 +2326,7 @@ esac
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { access, chmod as chmod2, mkdtemp, rm as rm2 } from "node:fs/promises";
+import { access, chmod, mkdtemp, rm as rm2 } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
 import https from "node:https";
 import os3 from "node:os";
@@ -2420,7 +2440,7 @@ async function installFromDmg(env, appId) {
     if (install.status !== 0) {
       throw new Error(install.stderr || install.stdout || "mere.run installer failed.");
     }
-    await chmod2(installBin, 493).catch(() => void 0);
+    await chmod(installBin, 493).catch(() => void 0);
     return installBin;
   } finally {
     await rm2(tmp, { recursive: true, force: true });

@@ -6040,9 +6040,17 @@ function parseJsonArrayTexts(values, optionName) {
 function inferContentType(filename) {
   const extension = filename.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase();
   if (extension === ".html" || extension === ".htm") return "text/html; charset=utf-8";
+  if (extension === ".txt") return "text/plain; charset=utf-8";
+  if (extension === ".md" || extension === ".markdown") return "text/markdown; charset=utf-8";
+  if (extension === ".csv") return "text/csv; charset=utf-8";
   if (extension === ".css") return "text/css; charset=utf-8";
   if (extension === ".js" || extension === ".mjs") return "text/javascript; charset=utf-8";
   if (extension === ".json") return "application/json; charset=utf-8";
+  if (extension === ".pdf") return "application/pdf";
+  if (extension === ".zip") return "application/zip";
+  if (extension === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (extension === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (extension === ".pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (extension === ".svg") return "image/svg+xml";
   if (extension === ".png") return "image/png";
   if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
@@ -6072,6 +6080,34 @@ async function localFilePayload(filePath) {
     sizeBytes: data.byteLength,
     dataBase64: data.toString("base64")
   };
+}
+var MAX_MAIL_ATTACHMENT_TOTAL_BYTES = 30 * 1024 * 1024;
+async function mailAttachmentPayloads(filePaths) {
+  const files = await Promise.all(
+    filePaths.map(async (filePath) => {
+      try {
+        return await localFilePayload(resolvePath2(filePath));
+      } catch (error) {
+        throw usageError(
+          `Failed to read attachment ${filePath}: ${error instanceof Error ? error.message : "unknown error"}.`
+        );
+      }
+    })
+  );
+  for (let index = 0; index < files.length; index += 1) {
+    if (files[index]?.sizeBytes === 0) {
+      throw usageError(`Attachment ${filePaths[index] ?? files[index]?.filename ?? ""} is empty.`);
+    }
+  }
+  const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
+  if (totalBytes > MAX_MAIL_ATTACHMENT_TOTAL_BYTES) {
+    throw usageError("Attachments exceed the 30 MB total upload limit.");
+  }
+  return files.map((file) => ({
+    filename: file.filename,
+    mimeType: file.mimeType,
+    contentBase64: file.dataBase64
+  }));
 }
 async function staticBundlePayload(input2) {
   if (input2.sourceDir && input2.zip) {
@@ -6975,6 +7011,7 @@ next: ${payload.nextUrl}` : ""}`;
       stringOption("to", "to", "Recipient email.", { multiple: true }),
       stringOption("cc", "cc", "CC recipient email.", { multiple: true }),
       stringOption("bcc", "bcc", "BCC recipient email.", { multiple: true }),
+      stringOption("attach", "attachmentPaths", "Local attachment path.", { multiple: true }),
       stringOption("subject", "subject", "Email subject."),
       stringOption("body", "bodyText", "Plain-text body.")
     ],
@@ -6983,15 +7020,17 @@ next: ${payload.nextUrl}` : ""}`;
       to: stringList,
       cc: stringList,
       bcc: stringList,
+      attachmentPaths: stringList,
       subject: requiredString,
       bodyText: requiredString
     }),
     op: "mail.send",
-    buildInput: (input2) => ({
+    buildInput: async (input2) => ({
       mailboxId: input2.mailboxId,
       to: input2.to,
       cc: input2.cc,
       bcc: input2.bcc,
+      attachments: await mailAttachmentPayloads(input2.attachmentPaths ?? []),
       subject: input2.subject,
       bodyText: input2.bodyText
     })
@@ -7005,6 +7044,7 @@ next: ${payload.nextUrl}` : ""}`;
       stringOption("to", "to", "Recipient email.", { multiple: true }),
       stringOption("cc", "cc", "CC recipient email.", { multiple: true }),
       stringOption("bcc", "bcc", "BCC recipient email.", { multiple: true }),
+      stringOption("attach", "attachmentPaths", "Local attachment path.", { multiple: true }),
       stringOption("subject", "subject", "Email subject."),
       stringOption("body", "bodyText", "Plain-text body.")
     ],
@@ -7014,16 +7054,18 @@ next: ${payload.nextUrl}` : ""}`;
       to: stringList,
       cc: stringList,
       bcc: stringList,
+      attachmentPaths: stringList,
       subject: requiredString,
       bodyText: requiredString
     }),
     op: "mail.reply",
-    buildInput: (input2) => ({
+    buildInput: async (input2) => ({
       replyThreadId: input2.threadId,
       mailboxId: input2.mailboxId,
       to: input2.to,
       cc: input2.cc,
       bcc: input2.bcc,
+      attachments: await mailAttachmentPayloads(input2.attachmentPaths ?? []),
       subject: input2.subject,
       bodyText: input2.bodyText
     })

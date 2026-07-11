@@ -229,7 +229,7 @@ function gitTracks(repoPath, absolutePath) {
 async function prepareGeneratedSourceOutput(definition, sourceEvidence) {
 	if (sourceEvidence.sourceArtifactTracked) return;
 	const generatedPath = definition.copyDirectory ? path.dirname(definition.sourceArtifactPath) : definition.sourceArtifactPath;
-	await rm(generatedPath, { recursive: definition.copyDirectory, force: true });
+	await rm(generatedPath, { recursive: definition.copyDirectory === true, force: true });
 }
 
 async function assertPathInsideSource(repoPath, candidate, label) {
