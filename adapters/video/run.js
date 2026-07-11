@@ -255,18 +255,11 @@ function parseAgentBootstrapResponse(value) {
   };
 }
 function normalizeCreateInternalRoomRequest(value) {
-  const zerosmbWorkspaceId = (value.workspaceId ?? value.zerosmbWorkspaceId).trim();
+  const workspaceId = value.workspaceId.trim();
   const slug = value.slug?.trim() || void 0;
   const name = value.name?.trim() || void 0;
   return {
-    zerosmbWorkspaceId,
-    // Dual-emit the modern field name whenever the caller supplied it, so
-    // outbound senders (e.g. the CLI) emit both names and either a modern or
-    // legacy receiver accepts the request. Inbound parsing (room-model.ts),
-    // which never sets `workspaceId` on the value it normalizes, keeps its
-    // existing zerosmbWorkspaceId-only shape. Drop zerosmbWorkspaceId once
-    // all receivers have migrated (Phase C).
-    ...value.workspaceId !== void 0 ? { workspaceId: zerosmbWorkspaceId } : {},
+    workspaceId,
     slug,
     name,
     isPersistent: value.isPersistent
@@ -4283,10 +4276,7 @@ async function handleRoomCreate(io, globalOptions, args) {
   const client = createClient(io, options);
   const workspaceId = resolveWorkspace(options, io.env);
   const payload = {
-    // Dual-emit both field names during the workspaceId rename (Phase B):
-    // receivers already accept either (Phase A), legacy field drops in Phase C.
     workspaceId,
-    zerosmbWorkspaceId: workspaceId,
     name: trimOption2(asString2(options.name)),
     slug: trimOption2(asString2(options.slug)),
     isPersistent: asBoolean2(options.persistent)

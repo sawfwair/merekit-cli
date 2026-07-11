@@ -4,11 +4,11 @@
 import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
 import { dirname, resolve } from "path";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_e97ac852f63439d5e35d9f7d6b58d5fb/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/client.ts
 import { spawn } from "child_process";
 import { createServer } from "http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_e97ac852f63439d5e35d9f7d6b58d5fb/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -19,7 +19,7 @@ var CLI_AUTH_CODE_QUERY_PARAM = "code";
 var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_e97ac852f63439d5e35d9f7d6b58d5fb/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/session.ts
 import { chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
@@ -114,7 +114,7 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_e97ac852f63439d5e35d9f7d6b58d5fb/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -3141,7 +3141,7 @@ async function cmdStatus(baseUrl, args, json, ctx) {
   const session = await fetchJson2(baseUrl, "/api/auth/session", args, ctx);
   let internalHealth = null;
   if (internalTokenFromArgs(args, ctx)?.trim()) {
-    internalHealth = await fetchJson2(baseUrl, "/api/internal/zerosmb/health", args, ctx, { internal: true });
+    internalHealth = await fetchJson2(baseUrl, "/api/internal/mere/health", args, ctx, { internal: true });
   }
   const data = {
     ok: true,
@@ -3556,7 +3556,7 @@ async function cmdWorkspaceHealth(baseUrl, args, json, ctx) {
     ctx.stderr("Missing --internal-token or MERE_IM_INTERNAL_TOKEN for workspace health.\n");
     return 1;
   }
-  const data = await fetchJson2(baseUrl, "/api/internal/zerosmb/health", args, ctx, { internal: true });
+  const data = await fetchJson2(baseUrl, "/api/internal/mere/health", args, ctx, { internal: true });
   if (json) return writeJson(ctx, data);
   ctx.stdout("Workspace bridge health: ok\n");
   return 0;
@@ -3582,7 +3582,7 @@ async function cmdWorkspaceLifecycle(baseUrl, args, action, workspaceId, json, c
   const target = workspaceIdArg(args, workspaceId, `Usage: mere-im workspace ${action} <workspaceId>`);
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/${action}`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/${action}`,
     args,
     ctx,
     {
@@ -3607,7 +3607,7 @@ async function cmdWorkspaceDisconnect(baseUrl, args, workspaceId, json, ctx) {
   requireDestructiveConfirmation(args, "disconnect workspace", target);
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/connection`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/connection`,
     args,
     ctx,
     {
@@ -3631,7 +3631,7 @@ async function cmdWorkspaceShareCard(baseUrl, args, workspaceId, json, ctx) {
   });
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/share-card`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/share-card`,
     args,
     ctx,
     {
@@ -3657,7 +3657,7 @@ async function cmdWorkspaceVideoHandoff(baseUrl, args, workspaceId, json, ctx) {
   });
   const data = await requestJson(
     baseUrl,
-    `/api/internal/zerosmb/workspaces/${encodeURIComponent(target)}/video-handoff`,
+    `/api/internal/mere/workspaces/${encodeURIComponent(target)}/video-handoff`,
     args,
     ctx,
     {
