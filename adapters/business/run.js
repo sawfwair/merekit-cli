@@ -5826,6 +5826,35 @@ var globalOptions = [
   stringOption("confirm", "confirm", "Exact confirmation target for high-impact destructive actions."),
   booleanOption("help", "help", "Show help for this command.", "h")
 ];
+var leadingBooleanGlobals = /* @__PURE__ */ new Set(["--json", "--no-interactive", "--yes", "-y", "--help", "-h"]);
+var leadingStringGlobals = /* @__PURE__ */ new Set(["--workspace", "--confirm"]);
+function normalizeGlobalFlagPlacement(argv) {
+  const leading = [];
+  let index = 0;
+  while (index < argv.length) {
+    const argument = argv[index];
+    if (!argument) break;
+    if (leadingBooleanGlobals.has(argument)) {
+      leading.push(argument);
+      index += 1;
+      continue;
+    }
+    if (leadingStringGlobals.has(argument)) {
+      leading.push(argument);
+      const value = argv[index + 1];
+      if (value !== void 0) leading.push(value);
+      index += value === void 0 ? 1 : 2;
+      continue;
+    }
+    if ([...leadingStringGlobals].some((name) => argument.startsWith(`${name}=`))) {
+      leading.push(argument);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return leading.length === 0 ? argv : [...argv.slice(index), ...leading];
+}
 var EXTERNAL_COMMANDS = /* @__PURE__ */ new Set([
   "calendar.subscription.sync",
   "campaigns.send",
@@ -8823,16 +8852,18 @@ function startsWithPath(argv, path4) {
   return path4.every((segment, index) => argv[index] === segment);
 }
 function findCommand(argv) {
-  return sortedCommands.find((command) => startsWithPath(argv, command.path)) ?? null;
+  const normalized = normalizeGlobalFlagPlacement(argv);
+  return sortedCommands.find((command) => startsWithPath(normalized, command.path)) ?? null;
 }
 function parseCommand(argv) {
-  const command = findCommand(argv);
+  const normalized = normalizeGlobalFlagPlacement(argv);
+  const command = findCommand(normalized);
   if (!command) {
     throw usageError("Unknown command.");
   }
   const optionSpecs = [...globalOptions, ...command.options ?? []];
   const parsed = parseArgs({
-    args: argv.slice(command.path.length),
+    args: normalized.slice(command.path.length),
     allowPositionals: true,
     strict: true,
     options: Object.fromEntries(
@@ -9601,6 +9632,7 @@ async function createRuntime(globalFlags) {
   };
 }
 async function run(argv) {
+  argv = normalizeGlobalFlagPlacement(argv);
   if (argv.length === 0) {
     output2.write(`${renderHelp()}
 `);
