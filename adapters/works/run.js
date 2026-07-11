@@ -2593,7 +2593,7 @@ async function handleWorkspace(args, parsed, io) {
     const result = await fetchJson2(
       io,
       requestBaseUrl(parsed, io),
-      `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/${command}`,
+      `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/${command}`,
       { method: "POST", token: internalToken(parsed, io), body: payload }
     );
     writeMaybeJson(io, parsed, result, () => `${JSON.stringify(result, null, 2)}
@@ -2606,7 +2606,7 @@ async function handleWorkspace(args, parsed, io) {
     const result = await fetchJson2(
       io,
       requestBaseUrl(parsed, io),
-      `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/connection`,
+      `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/connection`,
       { method: "DELETE", token: internalToken(parsed, io) }
     );
     writeMaybeJson(io, parsed, result, () => `${JSON.stringify(result, null, 2)}
@@ -2623,7 +2623,7 @@ async function handleWorkspace(args, parsed, io) {
     const result = await fetchJson2(
       io,
       requestBaseUrl(parsed, io),
-      `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(remoteCommand)}`,
+      `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(remoteCommand)}`,
       { method: "POST", token: internalToken(parsed, io), body }
     );
     writeMaybeJson(io, parsed, result, () => `${JSON.stringify(result, null, 2)}

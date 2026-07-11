@@ -2918,7 +2918,7 @@ async function handleWorkspaceCommand(argv, globalOptions, io) {
     return requestJson(io, globalOptions, {
       auth: "session",
       method: "DELETE",
-      path: "/api/admin/settings/zerosmb",
+      path: "/api/admin/settings/mere",
       body: { tenantId }
     });
   }
@@ -2936,10 +2936,9 @@ async function handleWorkspaceCommand(argv, globalOptions, io) {
   return requestJson(io, globalOptions, {
     auth: "internal",
     method: "POST",
-    path: `/api/internal/zerosmb/workspaces/${encodeURIComponent(workspaceId)}/provision`,
+    path: `/api/internal/mere/workspaces/${encodeURIComponent(workspaceId)}/provision`,
     body: {
       workspaceId,
-      zerosmbWorkspaceId: workspaceId,
       slug: readRequiredStringOption(options, "slug"),
       name: readRequiredStringOption(options, "name"),
       webhookUrl: readOptionalStringOption(options, "webhook-url"),
