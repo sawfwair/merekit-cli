@@ -140,6 +140,8 @@ var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // ../cli-auth/src/session.ts
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 function stateHome(env2) {
@@ -159,6 +161,28 @@ function resolveCliPaths(appName, env2 = process.env) {
     stateDir,
     sessionFile: path.join(stateDir, "session.json")
   };
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path.dirname(sessionFile);
+  const tempFile = path.join(
+    stateDir,
+    `.${path.basename(sessionFile)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let handle;
+  await mkdir(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
+`, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 function workspaceBaseUrl(workspace) {
   if (/^https?:\/\//i.test(workspace.host)) {
@@ -362,7 +386,7 @@ async function logoutRemoteSession(input2) {
 }
 
 // src/store.ts
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile as readFile2, rm as rm2 } from "node:fs/promises";
 var DEFAULT_CONSOLE_URL = process.env.MERE_BUSINESS_BASE_URL?.trim() || process.env.ZEROSMB_CONSOLE_URL?.trim() || "https://mere.business";
 var PRIMARY_APP_NAME = "mere-business";
 var LEGACY_APP_NAME = "zerosmb";
@@ -410,7 +434,7 @@ function coerceLocalSession(value) {
 }
 async function readSessionFile(sessionFile) {
   try {
-    const raw = await readFile(sessionFile, "utf8");
+    const raw = await readFile2(sessionFile, "utf8");
     return coerceLocalSession(JSON.parse(raw));
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -431,13 +455,10 @@ async function loadSession(paths = resolveCliPaths2()) {
   return readSessionFile(legacyPaths.sessionFile);
 }
 async function saveSession(session, paths = resolveCliPaths2()) {
-  await mkdir(paths.stateDir, { recursive: true });
-  await writeFile(paths.sessionFile, `${JSON.stringify(session, null, 2)}
-`, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+  await writeCliSessionFile(paths.sessionFile, session);
 }
 async function clearSession(paths = resolveCliPaths2()) {
-  await rm(paths.sessionFile, { force: true });
+  await rm2(paths.sessionFile, { force: true });
 }
 function workspaceBaseUrl2(workspace) {
   return workspaceBaseUrl(workspace);
@@ -572,7 +593,7 @@ async function refreshRemoteSession2(session, options = {}) {
 }
 
 // src/http.ts
-import { mkdir as mkdir2, stat, writeFile as writeFile2 } from "node:fs/promises";
+import { mkdir as mkdir2, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as resolvePath, sep as pathSeparator } from "node:path";
 
 // ../shared/contracts/cli.ts
@@ -1056,7 +1077,7 @@ async function downloadWorkspaceResource(workspace, accessToken, pathname, optio
   );
   const targetPath = await resolveDownloadTarget(options.outputPath, filename);
   await mkdir2(dirname(targetPath), { recursive: true });
-  await writeFile2(targetPath, bytes);
+  await writeFile(targetPath, bytes);
   return {
     path: targetPath,
     filename,
@@ -1183,12 +1204,12 @@ async function openBusinessWaitlist(input2) {
 }
 
 // src/commands.ts
-import { readdir, readFile as readFile2, stat as stat2 } from "node:fs/promises";
+import { readdir, readFile as readFile3, stat as stat2 } from "node:fs/promises";
 import { basename as basename2, join as join2, relative, resolve as resolvePath2 } from "node:path";
 import { parseArgs } from "node:util";
 
 // ../local-plane/src/index.ts
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir as mkdir3 } from "node:fs/promises";
 import os2 from "node:os";
 import path2 from "node:path";
@@ -1221,7 +1242,7 @@ function json(value) {
   return JSON.stringify(value ?? {});
 }
 function makePlaneId(prefix) {
-  return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  return `${prefix}_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
 }
 async function loadNodeSqlite() {
   return import(["node", "sqlite"].join(":"));
@@ -5805,6 +5826,35 @@ var globalOptions = [
   stringOption("confirm", "confirm", "Exact confirmation target for high-impact destructive actions."),
   booleanOption("help", "help", "Show help for this command.", "h")
 ];
+var leadingBooleanGlobals = /* @__PURE__ */ new Set(["--json", "--no-interactive", "--yes", "-y", "--help", "-h"]);
+var leadingStringGlobals = /* @__PURE__ */ new Set(["--workspace", "--confirm"]);
+function normalizeGlobalFlagPlacement(argv) {
+  const leading = [];
+  let index = 0;
+  while (index < argv.length) {
+    const argument = argv[index];
+    if (!argument) break;
+    if (leadingBooleanGlobals.has(argument)) {
+      leading.push(argument);
+      index += 1;
+      continue;
+    }
+    if (leadingStringGlobals.has(argument)) {
+      leading.push(argument);
+      const value = argv[index + 1];
+      if (value !== void 0) leading.push(value);
+      index += value === void 0 ? 1 : 2;
+      continue;
+    }
+    if ([...leadingStringGlobals].some((name) => argument.startsWith(`${name}=`))) {
+      leading.push(argument);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return leading.length === 0 ? argv : [...argv.slice(index), ...leading];
+}
 var EXTERNAL_COMMANDS = /* @__PURE__ */ new Set([
   "calendar.subscription.sync",
   "campaigns.send",
@@ -5968,7 +6018,7 @@ async function parseJsonObjectFile(filePath, optionName) {
   if (!filePath) return void 0;
   let text;
   try {
-    text = await readFile2(resolvePath2(filePath), "utf8");
+    text = await readFile3(resolvePath2(filePath), "utf8");
   } catch (error) {
     throw usageError(
       `Option --${optionName} could not be read: ${error instanceof Error ? error.message : "unknown error"}.`
@@ -6014,7 +6064,7 @@ function safeBundlePath(pathname) {
   return parts.join("/");
 }
 async function localFilePayload(filePath) {
-  const data = await readFile2(filePath);
+  const data = await readFile3(filePath);
   const filename = basename2(filePath);
   return {
     filename,
@@ -6030,7 +6080,7 @@ async function staticBundlePayload(input2) {
   const title = input2.title;
   const entryPath = input2.entryPath ?? "index.html";
   if (input2.zip) {
-    const data = await readFile2(input2.zip);
+    const data = await readFile3(input2.zip);
     return {
       title,
       entryPath,
@@ -6054,7 +6104,7 @@ async function staticBundlePayload(input2) {
       }
       if (!entry.isFile()) continue;
       const path4 = safeBundlePath(relative(root, absolute));
-      const data = await readFile2(absolute);
+      const data = await readFile3(absolute);
       files.push({
         path: path4,
         contentType: inferContentType(path4),
@@ -6720,7 +6770,7 @@ next: ${payload.nextUrl}` : ""}`;
       if (!localInput.file && !localInput.eventJson) {
         throw usageError("Pass --file or --event-json.");
       }
-      const raw = localInput.file ? await readFile2(localInput.file, "utf8") : localInput.eventJson ?? "";
+      const raw = localInput.file ? await readFile3(localInput.file, "utf8") : localInput.eventJson ?? "";
       const envelope = parseJsonText(raw, localInput.file ? `file ${localInput.file}` : "event-json");
       return withLocalBusinessPlane(localInput.localDbPath, ({ dbPath, db }) => {
         const result = recordLocalProjectionEnvelope(db, {
@@ -8802,16 +8852,18 @@ function startsWithPath(argv, path4) {
   return path4.every((segment, index) => argv[index] === segment);
 }
 function findCommand(argv) {
-  return sortedCommands.find((command) => startsWithPath(argv, command.path)) ?? null;
+  const normalized = normalizeGlobalFlagPlacement(argv);
+  return sortedCommands.find((command) => startsWithPath(normalized, command.path)) ?? null;
 }
 function parseCommand(argv) {
-  const command = findCommand(argv);
+  const normalized = normalizeGlobalFlagPlacement(argv);
+  const command = findCommand(normalized);
   if (!command) {
     throw usageError("Unknown command.");
   }
   const optionSpecs = [...globalOptions, ...command.options ?? []];
   const parsed = parseArgs({
-    args: argv.slice(command.path.length),
+    args: normalized.slice(command.path.length),
     allowPositionals: true,
     strict: true,
     options: Object.fromEntries(
@@ -9580,6 +9632,7 @@ async function createRuntime(globalFlags) {
   };
 }
 async function run(argv) {
+  argv = normalizeGlobalFlagPlacement(argv);
   if (argv.length === 0) {
     output2.write(`${renderHelp()}
 `);

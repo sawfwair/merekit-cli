@@ -39,6 +39,8 @@ try {
 	const bin = path.join(prefix, 'bin', 'mere');
 	const env = {
 		...process.env,
+		HOME: path.join(tmp, 'home'),
+		XDG_STATE_HOME: path.join(tmp, 'state'),
 		MERE_CLI_SOURCE: 'bundled',
 		MERE_ROOT: path.join(tmp, 'missing-mere-root'),
 		MERE_CLI_BIN: bin
@@ -51,6 +53,21 @@ try {
 		throw new Error('Installed apps list did not resolve every adapter from bundled source.');
 	}
 	parseJsonCommand(bin, ['apps', 'manifest', '--app', 'projects', '--json'], env);
+	parseJsonCommand(bin, ['apps', 'manifest', '--app', 'business', '--json'], env);
+	const businessNoSession = spawnSync(bin, ['business', 'workspace', 'list', '--json'], {
+		cwd: packageRoot,
+		env,
+		stdio: ['ignore', 'pipe', 'pipe'],
+		encoding: 'utf8'
+	});
+	if (businessNoSession.error) throw businessNoSession.error;
+	if (businessNoSession.status !== 2) {
+		throw new Error(`Packed Business adapter returned ${businessNoSession.status}; expected the no-session exit status.\n${businessNoSession.stderr}${businessNoSession.stdout}`);
+	}
+	const businessError = JSON.parse(businessNoSession.stderr);
+	if (businessError.error?.code !== 'usage_error' || !businessError.error?.message?.includes('No local session found')) {
+		throw new Error(`Packed Business adapter did not preserve root-canonical leading --json handling: ${businessNoSession.stderr}`);
+	}
 	run(bin, ['completion', 'bash'], { capture: true, env });
 	run(process.execPath, ['scripts/mcp-tools-smoke.mjs'], { cwd: packageRoot, env });
 	console.log(JSON.stringify({ ok: true, tarball: tarballName, prefix }));
