@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "mode": "development",
-  "builtAt": "2026-07-11T22:44:56.000Z",
-  "sourceDateEpoch": "1783809896",
+  "builtAt": "2026-07-11T22:59:04.000Z",
+  "sourceDateEpoch": "1783810744",
   "sourceMapSha256": "9079c487e1b6db82c78c5f52bff254f5bd5980824a93b612dc63b1371bbdedf7",
   "reproducibility": {
     "passes": 1,
@@ -18,21 +18,21 @@
       "sourceRepoPath": "mere-business",
       "sourceArtifactPath": "packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-business.git",
         "actualRepository": "https://github.com/sawfwair/mere-business.git",
         "canonicalRemote": true,
-        "commit": "85886951e6b42d3d8ddf700bd94e521ec23916be",
-        "tree": "41f070752cedb546dd83b05d9be083ad09672cee",
+        "commit": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
+        "tree": "9d837a10f20851d7832ee384d53a7606d1ff4d11",
         "clean": true,
         "hasUnmergedFiles": false,
         "defaultBranch": "main",
-        "remoteHead": "85886951e6b42d3d8ddf700bd94e521ec23916be",
-        "localTrackingHead": "85886951e6b42d3d8ddf700bd94e521ec23916be",
+        "remoteHead": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
+        "localTrackingHead": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
         "remoteHeadEvidence": "local-tracking-ref",
         "mergedToDefaultBranch": null,
-        "commitTimestamp": 1783809723,
+        "commitTimestamp": 1783810721,
         "review": null,
         "artifactTracked": true
       },
@@ -78,7 +78,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -98,7 +98,7 @@
       "sourceRepoPath": "mere-finance",
       "sourceArtifactPath": "packages/cli/bin/merefi.ts",
       "adapterPath": "adapters/finance/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-finance.git",
         "actualRepository": "https://github.com/sawfwair/mere-finance.git",
@@ -160,7 +160,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -180,7 +180,7 @@
       "sourceRepoPath": "mere-dynasite",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/dynasite/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-dynasite.git",
         "actualRepository": "https://github.com/sawfwair/mere-dynasite.git",
@@ -245,7 +245,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -265,7 +265,7 @@
       "sourceRepoPath": "mere-projects",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/projects/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-projects.git",
         "actualRepository": "https://github.com/sawfwair/mere-projects.git",
@@ -330,7 +330,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -350,7 +350,7 @@
       "sourceRepoPath": "mere-agent",
       "sourceArtifactPath": "cli-dist/run.js",
       "adapterPath": "adapters/agent/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-agent.git",
         "actualRepository": "https://github.com/sawfwair/mere-agent.git",
@@ -415,7 +415,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -435,7 +435,7 @@
       "sourceRepoPath": "mere-today",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/today/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-today.git",
         "actualRepository": "https://github.com/sawfwair/mere-today.git",
@@ -500,7 +500,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -520,7 +520,7 @@
       "sourceRepoPath": "mere-zone",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/zone/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-zone.git",
         "actualRepository": "https://github.com/sawfwair/mere-zone.git",
@@ -585,7 +585,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -605,7 +605,7 @@
       "sourceRepoPath": "mere-video",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/video/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-video.git",
         "actualRepository": "https://github.com/sawfwair/mere-video.git",
@@ -670,7 +670,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -690,7 +690,7 @@
       "sourceRepoPath": "mere-network",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-network.git",
         "actualRepository": "https://github.com/sawfwair/mere-network.git",
@@ -755,7 +755,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -775,7 +775,7 @@
       "sourceRepoPath": "mere-email",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-email.git",
         "actualRepository": "https://github.com/sawfwair/mere-email.git",
@@ -840,7 +840,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -873,7 +873,7 @@
       "sourceRepoPath": "mere-im",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/im/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-im.git",
         "actualRepository": "https://github.com/sawfwair/mere-im.git",
@@ -938,7 +938,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -958,7 +958,7 @@
       "sourceRepoPath": "mere-gives",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/gives/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-gives.git",
         "actualRepository": "https://github.com/sawfwair/mere-gives.git",
@@ -1023,7 +1023,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -1043,7 +1043,7 @@
       "sourceRepoPath": "mere-works",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/works/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-works.git",
         "actualRepository": "https://github.com/sawfwair/mere-works.git",
@@ -1108,7 +1108,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -1128,7 +1128,7 @@
       "sourceRepoPath": "mere-media",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/media/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-media.git",
         "actualRepository": "https://github.com/sawfwair/mere-media.git",
@@ -1193,7 +1193,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -1213,7 +1213,7 @@
       "sourceRepoPath": "mere-deliver",
       "sourceArtifactPath": "cli/run.js",
       "adapterPath": "adapters/deliver/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/mere-deliver.git",
         "actualRepository": "https://github.com/sawfwair/mere-deliver.git",
@@ -1288,7 +1288,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
@@ -1314,7 +1314,7 @@
       "sourceRepoPath": "merekit-link",
       "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/link/run.js",
-      "builtAt": "2026-07-11T22:44:56.000Z",
+      "builtAt": "2026-07-11T22:59:04.000Z",
       "source": {
         "canonicalRepository": "https://github.com/sawfwair/merekit-link.git",
         "actualRepository": "https://github.com/sawfwair/merekit-link.git",
@@ -1379,7 +1379,7 @@
           ]
         },
         "deterministicEnvironment": {
-          "SOURCE_DATE_EPOCH": "1783809896",
+          "SOURCE_DATE_EPOCH": "1783810744",
           "TZ": "UTC",
           "LC_ALL": "C"
         }
