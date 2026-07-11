@@ -96,7 +96,7 @@ npm publish --access public
 npm install -g @merekit/cli
 ```
 
-Adapter regeneration is maintainer-only and requires the private Mere app repositories as sibling directories. Public contributors do not need `pnpm build:adapters` for normal root CLI development.
+Adapter regeneration is maintainer-only and requires the app repositories as sibling directories. `pnpm build:adapters` remains a useful development snapshot command and honestly records dirty or non-default-branch state. It is never sufficient for publication. Maintainers must use `pnpm build:adapters:release` for a release candidate, then run `pnpm check:adapter-provenance`. Release mode requires exact clean canonical `main` commits, merged reviewed pull requests, green checks, canonical Contract fixture digests where available, and a byte-identical two-pass rebuild. Public contributors do not need sibling app repositories for normal root CLI development.
 
 Delegated app CLI resolution order:
 

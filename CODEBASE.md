@@ -20,7 +20,7 @@ Core modules:
 Generated/public artifacts:
 
 - `dist/` is build output.
-- `adapters/*/run.js` are bundled adapter artifacts. Do not hand-edit them; regenerate with `pnpm build:adapters` when private app repos are available.
+- `adapters/*/run.js` are bundled adapter artifacts. Do not hand-edit them. Use `pnpm build:adapters` only for development snapshots; public-release changes require `pnpm build:adapters:release` followed by `pnpm check:adapter-provenance`.
 
 Guardrails:
 

@@ -196,7 +196,9 @@ pnpm test:pack
 
 The package includes generated public client artifacts under `adapters/` so the CLI works from npm without separate product CLI installs. These artifacts intentionally expose command names, public API route shapes, environment variable names, and default service URLs; they do not contain credentials or grant service access. Mere services remain responsible for authentication, workspace membership, roles, confirmations, and server-side authorization.
 
-Maintainers can regenerate adapters with `pnpm build:adapters` when the private app repositories are available as sibling directories. Public contributors do not need that step for normal root CLI development.
+Maintainers can use `pnpm build:adapters` for a local development snapshot when the app repositories are available as sibling directories. A publishable bundle must instead come from `pnpm build:adapters:release`. Release mode fails closed unless every source is clean, is the live canonical `main` commit, came from a merged non-draft pull request with a non-author approval against the exact reviewed head, and has green completed checks. It records the canonical repository, source commit and tree, cleanliness, deterministic commands and toolchain, every artifact SHA-256 and size, and the canonical Mere Console Contract v1 schema/fixture digests when that source ships them. It then rebuilds twice and requires byte-identical adapter directories.
+
+`pnpm check:adapter-provenance` re-hashes the complete packaged adapter inventory and enforces that release evidence. The Publish workflow always runs it, and CI runs it whenever `adapters/` changes. The existing schema-v1 bundle has no reconstructable source proof, so it is intentionally not grandfathered into publication: the next package release is blocked until maintainers perform a strict source-first regeneration. Public contributors do not need sibling app repositories for normal root CLI development.
 
 `mere` delegates product behavior to app CLI adapters. A globally installed root CLI resolves delegated app CLIs in this order:
 

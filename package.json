@@ -71,12 +71,14 @@
   "scripts": {
     "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json",
-    "build:adapters": "node scripts/build-adapters.mjs",
+    "build:adapters": "node scripts/build-adapters.mjs --development",
+    "build:adapters:release": "node scripts/build-adapters.mjs --release",
     "check": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "coverage": "pnpm build && c8 --config c8.config.json node --test test/*.test.mjs",
     "check:package": "node scripts/check-package-contents.mjs",
     "check:adapters": "pnpm build && node scripts/check-adapter-coverage.mjs && node scripts/check-adapter-safety.mjs",
+    "check:adapter-provenance": "node scripts/check-adapter-provenance.mjs",
     "check:supply-chain": "node scripts/check-supply-chain.mjs",
     "check:lockfile-guard": "node scripts/check-lockfile-guard.mjs",
     "test": "pnpm build && node --test test/*.test.mjs",
@@ -89,11 +91,11 @@
     "docs:worker:test": "node --test docs-worker/*.test.mjs",
     "docs:worker:dry-run": "DOCS_BASE=/ pnpm docs:build && npx --yes wrangler@4.97.0 deploy -c wrangler.docs.jsonc --dry-run",
     "docs:deploy": "DOCS_BASE=/ pnpm docs:build && npx --yes wrangler@4.97.0 deploy -c wrangler.docs.jsonc",
-    "prepublishOnly": "pnpm build && pnpm check:package",
+    "prepublishOnly": "pnpm build && pnpm check:adapter-provenance && pnpm check:package",
     "pack:dry": "pnpm verify && pnpm docs:build && npm pack --dry-run --ignore-scripts",
     "test:pack": "node scripts/test-pack.mjs",
     "start": "node dist/run.js",
-    "build:adapters:internal": "node scripts/build-adapters.mjs"
+    "build:adapters:internal": "pnpm build:adapters"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

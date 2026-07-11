@@ -12,6 +12,7 @@ pnpm docs:worker:dry-run
 pnpm check
 pnpm lint
 pnpm check:adapters
+pnpm check:adapter-provenance
 pnpm check:supply-chain
 pnpm test
 pnpm coverage
@@ -47,6 +48,11 @@ npm audit signatures --package-lock-only --ignore-scripts
 ## Publish
 
 - Confirm `SECURITY.md` still describes the adapter/API-shape model.
+- Set `MERE_ROOT=/path/to/mere-sibling-repositories` and provide a read-only `GH_TOKEN` that can read each source repository, pull-request reviews, and checks. Run `pnpm build:adapters:release`; do not promote a development-mode adapter build.
+- Confirm every adapter source is a clean checkout of the live canonical `main` head. Release mode rejects dirty trees, unmerged paths, local or stale heads, draft/unmerged pull requests, direct commits without exact review evidence, stale/author-only approvals, and pending or red checks.
+- Review `adapters/manifest.json` schema v2. Every entry must bind the canonical source URL, exact commit and tree, clean/default-branch/review evidence, deterministic commands and toolchain, complete artifact SHA-256/size inventory, and Mere Console Contract v1 schema/fixture digests when present.
+- Confirm release mode completed two builds with the same `SOURCE_DATE_EPOCH` and installed the bundle only after byte-for-byte inventory comparison. Then rerun `pnpm check:adapter-provenance` independently.
+- Do not invent provenance for a legacy schema-v1 bundle. The current legacy bundle must be regenerated from eligible upstream source commits before the next public package; the publication gate intentionally fails until that happens.
 - Confirm `CHANGELOG.md`, `package.json`, `pnpm-lock.yaml`, `npm-shrinkwrap.json`, and the npm version all agree.
 - Confirm dependency changes are exact-pinned and any new install-time lifecycle scripts are reviewed in `security/install-lifecycle-scripts.json`.
 - Confirm the Codex and Claude plugin catalogs are synced to this CLI version.

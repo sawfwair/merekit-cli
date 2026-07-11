@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "defaultBranch": "main",
+  "sources": {
+    "business": "https://github.com/sawfwair/mere-business.git",
+    "finance": "https://github.com/sawfwair/mere-finance.git",
+    "dynasite": "https://github.com/sawfwair/mere-dynasite.git",
+    "projects": "https://github.com/sawfwair/mere-projects.git",
+    "agent": "https://github.com/sawfwair/mere-agent.git",
+    "today": "https://github.com/sawfwair/mere-today.git",
+    "zone": "https://github.com/sawfwair/mere-zone.git",
+    "video": "https://github.com/sawfwair/mere-video.git",
+    "network": "https://github.com/sawfwair/mere-network.git",
+    "email": "https://github.com/sawfwair/mere-email.git",
+    "im": "https://github.com/sawfwair/mere-im.git",
+    "gives": "https://github.com/sawfwair/mere-gives.git",
+    "works": "https://github.com/sawfwair/mere-works.git",
+    "media": "https://github.com/sawfwair/mere-media.git",
+    "deliver": "https://github.com/sawfwair/mere-deliver.git",
+    "link": "https://github.com/sawfwair/merekit-link.git"
+  }
+}
