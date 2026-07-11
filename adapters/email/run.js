@@ -1037,7 +1037,7 @@ var local_store_exports = {};
 __export(local_store_exports, {
   LocalEmailStore: () => LocalEmailStore
 });
-import { randomUUID as randomUUID4 } from "node:crypto";
+import { randomUUID as randomUUID5 } from "node:crypto";
 function parseStringArray(value) {
   const parsed = parseJsonText(value);
   return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
@@ -1057,7 +1057,7 @@ function compactSnippet(value, max = 240) {
   return `${compacted.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
 }
 function makeId(prefix) {
-  return `${prefix}_${randomUUID4().replaceAll("-", "").slice(0, 24)}`;
+  return `${prefix}_${randomUUID5().replaceAll("-", "").slice(0, 24)}`;
 }
 function mapMailbox(row) {
   return {
@@ -1999,7 +1999,7 @@ var init_local_store = __esm({
 init_src();
 init_projection();
 import { createHash as createHash7, randomBytes as nodeRandomBytes } from "node:crypto";
-import { chmod as chmod4, mkdir as mkdir4, readFile as readFile4, writeFile as writeFile3 } from "node:fs/promises";
+import { chmod as chmod3, mkdir as mkdir4, readFile as readFile4, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname, resolve as resolvePath2 } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/mere-run.ts
@@ -6512,7 +6512,8 @@ var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/session.ts
-import { chmod as chmod2, mkdir as mkdir2, readFile, rm as rm2, writeFile } from "node:fs/promises";
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { mkdir as mkdir2, open, readFile, rename, rm as rm2 } from "node:fs/promises";
 import os3 from "node:os";
 import path3 from "node:path";
 function stateHome2(env) {
@@ -6556,10 +6557,29 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir2(paths.stateDir, { recursive: true });
-  await writeFile(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+  await writeCliSessionFile(paths.sessionFile, input.session);
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path3.dirname(sessionFile);
+  const tempFile = path3.join(
+    stateDir,
+    `.${path3.basename(sessionFile)}.${process.pid}.${randomUUID3()}.tmp`
+  );
+  let handle;
+  await mkdir2(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
 `, "utf8");
-  await chmod2(paths.sessionFile, 384).catch(() => void 0);
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm2(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;
@@ -7485,7 +7505,7 @@ var EmailCliClient = class {
 // cli/sealed.ts
 init_json();
 import { createCipheriv, createDecipheriv, createHash as createHash4, randomBytes } from "node:crypto";
-import { chmod as chmod3, mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { chmod as chmod2, mkdir as mkdir3, readFile as readFile2, writeFile } from "node:fs/promises";
 import os4 from "node:os";
 import path4 from "node:path";
 var SEALED_ENVELOPE_VERSION = 1;
@@ -7511,8 +7531,8 @@ async function loadSealedKey(env, options = {}) {
   if (!options.create) return null;
   const key = randomBytes(32);
   await mkdir3(path4.dirname(filePath), { recursive: true });
-  await writeFile2(filePath, key, { mode: 384 });
-  await chmod3(filePath, 384);
+  await writeFile(filePath, key, { mode: 384 });
+  await chmod2(filePath, 384);
   return { key, keyId: keyFingerprint(key), filePath };
 }
 function envelopeAad(header) {
@@ -8271,7 +8291,7 @@ async function logoutRemote(input = {}) {
 }
 
 // cli/console-contract.ts
-import { createHash as createHash6, randomUUID as randomUUID3 } from "node:crypto";
+import { createHash as createHash6, randomUUID as randomUUID4 } from "node:crypto";
 import { existsSync as existsSync3 } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
@@ -8770,7 +8790,7 @@ var TARGET_RULES = {
   "workspace.disconnect": { type: "email-workspace", source: "workspace" }
 };
 function eventId(kind) {
-  return `evt_email_${kind.replaceAll(".", "_")}_${randomUUID3()}`;
+  return `evt_email_${kind.replaceAll(".", "_")}_${randomUUID4()}`;
 }
 function contractSource(operation, adapterVersion) {
   return {
@@ -10381,7 +10401,7 @@ function writeResult(io, globalOptions, value, render) {
 async function writeBytesFile(outputPath, bytes) {
   const target = resolvePath2(outputPath);
   await mkdir4(dirname(target), { recursive: true });
-  await writeFile3(target, bytes);
+  await writeFile2(target, bytes);
   return target;
 }
 function pickWorkspaceSession(session, requestedWorkspace) {
@@ -10984,9 +11004,9 @@ ${payload.path}`
       const tunnelToken = io.env.MERE_EMAIL_TUNNEL_TOKEN?.trim() || nodeRandomBytes(32).toString("hex");
       const tokenPath = custodyTunnelTokenPath(io.env);
       await mkdir4(dirname(tokenPath), { recursive: true });
-      await writeFile3(tokenPath, `${tunnelToken}
+      await writeFile2(tokenPath, `${tunnelToken}
 `, { mode: 384 });
-      await chmod4(tokenPath, 384);
+      await chmod3(tokenPath, 384);
       const server = await startCustodyTunnelServer({
         store,
         key,
