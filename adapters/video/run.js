@@ -255,11 +255,11 @@ function parseAgentBootstrapResponse(value) {
   };
 }
 function normalizeCreateInternalRoomRequest(value) {
-  const zerosmbWorkspaceId = value.zerosmbWorkspaceId.trim();
+  const workspaceId = value.workspaceId.trim();
   const slug = value.slug?.trim() || void 0;
   const name = value.name?.trim() || void 0;
   return {
-    zerosmbWorkspaceId,
+    workspaceId,
     slug,
     name,
     isPersistent: value.isPersistent
@@ -4274,8 +4274,9 @@ async function handleRoomCreate(io, globalOptions, args) {
     throw new CliError("rooms create does not accept positional arguments.");
   }
   const client = createClient(io, options);
+  const workspaceId = resolveWorkspace(options, io.env);
   const payload = {
-    zerosmbWorkspaceId: resolveWorkspace(options, io.env),
+    workspaceId,
     name: trimOption2(asString2(options.name)),
     slug: trimOption2(asString2(options.slug)),
     isPersistent: asBoolean2(options.persistent)
