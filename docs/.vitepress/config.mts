@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { mereMarkdown } from './theme/mere/markdown'
 
 function resolveBase(): string {
   const explicit = process.env.DOCS_BASE?.trim()
@@ -22,12 +23,7 @@ export default defineConfig({
     ['meta', { property: 'og:title', content: 'Mere CLI' }],
     ['meta', { property: 'og:description', content: 'Install Mere, onboard safely, inspect workspaces, and operate app CLIs from one command plane.' }]
   ],
-  markdown: {
-    theme: {
-      light: 'github-light',
-      dark: 'github-dark'
-    }
-  },
+  markdown: mereMarkdown(),
   vite: {
     build: {
       target: 'esnext'
