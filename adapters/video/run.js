@@ -790,7 +790,7 @@ function resolveDeepgramSpeechConfig(env) {
 }
 
 // cli/meets.ts
-import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
+import { mkdir as mkdir4, readFile as readFile3, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname as dirname2, resolve as resolvePath2 } from "node:path";
 
 // cli/meeting-host.ts
@@ -1226,7 +1226,8 @@ var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_7aa3aaab13578c3c596ccc406619ca6b/node_modules/@mere/cli-auth/src/session.ts
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 function stateHome(env) {
@@ -1270,10 +1271,29 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir(paths.stateDir, { recursive: true });
-  await writeFile(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+  await writeCliSessionFile(paths.sessionFile, input.session);
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path.dirname(sessionFile);
+  const tempFile = path.join(
+    stateDir,
+    `.${path.basename(sessionFile)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let handle;
+  await mkdir(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
 `, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;
@@ -1835,7 +1855,7 @@ function formatDuration(seconds) {
 }
 
 // cli/local-plane.ts
-import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "node:fs/promises";
+import { mkdir as mkdir3, readFile as readFile2, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
@@ -2074,7 +2094,7 @@ import { mkdir as mkdir2 } from "node:fs/promises";
 import path3 from "node:path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID as randomUUID2 } from "node:crypto";
 var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
 var PLANE_TRANSFER_VERSION = 1;
 function isRecord2(value) {
@@ -2210,7 +2230,7 @@ function createPlaneTransferImportPlan(input) {
   };
 }
 function recordPlaneTransfer(db, input) {
-  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  const id = `xfer_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
   db.prepare(
     `INSERT INTO mere_plane_transfers (
          id, app_id, workspace_id, direction,
@@ -3362,7 +3382,7 @@ async function handleLocalExport(globalOptions, options, io) {
     if (!output) return bundle;
     const target = resolvePath(output);
     await mkdir3(dirname(target), { recursive: true });
-    await writeFile2(target, JSON.stringify(bundle, null, 2));
+    await writeFile(target, JSON.stringify(bundle, null, 2));
     return {
       ok: true,
       path: target,
@@ -3491,7 +3511,7 @@ async function handleLocalTranscripts(action, globalOptions, options, positional
       if (!output) return text;
       const target = resolvePath(output);
       await mkdir3(dirname(target), { recursive: true });
-      await writeFile2(target, text);
+      await writeFile(target, text);
       return { ok: true, meetingId, output: target, format };
     }
     throw new Error("Unknown local transcripts action: expected list, export, or upsert.");
@@ -3902,7 +3922,7 @@ function writeResult(io, value) {
 async function writeBytesFile(pathname, bytes) {
   const target = resolvePath2(pathname);
   await mkdir4(dirname2(target), { recursive: true });
-  await writeFile3(target, bytes);
+  await writeFile2(target, bytes);
   return target;
 }
 async function writeTextFile(pathname, text) {

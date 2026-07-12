@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { existsSync, realpathSync } from 'node:fs';
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,10 +36,14 @@ function parseMode(argv) {
 
 const mode = parseMode(process.argv.slice(2));
 const release = mode === 'release';
+const reviewPolicy = release ? (process.env.ADAPTER_RELEASE_REVIEW_POLICY?.trim() || 'reviewed-merge') : 'development';
+if (!['development', 'reviewed-merge', 'canonical-main'].includes(reviewPolicy)) {
+	throw new Error(`ADAPTER_RELEASE_REVIEW_POLICY must be reviewed-merge or canonical-main, got ${reviewPolicy}.`);
+}
 if (sourceConfig.schemaVersion !== 1 || sourceConfig.defaultBranch !== 'main' || !sourceConfig.sources) {
 	throw new Error('scripts/adapter-sources.json must be the reviewed schema v1 source map for main.');
 }
-if (release && !String(process.env.GH_TOKEN ?? '').trim()) {
+if (release && reviewPolicy === 'reviewed-merge' && !String(process.env.GH_TOKEN ?? '').trim()) {
 	throw new Error('Release adapter builds require GH_TOKEN for exact merged-PR, approval, and CI evidence.');
 }
 if (release && String(process.env.PNPM_BIN ?? '').trim()) {
@@ -82,7 +86,7 @@ Access is enforced by the Mere services through browser sessions, bearer tokens,
 
 Adapter manifests must mark command risk honestly as \`read\`, \`write\`, \`destructive\`, or \`external\`. Destructive commands must require explicit confirmation.
 
-Maintainers can use \`pnpm build:adapters\` for a development snapshot. Public-release inputs must use \`pnpm build:adapters:release\`, which requires clean canonical default-branch sources, exact non-author review and green-CI evidence, and a byte-identical two-pass rebuild.
+Maintainers can use \`pnpm build:adapters\` for a development snapshot. Public-release inputs must use \`pnpm build:adapters:release\`, which requires clean canonical default-branch sources and a byte-identical two-pass rebuild. The default \`reviewed-merge\` policy also requires exact non-author review and green-CI evidence; the documented \`canonical-main\` solo-maintainer exception records that review evidence is unavailable without weakening source, reproducibility, hash, path, or credential checks.
 `;
 }
 
@@ -229,7 +233,7 @@ function gitTracks(repoPath, absolutePath) {
 async function prepareGeneratedSourceOutput(definition, sourceEvidence) {
 	if (sourceEvidence.sourceArtifactTracked) return;
 	const generatedPath = definition.copyDirectory ? path.dirname(definition.sourceArtifactPath) : definition.sourceArtifactPath;
-	await rm(generatedPath, { recursive: definition.copyDirectory, force: true });
+	await rm(generatedPath, { recursive: definition.copyDirectory === true, force: true });
 }
 
 async function assertPathInsideSource(repoPath, candidate, label) {
@@ -338,10 +342,16 @@ async function copyAdapter(definition, outputRoot) {
 
 function validateAdapter(key, target, env) {
 	const options = { capture: true, env };
-	const version = run(process.execPath, [target, '--version'], options);
-	if (!version.stdout.trim()) throw new Error(`${key} adapter did not print a version.`);
-	run(process.execPath, [target, 'completion', 'bash'], options);
-	const manifest = run(process.execPath, [target, 'commands', '--json'], options);
+	// macOS exposes temporary files through both /var and /private/var. Some
+	// adapters intentionally compare import.meta.url with process.argv[1], so
+	// execute the canonical path or their direct-entry guard will not run.
+	const executableTarget = realpathSync(target);
+	const version = run(process.execPath, [executableTarget, '--version'], options);
+	if (!version.stdout.trim()) {
+		throw new Error(`${key} adapter did not print a version.${version.stderr.trim() ? ` ${version.stderr.trim()}` : ''}`);
+	}
+	run(process.execPath, [executableTarget, 'completion', 'bash'], options);
+	const manifest = run(process.execPath, [executableTarget, 'commands', '--json'], options);
 	try {
 		JSON.parse(manifest.stdout);
 	} catch (error) {
@@ -360,6 +370,7 @@ async function inspectSources() {
 				canonicalRepository: sourceConfig.sources[definition.key],
 				defaultBranch: sourceConfig.defaultBranch,
 				release,
+				reviewPolicy,
 				githubToken: process.env.GH_TOKEN
 			});
 			evidence.set(definition.key, {
@@ -402,6 +413,7 @@ async function revalidateReleaseSources(evidence) {
 			canonicalRepository: sourceConfig.sources[definition.key],
 			defaultBranch: sourceConfig.defaultBranch,
 			release: true,
+			reviewPolicy,
 			githubToken: process.env.GH_TOKEN
 		});
 		if (current.commit !== expected.commit || current.tree !== expected.tree) {
@@ -452,6 +464,7 @@ async function buildPass(outputRoot, context) {
 	const manifest = {
 		schemaVersion: ADAPTER_MANIFEST_SCHEMA_VERSION,
 		mode,
+		reviewPolicy,
 		builtAt: context.builtAt,
 		sourceDateEpoch: context.sourceDateEpoch,
 		sourceMapSha256: sha256(canonicalJson(sourceConfig.sources)),
@@ -519,6 +532,10 @@ const temporaryRoot = release ? await mkdtemp(path.join(tmpdir(), 'merekit-adapt
 if (temporaryRoot) {
 	await mkdir(path.join(temporaryRoot, 'home'), { recursive: true });
 	await mkdir(path.join(temporaryRoot, 'tmp'), { recursive: true });
+	// Validate adapters in the same dependency shape as the published package.
+	// Native/external runtime dependencies (currently sqlite-vec) live beside
+	// adapters after npm installation, not inside each generated adapter folder.
+	await symlink(path.join(packageRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
 }
 const environment = release
 	? {

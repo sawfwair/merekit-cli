@@ -291,13 +291,15 @@ export async function inspectSourceRepository(options) {
 		if (commit !== remoteHead) {
 			throw new Error(`${options.app} source ${commit} is not the live canonical ${options.defaultBranch} head ${remoteHead}; draft, unmerged, ahead, and stale inputs are refused.`);
 		}
-		review = await verifyGitHubReviewEvidence({
-			canonicalRepository,
-			commit,
-			defaultBranch: options.defaultBranch,
-			token: options.githubToken,
-			fetchImpl: options.fetchImpl
-		});
+		if (options.reviewPolicy !== 'canonical-main') {
+			review = await verifyGitHubReviewEvidence({
+				canonicalRepository,
+				commit,
+				defaultBranch: options.defaultBranch,
+				token: options.githubToken,
+				fetchImpl: options.fetchImpl
+			});
+		}
 	}
 
 	const commitTimestamp = Number(run('git', ['show', '-s', '--format=%ct', commit], { cwd: options.repoPath }));
@@ -350,6 +352,9 @@ export async function verifyAdapterManifest(options) {
 	}
 	if (options.release) {
 		if (manifest.mode !== 'release') throw new Error('Adapter provenance manifest must come from release mode.');
+		if (!['reviewed-merge', 'canonical-main'].includes(manifest.reviewPolicy)) {
+			throw new Error('Adapter provenance release review policy is missing or invalid.');
+		}
 		if (manifest.reproducibility?.passes !== 2 || manifest.reproducibility?.byteIdentical !== true
 			|| manifest.reproducibility?.algorithm !== 'sha256-file-inventory-v1'
 			|| manifest.reproducibility?.machinePathScan !== true || manifest.reproducibility?.credentialScan !== true
@@ -392,30 +397,34 @@ export async function verifyAdapterManifest(options) {
 				throw new Error(`${entry.app} source is not clean and bound to its canonical default branch head.`);
 			}
 			if (entry.source.remoteHeadEvidence !== 'live-ls-remote') throw new Error(`${entry.app} source lacks live canonical remote evidence.`);
-			assertObject(entry.source.review, `${entry.app}.source.review`);
-			if (!Array.isArray(entry.source.review.approvedBy) || entry.source.review.approvedBy.length === 0) {
-				throw new Error(`${entry.app} source review approval evidence is missing.`);
-			}
-			if (!Number.isSafeInteger(entry.source.review.pullRequestNumber) || entry.source.review.pullRequestNumber < 1
-				|| !COMMIT_PATTERN.test(entry.source.review.pullRequestHeadCommit ?? '')
-				|| typeof entry.source.review.pullRequest !== 'string'
-				|| !entry.source.review.pullRequest.startsWith(expectedRepository.replace(/\.git$/u, '/pull/'))) {
-				throw new Error(`${entry.app} source pull-request evidence is invalid.`);
-			}
-			if (!entry.source.review.pullRequest.endsWith(`/pull/${entry.source.review.pullRequestNumber}`)
-				|| !Number.isFinite(Date.parse(entry.source.review.mergedAt ?? ''))
-				|| entry.source.review.approvedBy.some((reviewer) => typeof reviewer !== 'string' || !reviewer)
-				|| canonicalJson(entry.source.review.approvedBy) !== canonicalJson([...new Set(entry.source.review.approvedBy)].sort())) {
-				throw new Error(`${entry.app} source pull-request review details are invalid or non-canonical.`);
-			}
-			if (!Array.isArray(entry.source.review.checks) || entry.source.review.checks.length === 0
-				|| entry.source.review.checks.some((check) => check?.conclusion !== 'success' && check?.conclusion !== 'neutral' && check?.conclusion !== 'skipped')
-				|| !entry.source.review.checks.some((check) => check?.conclusion === 'success')) {
-				throw new Error(`${entry.app} source green-check evidence is invalid.`);
-			}
-			assertHash(entry.source.review.checksSha256, `${entry.app}.source.review.checksSha256`);
-			if (entry.source.review.checksSha256 !== sha256(canonicalJson(entry.source.review.checks))) {
-				throw new Error(`${entry.app} source check digest does not match its check inventory.`);
+			if (manifest.reviewPolicy === 'reviewed-merge') {
+				assertObject(entry.source.review, `${entry.app}.source.review`);
+				if (!Array.isArray(entry.source.review.approvedBy) || entry.source.review.approvedBy.length === 0) {
+					throw new Error(`${entry.app} source review approval evidence is missing.`);
+				}
+				if (!Number.isSafeInteger(entry.source.review.pullRequestNumber) || entry.source.review.pullRequestNumber < 1
+					|| !COMMIT_PATTERN.test(entry.source.review.pullRequestHeadCommit ?? '')
+					|| typeof entry.source.review.pullRequest !== 'string'
+					|| !entry.source.review.pullRequest.startsWith(expectedRepository.replace(/\.git$/u, '/pull/'))) {
+					throw new Error(`${entry.app} source pull-request evidence is invalid.`);
+				}
+				if (!entry.source.review.pullRequest.endsWith(`/pull/${entry.source.review.pullRequestNumber}`)
+					|| !Number.isFinite(Date.parse(entry.source.review.mergedAt ?? ''))
+					|| entry.source.review.approvedBy.some((reviewer) => typeof reviewer !== 'string' || !reviewer)
+					|| canonicalJson(entry.source.review.approvedBy) !== canonicalJson([...new Set(entry.source.review.approvedBy)].sort())) {
+					throw new Error(`${entry.app} source pull-request review details are invalid or non-canonical.`);
+				}
+				if (!Array.isArray(entry.source.review.checks) || entry.source.review.checks.length === 0
+					|| entry.source.review.checks.some((check) => check?.conclusion !== 'success' && check?.conclusion !== 'neutral' && check?.conclusion !== 'skipped')
+					|| !entry.source.review.checks.some((check) => check?.conclusion === 'success')) {
+					throw new Error(`${entry.app} source green-check evidence is invalid.`);
+				}
+				assertHash(entry.source.review.checksSha256, `${entry.app}.source.review.checksSha256`);
+				if (entry.source.review.checksSha256 !== sha256(canonicalJson(entry.source.review.checks))) {
+					throw new Error(`${entry.app} source check digest does not match its check inventory.`);
+				}
+			} else if (entry.source.review !== null) {
+				throw new Error(`${entry.app} canonical-main releases must record review evidence as null.`);
 			}
 		}
 		assertObject(entry.build, `${entry.app}.build`);

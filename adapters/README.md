@@ -32,4 +32,4 @@ Access is enforced by the Mere services through browser sessions, bearer tokens,
 
 Adapter manifests must mark command risk honestly as `read`, `write`, `destructive`, or `external`. Destructive commands must require explicit confirmation.
 
-Maintainers regenerate these files from the Mere app repositories with `pnpm build:adapters`. That command expects the private app repositories to be available as sibling directories and is not required for normal public development of the root CLI.
+Maintainers can use `pnpm build:adapters` for a development snapshot. Public-release inputs must use `pnpm build:adapters:release`, which requires clean canonical default-branch sources and a byte-identical two-pass rebuild. The default `reviewed-merge` policy also requires exact non-author review and green-CI evidence; the documented `canonical-main` solo-maintainer exception records that review evidence is unavailable without weakening source, reproducibility, hash, path, or credential checks.

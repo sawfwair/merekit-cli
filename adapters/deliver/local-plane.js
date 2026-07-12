@@ -3,11 +3,11 @@ import { createHash as createHash2 } from "node:crypto";
 import { mkdir as mkdir2, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
-// ../mere-business/packages/local-plane/src/index.ts
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
 import { mkdir } from "node:fs/promises";
 import path2 from "node:path";
 
-// ../mere-business/packages/local-plane/src/migration.ts
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
 import { createHash, randomUUID } from "node:crypto";
 var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
 var PLANE_TRANSFER_VERSION = 1;
@@ -168,7 +168,7 @@ function recordPlaneTransfer(db, input) {
   return id;
 }
 
-// ../mere-business/packages/local-plane/src/projection.ts
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/projection.ts
 var CloudProjectionDeliveryError = class extends Error {
   constructor(message, status = null, responseText = null) {
     super(message);
@@ -280,7 +280,7 @@ async function deliverCloudProjectionEvent(input) {
   };
 }
 
-// ../mere-business/packages/local-plane/src/config.ts
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/config.ts
 import os from "node:os";
 import path from "node:path";
 function stateHome(env) {
@@ -398,7 +398,7 @@ function formatPlaneConfigReport(report) {
 `;
 }
 
-// ../mere-business/packages/local-plane/src/index.ts
+// node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
 function isoNow2() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
