@@ -1,118 +1,1501 @@
 {
-  "schemaVersion": 1,
-  "builtAt": "2026-07-11T11:08:14.576Z",
+  "schemaVersion": 2,
+  "mode": "release",
+  "reviewPolicy": "canonical-main",
+  "builtAt": "2026-07-11T22:58:41.000Z",
+  "sourceDateEpoch": "1783810721",
+  "sourceMapSha256": "9079c487e1b6db82c78c5f52bff254f5bd5980824a93b612dc63b1371bbdedf7",
+  "reproducibility": {
+    "passes": 2,
+    "byteIdentical": true,
+    "algorithm": "sha256-file-inventory-v1",
+    "machinePathScan": true,
+    "credentialScan": true,
+    "canonicalSourcesRevalidated": true
+  },
   "adapters": [
     {
       "app": "business",
       "sourceRepoPath": "mere-business",
-      "sourceArtifactPath": "mere-business/packages/cli/dist/index.js",
+      "sourceArtifactPath": "packages/cli/dist/index.js",
       "adapterPath": "adapters/business/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-business.git",
+        "actualRepository": "https://github.com/sawfwair/mere-business.git",
+        "canonicalRemote": true,
+        "commit": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
+        "tree": "9d837a10f20851d7832ee384d53a7606d1ff4d11",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
+        "localTrackingHead": "e6b6ccd0b0916a0809a84491897a63cb49efebe7",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783810721,
+        "review": null,
+        "artifactTracked": true
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "pnpm",
+            "args": [
+              "--filter",
+              "@mere/cli",
+              "build"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "packages/cli/dist/index.js",
+              "adapters/business/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/business/run.js=755",
+              "adapters/business/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "088545f68ffca6e817dc3e4f65e9b7cc64b828f77572cda27f84dc063da6afbe",
+              "size": 296222
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/business/run.js",
+          "sha256": "4645c34210b35861a35e13c26bd581e7b4c6fe4379ef790021454e01221271b2",
+          "size": 328980,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "finance",
       "sourceRepoPath": "mere-finance",
-      "sourceArtifactPath": "mere-finance/packages/cli/bin/merefi.ts",
+      "sourceArtifactPath": "packages/cli/bin/merefi.ts",
       "adapterPath": "adapters/finance/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-finance.git",
+        "actualRepository": "https://github.com/sawfwair/mere-finance.git",
+        "canonicalRemote": true,
+        "commit": "8fb704866eca4ff16fb6ef916fcc7f20c436b83e",
+        "tree": "e0248040e7b5815ef5d3780cdff5f9fef617a19e",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "8fb704866eca4ff16fb6ef916fcc7f20c436b83e",
+        "localTrackingHead": "8fb704866eca4ff16fb6ef916fcc7f20c436b83e",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779429,
+        "review": null,
+        "artifactTracked": true
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "esbuild",
+            "args": [
+              "packages/cli/bin/merefi.ts",
+              "--bundle",
+              "--platform=node",
+              "--format=esm",
+              "--target=node24",
+              "--outfile=adapters/finance/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/finance/run.js=755",
+              "adapters/finance/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "d6c75dfbe4bda86f9621ff42f56a33f409f30951cea9649f00416b96f6645e24",
+              "size": 204545
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/finance/run.js",
+          "sha256": "09423ba8bb05e2912fed9d19811a82b21ed2a05253eb3404f525c6392ddaf9bd",
+          "size": 369399,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "dynasite",
       "sourceRepoPath": "mere-dynasite",
-      "sourceArtifactPath": "mere-dynasite/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/dynasite/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-dynasite.git",
+        "actualRepository": "https://github.com/sawfwair/mere-dynasite.git",
+        "canonicalRemote": true,
+        "commit": "71caaeab956e8e8f3a928cb32188565a63dabca7",
+        "tree": "18980f9828bcb8286ce21b6685a36a353b05e86f",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "71caaeab956e8e8f3a928cb32188565a63dabca7",
+        "localTrackingHead": "71caaeab956e8e8f3a928cb32188565a63dabca7",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779422,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/dynasite/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/dynasite/run.js=755",
+              "adapters/dynasite/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "80e10a92821ff4a8be97850b5c35aec81b672caab3cf90c5310c0deada483eb2",
+              "size": 181738
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/dynasite/run.js",
+          "sha256": "f684c57ae1f9910c12a399f1c54861f317f4797f36c3015328409e99fcdd4c7f",
+          "size": 111509,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "projects",
       "sourceRepoPath": "mere-projects",
-      "sourceArtifactPath": "mere-projects/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/projects/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-projects.git",
+        "actualRepository": "https://github.com/sawfwair/mere-projects.git",
+        "canonicalRemote": true,
+        "commit": "b1919550b331d0754343639aeddc774483afd7e5",
+        "tree": "844b9856e65313ec14955586aaa47ff9c279501c",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "b1919550b331d0754343639aeddc774483afd7e5",
+        "localTrackingHead": "b1919550b331d0754343639aeddc774483afd7e5",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779491,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/projects/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/projects/run.js=755",
+              "adapters/projects/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "5bfef765456db3d2a6883e92f3b8bf92c2c9e198dc8d68f9c1791721f4742f01",
+              "size": 179814
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/projects/run.js",
+          "sha256": "73d08a102f993e948bb751c38ddd5c5b216f6a0a044e71cc77138713ad25c7b4",
+          "size": 206592,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "agent",
       "sourceRepoPath": "mere-agent",
-      "sourceArtifactPath": "mere-agent/cli-dist/run.js",
+      "sourceArtifactPath": "cli-dist/run.js",
       "adapterPath": "adapters/agent/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-agent.git",
+        "actualRepository": "https://github.com/sawfwair/mere-agent.git",
+        "canonicalRemote": true,
+        "commit": "9ef5b89695477b12ed5781cacfdf90a1769f3f77",
+        "tree": "4781a694f0769b78d14e6ea22629271fd1a3753a",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "9ef5b89695477b12ed5781cacfdf90a1769f3f77",
+        "localTrackingHead": "9ef5b89695477b12ed5781cacfdf90a1769f3f77",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779405,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "cli-dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "cli-dist/run.js",
+              "adapters/agent/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/agent/run.js=755",
+              "adapters/agent/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "1275ff52b37e12e5b552e3872a785849d9817190bea17113914ab1d7fdcc18e1",
+              "size": 235049
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/agent/run.js",
+          "sha256": "a34dccc447839877192d4c71e1c640bd98eff8700f37db42f4e79d815bf73406",
+          "size": 112428,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "today",
       "sourceRepoPath": "mere-today",
-      "sourceArtifactPath": "mere-today/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/today/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-today.git",
+        "actualRepository": "https://github.com/sawfwair/mere-today.git",
+        "canonicalRemote": true,
+        "commit": "f1ea96230e0d5fd7228d823b304393b3418a5fb6",
+        "tree": "d088809df30faafc52e1a98c6b3427488a4e02ff",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "f1ea96230e0d5fd7228d823b304393b3418a5fb6",
+        "localTrackingHead": "f1ea96230e0d5fd7228d823b304393b3418a5fb6",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779493,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/today/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/today/run.js=755",
+              "adapters/today/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "dddf30d168f77148b16d281628da8fec032bbff6d6dcd440c1d969ac02234e1d",
+              "size": 182213
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/today/run.js",
+          "sha256": "a0cffb275cb728a567dde0c34f0138fce777abb8c5207e3fad23d4d545da017c",
+          "size": 212561,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "zone",
       "sourceRepoPath": "mere-zone",
-      "sourceArtifactPath": "mere-zone/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/zone/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-zone.git",
+        "actualRepository": "https://github.com/sawfwair/mere-zone.git",
+        "canonicalRemote": true,
+        "commit": "ec92109817316804df418f6f9dcf70de2fb0eb12",
+        "tree": "2d9bb0ca106d626024affbdee7d88758b4d117a0",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "ec92109817316804df418f6f9dcf70de2fb0eb12",
+        "localTrackingHead": "ec92109817316804df418f6f9dcf70de2fb0eb12",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779518,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/zone/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/zone/run.js=755",
+              "adapters/zone/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "ce01480c4490b0fe49c6ac897d8e3ffbcffb89b3b9e57d8bb9d03438b940b56b",
+              "size": 219966
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/zone/run.js",
+          "sha256": "91143d6678f6ced605daaf40dffa249cb3a2788dcfd08b3400988a5c5822b8dc",
+          "size": 123490,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "video",
       "sourceRepoPath": "mere-video",
-      "sourceArtifactPath": "mere-video/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/video/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-video.git",
+        "actualRepository": "https://github.com/sawfwair/mere-video.git",
+        "canonicalRemote": true,
+        "commit": "b0540a91ccff00dfb9f3a1b8620173cb6f3cb9f2",
+        "tree": "cbbe6b412202891d59aaef79d7a194e16587d037",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "b0540a91ccff00dfb9f3a1b8620173cb6f3cb9f2",
+        "localTrackingHead": "b0540a91ccff00dfb9f3a1b8620173cb6f3cb9f2",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779507,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/video/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/video/run.js=755",
+              "adapters/video/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "dea708dbea5a4bdd65657f36f5eff132b93abeed1a7f3f40d96cdf1f51a79a0b",
+              "size": 174272
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/video/run.js",
+          "sha256": "2f7879832fc2c632790c86ffc0c93dcc2d0c52d8f234e0c58cd9204f76989dee",
+          "size": 189879,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "network",
       "sourceRepoPath": "mere-network",
-      "sourceArtifactPath": "mere-network/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/network/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-network.git",
+        "actualRepository": "https://github.com/sawfwair/mere-network.git",
+        "canonicalRemote": true,
+        "commit": "39f4a3c56104be9791ec23950208a06cfdac4867",
+        "tree": "dde398d050d74de453e033fea715b75cfbee2b4f",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "39f4a3c56104be9791ec23950208a06cfdac4867",
+        "localTrackingHead": "39f4a3c56104be9791ec23950208a06cfdac4867",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779479,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/network/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/network/run.js=755",
+              "adapters/network/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "7cd85a6e095797119cbd5567c1edd791b6024a8e1b97ef0d214c8e28c1c78ecb",
+              "size": 284503
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/network/run.js",
+          "sha256": "f03204770917269a8e1a4308d4d9bddbd98edd0c5d69fb12a062d9335c6f2b75",
+          "size": 135920,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "email",
       "sourceRepoPath": "mere-email",
-      "sourceArtifactPath": "mere-email/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/email/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-email.git",
+        "actualRepository": "https://github.com/sawfwair/mere-email.git",
+        "canonicalRemote": true,
+        "commit": "19894466711c38bde2023d13b5b84d8856e196c4",
+        "tree": "d725592edbe13575a2873788d22d33ac9375651b",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "19894466711c38bde2023d13b5b84d8856e196c4",
+        "localTrackingHead": "19894466711c38bde2023d13b5b84d8856e196c4",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783801413,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/email/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/email/run.js=755",
+              "adapters/email/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "eb45f0106d076c083be344a71563ad1db7c3b1e671c3dd28fa3c758e5f51d6e0",
+              "size": 185508
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": {
+        "name": "mere-console",
+        "version": 1,
+        "schema": {
+          "path": "contracts/mere-console/v1/mere-console-contract.v1.schema.json",
+          "sha256": "e249172d656fdf2cecb81fb1006339652c48530da217f1c7451d6881c1014d81",
+          "size": 29498
+        },
+        "fixtures": {
+          "path": "contracts/mere-console/v1/fixtures",
+          "sha256": "b3c0bb45bee97076af1531541dd7f77cad6c77cdc62efda1805ddd0c17eb6379",
+          "files": 24
+        }
+      },
+      "artifacts": [
+        {
+          "path": "adapters/email/run.js",
+          "sha256": "0926baec1b6bc68a65e94ad84bce4efe401be5ecf11a612156d04720e41e1e95",
+          "size": 435665,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "im",
       "sourceRepoPath": "mere-im",
-      "sourceArtifactPath": "mere-im/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/im/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-im.git",
+        "actualRepository": "https://github.com/sawfwair/mere-im.git",
+        "canonicalRemote": true,
+        "commit": "2040a2fe9741bb2266702b3235ebc2d341d503a0",
+        "tree": "ad7edcc5a047cda386f9ff0a9c85b687d14caeed",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "2040a2fe9741bb2266702b3235ebc2d341d503a0",
+        "localTrackingHead": "2040a2fe9741bb2266702b3235ebc2d341d503a0",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779459,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/im/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/im/run.js=755",
+              "adapters/im/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "b298a0063216933e0728cef03df197b3c1446f64744cb217d45a5df5ad21617f",
+              "size": 200148
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/im/run.js",
+          "sha256": "ac2fd54837452877dc508e9fa08b9b536afe76043d13effd3ba87b5daf40be72",
+          "size": 150215,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "gives",
       "sourceRepoPath": "mere-gives",
-      "sourceArtifactPath": "mere-gives/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/gives/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-gives.git",
+        "actualRepository": "https://github.com/sawfwair/mere-gives.git",
+        "canonicalRemote": true,
+        "commit": "b924cfbee2fad6714f117269b6af1d75035caa4a",
+        "tree": "4c382f0b8a49d3b49ed2e868fb0fa867be7ea9ba",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "b924cfbee2fad6714f117269b6af1d75035caa4a",
+        "localTrackingHead": "b924cfbee2fad6714f117269b6af1d75035caa4a",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779443,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/gives/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/gives/run.js=755",
+              "adapters/gives/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "8a62a9f687395b8c8de9ae375a321851a926ece43e8f82e30e687db5c7857aa4",
+              "size": 193092
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/gives/run.js",
+          "sha256": "4f32056e1e2155d5f9fe2021bde9c08d3b3753d7b2af259412529b83b2b5ce71",
+          "size": 118223,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "works",
       "sourceRepoPath": "mere-works",
-      "sourceArtifactPath": "mere-works/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/works/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-works.git",
+        "actualRepository": "https://github.com/sawfwair/mere-works.git",
+        "canonicalRemote": true,
+        "commit": "796dc4893bfc6118f94219cda9bf507ab32dcd3c",
+        "tree": "496f8a6d36b3b3c61777ebf28c49e95bb4542268",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "796dc4893bfc6118f94219cda9bf507ab32dcd3c",
+        "localTrackingHead": "796dc4893bfc6118f94219cda9bf507ab32dcd3c",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779512,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/works/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/works/run.js=755",
+              "adapters/works/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "e5b1cb8d4c1de5d870beefbb3a1c3111ea6b2d9f74a1faea45c8fb1b1aaffcd4",
+              "size": 175021
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/works/run.js",
+          "sha256": "944d14f6a32a816f485c6dc22caf5acbdfa0010ea8496d106a9d1d83d2661b11",
+          "size": 114086,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "media",
       "sourceRepoPath": "mere-media",
-      "sourceArtifactPath": "mere-media/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/media/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-media.git",
+        "actualRepository": "https://github.com/sawfwair/mere-media.git",
+        "canonicalRemote": true,
+        "commit": "358de91fa6058c5a73559e7c857b31a502b1f3af",
+        "tree": "269b5c434a13b172c428ef01747a4435b22908ac",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "358de91fa6058c5a73559e7c857b31a502b1f3af",
+        "localTrackingHead": "358de91fa6058c5a73559e7c857b31a502b1f3af",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779473,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist/run.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "dist/run.js",
+              "adapters/media/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/media/run.js=755",
+              "adapters/media/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "da0ed63596da37c51f77193c21d27ac74e7c53a9b7da7773f09d6a2f9257ac8e",
+              "size": 161162
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/media/run.js",
+          "sha256": "35da6e0c05aab06dd484a8e3f99f1b21a8e6c9866072037432532947e892a424",
+          "size": 117311,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "deliver",
       "sourceRepoPath": "mere-deliver",
-      "sourceArtifactPath": "mere-deliver/cli/run.js",
+      "sourceArtifactPath": "cli/run.js",
       "adapterPath": "adapters/deliver/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/mere-deliver.git",
+        "actualRepository": "https://github.com/sawfwair/mere-deliver.git",
+        "canonicalRemote": true,
+        "commit": "7fa7ed0780feb002d4b1b46bc10887bb0f0fe24a",
+        "tree": "81ced2e040ec1e7767d24c0b2f2736436fbd083a",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "7fa7ed0780feb002d4b1b46bc10887bb0f0fe24a",
+        "localTrackingHead": "7fa7ed0780feb002d4b1b46bc10887bb0f0fe24a",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783801922,
+        "review": null,
+        "artifactTracked": true
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "pnpm",
+            "args": [
+              "build:cli"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-file",
+            "args": [
+              "cli/run.js",
+              "adapters/deliver/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "esbuild",
+            "args": [
+              "cli/local-plane.js",
+              "--bundle",
+              "--platform=node",
+              "--format=esm",
+              "--target=node24",
+              "--outfile=adapters/deliver/local-plane.js"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/deliver/run.js=755",
+              "adapters/deliver/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": null,
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "66b81359e26a75f2b4b82b53e0638c154dbf29e6b8d335a5249f629b339397ab",
+              "size": 135516
+            },
+            {
+              "path": "package-lock.json",
+              "sha256": "92d2d415054a319e2c5cbf793d3bd1202fc2263261923f099acfcd00293df13d",
+              "size": 239370
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/deliver/local-plane.js",
+          "sha256": "89208670995ca6da3edb152b8794648e32c27395ff0529186f93a1a6933e6bc3",
+          "size": 52439,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/deliver/run.js",
+          "sha256": "fea4680a4b726fb27bc8c285dc80db32f7e71c9fd60f0b0e67cc78b767adfe85",
+          "size": 37177,
+          "mode": "755"
+        }
+      ]
     },
     {
       "app": "link",
       "sourceRepoPath": "merekit-link",
-      "sourceArtifactPath": "merekit-link/dist/run.js",
+      "sourceArtifactPath": "dist/run.js",
       "adapterPath": "adapters/link/run.js",
-      "builtAt": "2026-07-11T11:08:14.576Z"
+      "builtAt": "2026-07-11T22:58:41.000Z",
+      "source": {
+        "canonicalRepository": "https://github.com/sawfwair/merekit-link.git",
+        "actualRepository": "https://github.com/sawfwair/merekit-link.git",
+        "canonicalRemote": true,
+        "commit": "cc93fdead93a83c1103fb1bb9dd6aad1f42fcee2",
+        "tree": "6a571738cf6492ee5d1fd1f69b2f714835460677",
+        "clean": true,
+        "hasUnmergedFiles": false,
+        "defaultBranch": "main",
+        "remoteHead": "cc93fdead93a83c1103fb1bb9dd6aad1f42fcee2",
+        "localTrackingHead": "cc93fdead93a83c1103fb1bb9dd6aad1f42fcee2",
+        "remoteHeadEvidence": "live-ls-remote",
+        "mergedToDefaultBranch": true,
+        "commitTimestamp": 1783779805,
+        "review": null,
+        "artifactTracked": false
+      },
+      "build": {
+        "commands": [
+          {
+            "executable": "remove-generated-output",
+            "args": [
+              "dist"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "pnpm",
+            "args": [
+              "build"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "copy-directory",
+            "args": [
+              "dist",
+              "adapters/link/"
+            ],
+            "workingDirectory": "source"
+          },
+          {
+            "executable": "normalize-file-modes",
+            "args": [
+              "adapters/link/run.js=755",
+              "adapters/link/**=644"
+            ],
+            "workingDirectory": "source"
+          }
+        ],
+        "toolchain": {
+          "node": "v24.15.0",
+          "pnpm": "10.8.1",
+          "esbuild": "0.28.1",
+          "sourcePackageManager": "pnpm@10.8.1",
+          "sourceLockfiles": [
+            {
+              "path": "pnpm-lock.yaml",
+              "sha256": "46c74b7004f9e0b3c722af3391dd0e94d9a6eecffa30560ad4315e1dd5516e74",
+              "size": 93386
+            }
+          ]
+        },
+        "deterministicEnvironment": {
+          "SOURCE_DATE_EPOCH": "1783810721",
+          "TZ": "UTC",
+          "LC_ALL": "C"
+        }
+      },
+      "contract": null,
+      "artifacts": [
+        {
+          "path": "adapters/link/config/file.js",
+          "sha256": "18a6f6128b4c90b010bc801f189f36f78b7b9ca9552b8a2af34ea266220e7a20",
+          "size": 1664,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/config/normalize.js",
+          "sha256": "784fdcd3beea5b99966fea63a28deac08487ddc13063644e5b1f1bdad51d3d6f",
+          "size": 18461,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/config/starter.js",
+          "sha256": "3c91a91311520e5417f6065fc523801b4c0bae004f980b94588c596f66378196",
+          "size": 3683,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/domain/guards.js",
+          "sha256": "e0ff5e0a8c417ce3469ddaa035ad780fda4195a337bfa3012ca47d18ab0b7c66",
+          "size": 1503,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/domain/plugins.js",
+          "sha256": "09a33fa02600d15e951487402c82d0613491738263a03923077ae58e2a987d13",
+          "size": 694,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/domain/types.js",
+          "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+          "size": 11,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/manifest.js",
+          "sha256": "5bc7f56ae2395f7ecc55039acacb52da992c994490e7973af7dc7e4ca894d2d3",
+          "size": 7015,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/policy.js",
+          "sha256": "2df4c613a81dc2c4c2a5b471198a61bbc20d233b003f9ccae1af29e437c680e4",
+          "size": 10935,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/run.js",
+          "sha256": "47790a3ce4d5a59da2296e8fa245743b8d4ca18121bd3f5c6a5415e959ecb552",
+          "size": 18043,
+          "mode": "755"
+        },
+        {
+          "path": "adapters/link/runtime/args.js",
+          "sha256": "3ca6becfd45dec5b0235282e7a6c4ecb48148fcc7a129ba0b672610c16b37080",
+          "size": 1019,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/executor.js",
+          "sha256": "3b0b7f41ddfb7fcf3ae9668d7f7b607a0265c463fe799157c33a9e3da20bd555",
+          "size": 21580,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/json.js",
+          "sha256": "b15e4384d34fa135f72e7118784081dcbc83433543c262d6adbd4130ac096190",
+          "size": 533,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/mere.js",
+          "sha256": "7bf232a52acc6c272bda36e1d010024949b2287e7c11e4f54d752318ebf58c8e",
+          "size": 4166,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/output.js",
+          "sha256": "acf772a26bbe2997d41b7d97a5112e2dfcd8d9e220472b81951979f3fa6751da",
+          "size": 1109,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/paths.js",
+          "sha256": "ae723029a5102fd839e007d0ab5bb04690a739ca17580d304dceab467dcde511",
+          "size": 772,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/runtime/yaml.js",
+          "sha256": "98f087c2e782c375ded86f12a21007742db0966fc85651ac9b448f2829c95b9c",
+          "size": 380,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/sync/executor-policy.js",
+          "sha256": "92d0328389764a7d49adcdd39b9275fe90e2c108e941c45c1ba1f79e17d94d7b",
+          "size": 17709,
+          "mode": "644"
+        },
+        {
+          "path": "adapters/link/sync/projects.js",
+          "sha256": "84e76e4a4a6826524d49ae04dbe9588e983864cb3574f4a987bbf9d261e82999",
+          "size": 9105,
+          "mode": "644"
+        }
+      ]
     }
   ]
 }

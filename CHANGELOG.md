@@ -6,6 +6,11 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.18 - 2026-07-12
+
+- Published the corrected Email adapter route namespace so mailbox and thread commands use `/api/internal/mere/...` after the legacy `/api/internal/zerosmb/...` surface was removed.
+- Refreshed the bundled adapter provenance from the reviewed post-migration app sources.
+
 ## 0.5.17 - 2026-07-10
 
 - Fixed root-to-adapter global flag ordering so Business and other bundled apps receive explicit workspace and data flags in their canonical leading position.

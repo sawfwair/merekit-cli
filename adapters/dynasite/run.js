@@ -1501,7 +1501,8 @@ import { createServer } from "http";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.59.1_@sveltejs+vite-p_d8a7e4e697715c4418477c3ed91e9ced/node_modules/@mere/cli-auth/src/session.ts
-import { chmod, mkdir as mkdir3, readFile as readFile2, rm, writeFile as writeFile2 } from "fs/promises";
+import { randomUUID as randomUUID3 } from "crypto";
+import { mkdir as mkdir3, open, readFile as readFile2, rename, rm } from "fs/promises";
 import os3 from "os";
 import path3 from "path";
 function stateHome2(env) {
@@ -1545,10 +1546,29 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir3(paths.stateDir, { recursive: true });
-  await writeFile2(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+  await writeCliSessionFile(paths.sessionFile, input.session);
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path3.dirname(sessionFile);
+  const tempFile = path3.join(
+    stateDir,
+    `.${path3.basename(sessionFile)}.${process.pid}.${randomUUID3()}.tmp`
+  );
+  let handle;
+  await mkdir3(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
 `, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;

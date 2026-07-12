@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // cli/mere-im.ts
-import { mkdir as mkdir3, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
+import { mkdir as mkdir3, readFile as readFile2, writeFile } from "fs/promises";
 import { dirname, resolve } from "path";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/client.ts
@@ -20,7 +20,8 @@ var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
 // node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_b69e0278aad5418e80ddd2c3260fb2fd/node_modules/@mere/cli-auth/src/session.ts
-import { chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
+import { randomUUID } from "crypto";
+import { mkdir, open, readFile, rename, rm } from "fs/promises";
 import os from "os";
 import path from "path";
 function stateHome(env) {
@@ -64,10 +65,29 @@ async function loadCliSession(input) {
 }
 async function saveCliSession(input) {
   const paths = resolveCliPaths(input.appName, input.env ?? process.env);
-  await mkdir(paths.stateDir, { recursive: true });
-  await writeFile(paths.sessionFile, `${JSON.stringify(input.session, null, 2)}
+  await writeCliSessionFile(paths.sessionFile, input.session);
+}
+async function writeCliSessionFile(sessionFile, session) {
+  const stateDir = path.dirname(sessionFile);
+  const tempFile = path.join(
+    stateDir,
+    `.${path.basename(sessionFile)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let handle;
+  await mkdir(stateDir, { recursive: true });
+  try {
+    handle = await open(tempFile, "wx", 384);
+    await handle.writeFile(`${JSON.stringify(session, null, 2)}
 `, "utf8");
-  await chmod(paths.sessionFile, 384).catch(() => void 0);
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await rename(tempFile, sessionFile);
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    await rm(tempFile, { force: true }).catch(() => void 0);
+    throw error;
+  }
 }
 async function clearCliSession(input) {
   const env = input.env ?? process.env;
@@ -494,16 +514,16 @@ async function deliverCloudProjectionEvent(input) {
 }
 
 // cli/local-store.ts
-import { createHash as createHash3, randomUUID as randomUUID3 } from "crypto";
+import { createHash as createHash3, randomUUID as randomUUID4 } from "crypto";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/index.ts
-import { createHash as createHash2, randomUUID as randomUUID2 } from "crypto";
+import { createHash as createHash2, randomUUID as randomUUID3 } from "crypto";
 import { mkdir as mkdir2 } from "fs/promises";
 import os3 from "os";
 import path3 from "path";
 
 // node_modules/.pnpm/@mere+local-plane@file+..+business+packages+local-plane/node_modules/@mere/local-plane/src/migration.ts
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomUUID as randomUUID2 } from "crypto";
 var PLANE_TRANSFER_KIND = "mere.local-plane.transfer";
 var PLANE_TRANSFER_VERSION = 1;
 function isRecord(value) {
@@ -639,7 +659,7 @@ function createPlaneTransferImportPlan(input) {
   };
 }
 function recordPlaneTransfer(db, input) {
-  const id = `xfer_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  const id = `xfer_${randomUUID2().replaceAll("-", "").slice(0, 24)}`;
   db.prepare(
     `INSERT INTO mere_plane_transfers (
          id, app_id, workspace_id, direction,
@@ -989,7 +1009,7 @@ function isoNow3() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function makeId(prefix) {
-  return `${prefix}_${randomUUID3().replaceAll("-", "").slice(0, 16)}`;
+  return `${prefix}_${randomUUID4().replaceAll("-", "").slice(0, 16)}`;
 }
 function stableConversationProjectionId(workspaceId, conversationId) {
   const digest = createHash3("sha256").update(IM_APP_ID).update("\0").update(workspaceId).update("\0").update(conversationId).digest("hex").slice(0, 24);
@@ -2986,7 +3006,7 @@ async function cmdLocalExport(args, _json, ctx) {
     if (output) {
       const target = resolve(output);
       await mkdir3(dirname(target), { recursive: true });
-      await writeFile2(target, JSON.stringify(bundle, null, 2));
+      await writeFile(target, JSON.stringify(bundle, null, 2));
       return writeJson(ctx, {
         ok: true,
         path: target,

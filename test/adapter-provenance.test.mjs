@@ -272,6 +272,7 @@ async function writeReleaseManifestFixture(root) {
 	const manifest = {
 		schemaVersion: 2,
 		mode: 'release',
+		reviewPolicy: 'reviewed-merge',
 		builtAt: new Date(Number(sourceDateEpoch) * 1000).toISOString(),
 		sourceDateEpoch,
 		sourceMapSha256: sha256('{"example":"https://github.com/sawfwair/example.git"}'),
@@ -360,6 +361,19 @@ test('release manifest gate binds canonical source evidence and every packaged b
 		sources: { example: 'https://github.com/sawfwair/example.git' },
 		release: true
 	}), /does not match its recorded SHA-256, size, and mode/u);
+});
+
+test('canonical-main release policy preserves source and byte gates without inventing review evidence', async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), 'mere-adapter-solo-manifest-'));
+	const manifest = await writeReleaseManifestFixture(root);
+	manifest.reviewPolicy = 'canonical-main';
+	manifest.adapters[0].source.review = null;
+	await writeFile(path.join(root, 'adapters', 'manifest.json'), `${JSON.stringify(manifest)}\n`);
+	await verifyAdapterManifest({
+		packageRoot: root,
+		sources: { example: 'https://github.com/sawfwair/example.git' },
+		release: true
+	});
 });
 
 test('legacy adapter manifests cannot pass the publication gate', async () => {
