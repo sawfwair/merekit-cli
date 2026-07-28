@@ -990,7 +990,7 @@ async function runAuth(io, action, flags) {
     const entries = selectedEntries(registry, flags, { defaultAll: action === 'whoami' || action === 'status' });
     const results = [];
     for (const entry of entries) {
-        if (entry.authKind === 'none' && action === 'status') {
+        if (entry.authKind === 'none') {
             const result = { app: entry.key, ok: true, auth: 'none', authStatus: 'not_required', authReasons: [], workspace: requestedWorkspace ?? null };
             results.push(result);
             if (!readBooleanFlag(flags, 'json'))
