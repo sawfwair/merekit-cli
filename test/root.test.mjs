@@ -1161,20 +1161,25 @@ test('ops doctor uses the same auth usability semantics as auth status', async (
   assert.match(app.authReasons.join(' '), /expired:2020-01-01T00:00:00.000Z/);
 });
 
-test('auth status reports no-auth apps without delegating unsupported whoami commands', async () => {
+test('auth commands report no-auth apps without delegating unsupported commands', async () => {
   const root = await fakeMereRoot();
-  const result = await run(['auth', 'status', '--app', 'link', '--json'], {
-    MERE_ROOT: root,
-    MERE_CLI_SOURCE: 'local',
-  });
 
-  assert.equal(result.code, 0, result.stderr);
-  const status = JSON.parse(result.stdout).results[0];
-  assert.equal(status.app, 'link');
-  assert.equal(status.ok, true);
-  assert.equal(status.auth, 'none');
-  assert.equal(status.authStatus, 'not_required');
-  assert.equal(status.stdout, undefined);
+  for (const action of ['login', 'whoami', 'logout', 'status']) {
+    const result = await run(['auth', action, '--app', 'link', '--json'], {
+      MERE_ROOT: root,
+      MERE_CLI_SOURCE: 'local',
+    });
+
+    assert.equal(result.code, 0, `${action}: ${result.stderr}`);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.action, action);
+    const status = payload.results[0];
+    assert.equal(status.app, 'link');
+    assert.equal(status.ok, true);
+    assert.equal(status.auth, 'none');
+    assert.equal(status.authStatus, 'not_required');
+    assert.equal(status.stdout, undefined);
+  }
 });
 
 test('workspace snapshot includes selector hints for inferred selectors', async () => {

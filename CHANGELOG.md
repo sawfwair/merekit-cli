@@ -6,6 +6,8 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+- Fixed root auth orchestration for apps that require no authentication so login, whoami, logout, and status report `not_required` instead of delegating unsupported auth commands.
+
 ## 0.5.18 - 2026-07-12
 
 - Published the corrected Email adapter route namespace so mailbox and thread commands use `/api/internal/mere/...` after the legacy `/api/internal/zerosmb/...` surface was removed.
