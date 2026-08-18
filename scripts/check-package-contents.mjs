@@ -32,7 +32,13 @@ function runPackDryRun() {
 	if (result.status !== 0) {
 		throw new Error(result.stderr || result.stdout || `npm pack --dry-run exited ${result.status}`);
 	}
-	return JSON.parse(result.stdout)[0].files.map((file) => file.path);
+	const payload = JSON.parse(result.stdout);
+	const entries = Array.isArray(payload) ? payload : Object.values(payload);
+	const packageEntry = entries[0];
+	if (!packageEntry || !Array.isArray(packageEntry.files)) {
+		throw new Error('npm pack --dry-run did not return a package file list.');
+	}
+	return packageEntry.files.map((file) => file.path);
 }
 
 const files = runPackDryRun();

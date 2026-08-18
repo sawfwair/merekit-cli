@@ -47,6 +47,46 @@ test('manifest validation enforces command contracts', () => {
 	assert.throws(() => validateManifest(manifest({ commands: [command({ risk: 'maybe' })] })));
 });
 
+test('manifest validation preserves additive typed CLI contract fields', () => {
+	const parsed = validateManifest(
+		manifest({
+			authProbe: ['auth', 'status'],
+			globalOptions: [
+				{
+					name: 'workspace',
+					type: 'string',
+					description: 'Select a workspace.',
+					required: false
+				}
+			],
+			commands: [
+				command({
+					flags: ['status'],
+					requiredFlags: ['status'],
+					options: [
+						{
+							name: 'status',
+							type: 'string',
+							description: 'Select status.',
+							required: true,
+							enum: ['open', 'closed']
+						}
+					],
+					dataSchema: { type: 'object', required: ['name'] },
+					examples: [{ data: { name: 'Example' } }]
+				})
+			]
+		})
+	);
+
+	assert.deepEqual(parsed.authProbe, ['auth', 'status']);
+	assert.equal(parsed.globalOptions?.[0]?.description, 'Select a workspace.');
+	assert.deepEqual(parsed.commands[0].requiredFlags, ['status']);
+	assert.deepEqual(parsed.commands[0].options?.[0]?.enum, ['open', 'closed']);
+	assert.deepEqual(parsed.commands[0].dataSchema, { type: 'object', required: ['name'] });
+	assert.deepEqual(parsed.commands[0].examples, [{ data: { name: 'Example' } }]);
+});
+
 test('config and state loading validate persisted JSON boundaries', async () => {
 	const root = await mkdtemp(path.join(os.tmpdir(), 'mere-boundaries-'));
 	const env = {

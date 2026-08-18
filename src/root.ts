@@ -290,14 +290,14 @@ function commandRowsFromManifest(manifestPayload: unknown): string {
 		return 'No command manifest was available.\n';
 	}
 	const rows = [
-		'| App | Surface | Command | Risk | Auth | JSON | Data | Guardrails | Summary |',
-		'| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+		'| App | Surface | Command | Risk | Auth | JSON | Data | Required | Options | Guardrails | Example | Summary |',
+		'| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
 	];
 	for (const app of manifestPayload.apps) {
 		if (!isRecord(app)) continue;
 		const appName = typeof app.namespace === 'string' ? app.namespace : typeof app.app === 'string' ? app.app : 'unknown';
 		if (!Array.isArray(app.commands)) {
-			rows.push(`| ${markdownCell(appName)} | _manifest unavailable_ |  |  |  |  |  | ${markdownCell(app.error)} |`);
+			rows.push(`| ${markdownCell(appName)} | _manifest unavailable_ |  |  |  |  |  |  |  |  |  | ${markdownCell(app.error)} |`);
 			continue;
 		}
 		for (const command of app.commands) {
@@ -308,6 +308,38 @@ function commandRowsFromManifest(manifestPayload: unknown): string {
 				command.requiresYes === true ? '--yes' : '',
 				command.requiresConfirm === true ? '--confirm' : ''
 			].filter(Boolean);
+			const required = [
+				...(Array.isArray(command.positionals)
+					? command.positionals.filter((value): value is string => typeof value === 'string').map((value) => `<${value}>`)
+					: []),
+				...(Array.isArray(command.requiredFlags)
+					? command.requiredFlags.filter((value): value is string => typeof value === 'string').map((value) => `--${value}`)
+					: []),
+				...(Array.isArray(command.requiredFlagGroups)
+					? command.requiredFlagGroups
+							.filter((group): group is unknown[] => Array.isArray(group))
+							.map((group) => `one of ${group.filter((value): value is string => typeof value === 'string').map((value) => `--${value}`).join(', ')}`)
+					: [])
+			];
+			const options = Array.isArray(command.options)
+				? command.options
+						.filter(isRecord)
+						.map((option) => {
+							const name = typeof option.name === 'string' ? `--${option.name}` : '--?';
+							const type = typeof option.type === 'string' ? option.type : 'unknown';
+							const description = typeof option.description === 'string' ? option.description : '';
+							const enumValues = Array.isArray(option.enum)
+								? option.enum.filter((value): value is string => typeof value === 'string').join(', ')
+								: '';
+							return `${name} (${type}${option.required === true ? ', required' : ''})${enumValues ? ` [${enumValues}]` : ''}: ${description}`;
+						})
+						.join('; ')
+				: '';
+			const example = Array.isArray(command.examples) && command.examples.length > 0
+				? typeof command.examples[0] === 'string'
+					? command.examples[0]
+					: JSON.stringify(command.examples[0])
+				: '';
 			rows.push(
 				[
 					markdownCell(appName),
@@ -317,7 +349,10 @@ function commandRowsFromManifest(manifestPayload: unknown): string {
 					markdownCell(command.auth),
 					command.supportsJson === true ? 'yes' : 'no',
 					command.supportsData === true ? 'yes' : 'no',
+					markdownCell(required.join('; ') || '-'),
+					markdownCell(options || '-'),
 					markdownCell(guardrails.join(' ') || '-'),
+					markdownCell(example || '-'),
 					markdownCell(command.summary)
 				].join(' | ')
 					.replace(/^/, '| ')
@@ -611,8 +646,13 @@ export async function delegateToApp(
 	if (!manifestResult.ok) throw new Error(`${entry.label} command manifest unavailable: ${manifestResult.error}`);
 	const command = findManifestCommand(manifestResult.manifest, appArgs);
 	const supported = supportedFlagNames(manifestResult.manifest, command);
+	const effectiveFlags = { ...passthroughFlags };
+	if (effectiveFlags.workspace === undefined && supported.has('workspace')) {
+		const state = await loadState(resolveMerePaths(io.env));
+		if (state.defaultWorkspace) effectiveFlags.workspace = state.defaultWorkspace;
+	}
 	const leadingNames = new Set(['base-url', 'workspace', 'profile', 'json', ...(manifestResult.manifest?.globalFlags ?? [])]);
-	const { leading, trailing } = splitPassthroughFlags(passthroughFlags, supported, leadingNames);
+	const { leading, trailing } = splitPassthroughFlags(effectiveFlags, supported, leadingNames);
 	const finalArgs = [...resolved.args, ...flagArgs(leading, supported), ...appArgs, ...flagArgs(trailing, supported)];
 	const cwd = executionCwd(entry, resolved);
 	const started = Date.now();
@@ -933,12 +973,56 @@ function authHealthForResult(entry: RegistryEntry, result: ProcessResult): AuthH
 	return { ok, status: ok ? 'authenticated' : 'unauthenticated', reasons, payload };
 }
 
+type AppAuthProbe = {
+	command: string[];
+	result: ProcessResult;
+	health: AuthHealth;
+};
+
+async function probeAppAuth(
+	io: CliIO,
+	entry: RegistryEntry,
+	flags: Record<string, string | boolean | string[]>
+): Promise<AppAuthProbe> {
+	if (entry.authKind === 'none') {
+		const result = { code: 0, signal: null, stdout: '', stderr: '' };
+		return { command: [], result, health: authHealthForResult(entry, result) };
+	}
+
+	const manifest = await loadManifest(entry, io.env);
+	if (!manifest.ok || !manifest.manifest) {
+		const result = {
+			code: 1,
+			signal: null,
+			stdout: '',
+			stderr: manifest.error ?? 'Command manifest unavailable.'
+		};
+		return {
+			command: [],
+			result,
+			health: { ok: false, status: 'unauthenticated', reasons: ['manifest_unavailable'], payload: null }
+		};
+	}
+
+	const command = manifest.manifest.authProbe ?? ['auth', 'whoami'];
+	const result = await delegateToApp(io, entry, command, { ...flags, json: true }, { capture: true }).catch(
+		(error: unknown): ProcessResult => ({
+			code: 1,
+			signal: null,
+			stdout: '',
+			stderr: error instanceof Error ? error.message : String(error)
+		})
+	);
+	return { command, result, health: authHealthForResult(entry, result) };
+}
+
 async function financeAuthStatus(
 	io: CliIO,
 	entry: RegistryEntry,
 	flags: Record<string, string | boolean | string[]>
 ): Promise<{
 	app: 'finance';
+	ok: boolean;
 	auth: 'token';
 	configPath: string;
 	currentProfile: string;
@@ -949,22 +1033,16 @@ async function financeAuthStatus(
 	const config = await loadFinanceConfig(io.env);
 	const profileName = readStringFlag(flags, 'profile') ?? config.currentProfile;
 	const profile = financeProfileOrDefault(config, profileName, io.env);
-	const result = await delegateToApp(
-		io,
-		entry,
-		['auth', 'whoami'],
-		{ json: true, ...(profileName ? { profile: profileName } : {}) },
-		{ capture: true }
-	).catch((error: unknown): ProcessResult => ({
-		code: 1,
-		signal: null,
-		stdout: '',
-		stderr: error instanceof Error ? error.message : String(error)
-	}));
-	const health = authHealthForResult(entry, result);
+	const probe = await probeAppAuth(io, entry, {
+		...flags,
+		...(profileName ? { profile: profileName } : {})
+	});
+	const result = probe.result;
+	const health = probe.health;
 	const ok = health.ok && typeof profile.token === 'string' && profile.token.length > 0;
 	return {
 		app: 'finance',
+		ok,
 		auth: 'token',
 		configPath: financeConfigPath(io.env),
 		currentProfile: config.currentProfile,
@@ -1088,7 +1166,7 @@ async function runAuth(io: CliIO, action: string | undefined, flags: Record<stri
 	const paths = resolveMerePaths(io.env);
 	const registry = createRegistry(paths.mereRoot, paths.packageRoot);
 	const rootState = await loadState(paths);
-	const requestedWorkspace = readStringFlag(flags, 'workspace') ?? (action === 'status' ? rootState.defaultWorkspace : undefined);
+	const requestedWorkspace = readStringFlag(flags, 'workspace') ?? rootState.defaultWorkspace;
 	const entries = selectedEntries(registry, flags, { defaultAll: action === 'whoami' || action === 'status' });
 	const results = [];
 	for (const entry of entries) {
@@ -1098,7 +1176,7 @@ async function runAuth(io: CliIO, action: string | undefined, flags: Record<stri
 			if (!readBooleanFlag(flags, 'json')) io.stdout(`${entry.key}: not required\n`);
 			continue;
 		}
-		if (entry.key === 'finance' && action === 'status') {
+		if (entry.key === 'finance' && (action === 'status' || action === 'whoami')) {
 			const result = await financeAuthStatus(io, entry, { ...flags, ...(requestedWorkspace ? { workspace: requestedWorkspace } : {}) });
 			results.push(result);
 			if (!readBooleanFlag(flags, 'json')) {
@@ -1124,20 +1202,20 @@ async function runAuth(io: CliIO, action: string | undefined, flags: Record<stri
 		if (entry.key === 'business' && flags['invite-code']) {
 			authFlags['invite-code'] = flags['invite-code'];
 		}
-		const result = await delegateToApp(
-			io,
-			entry,
-			['auth', action === 'status' ? 'whoami' : (action as string)],
-			authFlags,
-			{ capture: true }
-		);
-		const health = action === 'status' ? authHealthForResult(entry, result) : null;
+		const probe = action === 'status' || action === 'whoami'
+			? await probeAppAuth(io, entry, authFlags)
+			: null;
+		const result = probe
+			? probe.result
+			: await delegateToApp(io, entry, ['auth', action as string], authFlags, { capture: true });
+		const health = probe?.health ?? null;
 		results.push({
 			app: entry.key,
 			ok: health ? health.ok : result.code === 0,
 			code: result.code,
 			authStatus: health?.status,
 			authReasons: health?.reasons,
+			authProbe: probe?.command,
 			workspace: requestedWorkspace ?? null,
 			stdout: redactOutput(result.stdout.trim()),
 			stderr: redactOutput(result.stderr.trim())
@@ -1149,7 +1227,7 @@ async function runAuth(io: CliIO, action: string | undefined, flags: Record<stri
 		}
 	}
 	if (readBooleanFlag(flags, 'json')) writeJson(io, { action, results });
-	return action === 'whoami' || action === 'status' ? 0 : results.every((result) => 'ok' in result && result.ok) ? 0 : 1;
+	return results.every((result) => 'ok' in result && result.ok) ? 0 : 1;
 }
 
 async function runContext(io: CliIO, action: string | undefined, flags: Record<string, string | boolean | string[]>): Promise<number> {
@@ -1194,13 +1272,85 @@ async function runAgent(io: CliIO, action: string | undefined, flags: Record<str
 	return 0;
 }
 
+type AdapterProvenance = {
+	manifestSchemaVersion: number | null;
+	manifestMode: string | null;
+	builtAt: string | null;
+	sourceRepository: string | null;
+	sourceCommit: string | null;
+	sourceTree: string | null;
+	canonicalRemote: boolean | null;
+	remoteHeadEvidence: string | null;
+};
+
+async function bundledAdapterProvenance(
+	packageRoot: string
+): Promise<Map<string, AdapterProvenance>> {
+	try {
+		const manifest = parseJson(await readFile(path.join(packageRoot, 'adapters', 'manifest.json'), 'utf8'));
+		if (!isRecord(manifest) || !Array.isArray(manifest.adapters)) return new Map();
+		const manifestSchemaVersion =
+			typeof manifest.schemaVersion === 'number' ? manifest.schemaVersion : null;
+		const manifestMode = typeof manifest.mode === 'string' ? manifest.mode : null;
+		return new Map(
+			manifest.adapters.filter(isRecord).flatMap((adapter) => {
+				if (typeof adapter.app !== 'string') return [];
+				const source = isRecord(adapter.source) ? adapter.source : null;
+				return [
+					[
+						adapter.app,
+						{
+							manifestSchemaVersion,
+							manifestMode,
+							builtAt: typeof adapter.builtAt === 'string' ? adapter.builtAt : null,
+							sourceRepository:
+								typeof source?.canonicalRepository === 'string'
+									? source.canonicalRepository
+									: null,
+							sourceCommit: typeof source?.commit === 'string' ? source.commit : null,
+							sourceTree: typeof source?.tree === 'string' ? source.tree : null,
+							canonicalRemote:
+								typeof source?.canonicalRemote === 'boolean' ? source.canonicalRemote : null,
+							remoteHeadEvidence:
+								typeof source?.remoteHeadEvidence === 'string'
+									? source.remoteHeadEvidence
+									: null
+						}
+					]
+				];
+			}) as Array<[string, AdapterProvenance]>
+		);
+	} catch {
+		return new Map();
+	}
+}
+
 async function appList(io: CliIO, flags: Record<string, string | boolean | string[]>): Promise<number> {
 	const paths = resolveMerePaths(io.env);
 	const registry = createRegistry(paths.mereRoot, paths.packageRoot);
+	const provenance = await bundledAdapterProvenance(paths.packageRoot);
 	const rows = [];
 	for (const entry of registry) {
 		const resolved = await resolveCli(entry, io.env);
-		rows.push({ app: entry.key, label: entry.label, auth: entry.authKind, cli: resolved.displayPath, source: resolved.source, exists: resolved.exists });
+		const cwd = executionCwd(entry, resolved);
+		const version = resolved.exists
+			? await runCapture(resolved.command, [...resolved.args, '--version'], {
+					cwd,
+					env: io.env,
+					timeoutMs: 10_000
+				}).catch(() => null)
+			: null;
+		const normalizedVersion = versionText(version);
+		rows.push({
+			app: entry.key,
+			label: entry.label,
+			auth: entry.authKind,
+			cli: resolved.displayPath,
+			source: resolved.source,
+			exists: resolved.exists,
+			adapterVersion: normalizedVersion.ok ? normalizedVersion.value : null,
+			provenance: resolved.source === 'bundled' ? provenance.get(entry.key) ?? null : null
+		});
 	}
 	if (readBooleanFlag(flags, 'json')) writeJson(io, { apps: rows });
 	else io.stdout(rows.map((row) => `${row.app}\t${row.auth}\t${row.source}\t${row.exists ? 'ready' : 'missing'}\t${row.cli}`).join('\n') + '\n');
@@ -1244,6 +1394,7 @@ async function opsDoctor(io: CliIO, flags: Record<string, string | boolean | str
 	const rootState = await loadState(paths);
 	const requestedWorkspace = readStringFlag(flags, 'workspace') ?? rootState.defaultWorkspace;
 	const entries = readStringFlag(flags, 'app') ? selectedEntries(registry, flags) : registry;
+	const provenance = await bundledAdapterProvenance(paths.packageRoot);
 	const node = process.version;
 	const pnpm = await runCapture(findPnpm(io.env), ['--version'], { env: io.env }).catch((error: unknown) => ({
 		code: 1,
@@ -1262,13 +1413,19 @@ async function opsDoctor(io: CliIO, flags: Record<string, string | boolean | str
 		const normalizedVersion = versionText(version);
 		const completion = resolved.exists ? await runCapture(resolved.command, [...resolved.args, 'completion', 'bash'], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
 		const manifest = await loadManifest(entry, io.env);
-		const authArgs = ['auth', 'whoami', '--json', ...(requestedWorkspace ? ['--workspace', requestedWorkspace] : [])];
-		const whoami = resolved.exists && entry.authKind !== 'none' ? await runCapture(resolved.command, [...resolved.args, ...authArgs], { cwd, env: io.env, timeoutMs: 10_000 }).catch(() => null) : null;
-		const authHealth = entry.authKind === 'none'
-			? authHealthForResult(entry, { code: 0, signal: null, stdout: '', stderr: '' })
-			: whoami
-				? authHealthForResult(entry, whoami)
-				: { ok: false, status: 'unauthenticated' as const, reasons: ['not_checked'], payload: null };
+		const authProbe = resolved.exists
+			? await probeAppAuth(io, entry, requestedWorkspace ? { workspace: requestedWorkspace } : {})
+			: {
+					command: [] as string[],
+					result: null,
+					health: {
+						ok: false,
+						status: 'unauthenticated' as const,
+						reasons: ['not_checked'],
+						payload: null
+					}
+				};
+		const authHealth = authProbe.health;
 		apps.push({
 			app: entry.key,
 			cli: resolved.displayPath,
@@ -1276,19 +1433,33 @@ async function opsDoctor(io: CliIO, flags: Record<string, string | boolean | str
 			cliExists: resolved.exists,
 			versionOk: normalizedVersion.ok,
 			version: normalizedVersion.ok ? normalizedVersion.value : null,
+			adapterVersion: normalizedVersion.ok ? normalizedVersion.value : null,
+			provenance: resolved.source === 'bundled' ? provenance.get(entry.key) ?? null : null,
 			versionError: normalizedVersion.ok ? null : normalizedVersion.value ?? version?.stderr.trim() ?? null,
 			completionOk: completion?.code === 0,
 			manifestOk: manifest.ok,
 			authOk: authHealth.ok,
 			authStatus: authHealth.status,
 			authReasons: authHealth.reasons,
+			authProbe: authProbe.command,
 			workspace: requestedWorkspace ?? null
 		});
 	}
 	const payload = { node, pnpm: { ok: pnpm.code === 0, version: pnpm.stdout.trim(), error: pnpm.stderr.trim() }, mereRun, mereRunModels, apps };
 	if (readBooleanFlag(flags, 'json')) writeJson(io, payload);
-	else io.stdout(apps.map((app) => `${app.app}: ${app.cliExists && app.completionOk && app.manifestOk ? 'ok' : 'needs attention'} (${app.authStatus})`).join('\n') + '\n');
-	return apps.every((app) => app.cliExists && app.completionOk && app.manifestOk) ? 0 : 1;
+	else io.stdout(
+		apps
+			.map(
+				(app) =>
+					`${app.app}: ${app.cliExists && app.versionOk && app.completionOk && app.manifestOk && app.authOk ? 'ok' : 'needs attention'} (${app.authStatus})`
+			)
+			.join('\n') + '\n'
+	);
+	return apps.every(
+		(app) => app.cliExists && app.versionOk && app.completionOk && app.manifestOk && app.authOk
+	)
+		? 0
+		: 1;
 }
 
 async function opsSmoke(io: CliIO, flags: Record<string, string | boolean | string[]>): Promise<number> {
@@ -1308,6 +1479,7 @@ type ReadOnlyAuditCommand = {
 };
 
 type ReadOnlyAuditCoverage = {
+	status: 'none' | 'executed';
 	readCommands: number;
 	auditDefaultCommands: number;
 	executedCommands: number;
@@ -1327,6 +1499,15 @@ type ReadOnlyAuditApp = {
 	ok: boolean;
 	manifestOk: boolean;
 	error?: string | undefined;
+	auth?: {
+		ok: boolean;
+		status: AuthHealth['status'];
+		reasons: string[];
+		probe: string[];
+		code: number;
+		stdout: string;
+		stderr: string;
+	} | undefined;
 	coverage?: ReadOnlyAuditCoverage | undefined;
 	selectorHints?: SelectorHints | undefined;
 	commands: ReadOnlyAuditCommand[];
@@ -1455,7 +1636,11 @@ function createSnapshotProgress(io: CliIO, flags: Record<string, string | boolea
 				return;
 			}
 			const failed = app.commands.filter((command) => !command.ok).length;
-			if (failed === 0) line('ok', 'green', `${app.app}: ${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} passed`);
+			if (!app.auth?.ok) {
+				line('!!', 'red', `${app.app}: live auth probe failed`);
+			} else if (app.coverage?.status === 'none') {
+				line('!!', 'yellow', `${app.app}: no audit-default read commands`);
+			} else if (failed === 0) line('ok', 'green', `${app.app}: ${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} passed`);
 			else line('!!', 'yellow', `${app.app}: ${failed}/${app.commands.length} read check${app.commands.length === 1 ? '' : 's'} failed`);
 		},
 		stop() {
@@ -1473,12 +1658,13 @@ function formatWorkspaceSnapshot(payload: { generatedAt: string; workspace: stri
 	const failedCommands = payload.apps.reduce((sum, app) => sum + app.commands.filter((command) => !command.ok).length, 0);
 	const skippedCommands = payload.apps.reduce((sum, app) => sum + (app.coverage?.skippedReadCommands.length ?? 0), 0);
 	const missingSelectors = payload.apps.flatMap((app) => app.selectorHints?.missing ?? []);
+	const noCoverage = payload.apps.filter((app) => app.coverage?.status === 'none');
 	const lines = [
 		'Workspace snapshot',
 		`workspace: ${payload.workspace}`,
 		`generated: ${payload.generatedAt}`,
 		`apps: ${healthyApps}/${totalApps} ok`,
-		`read checks: ${totalCommands - failedCommands}/${totalCommands} passed${skippedCommands > 0 ? `, ${skippedCommands} skipped` : ''}`
+		`read checks: ${totalCommands - failedCommands}/${totalCommands} passed${skippedCommands > 0 ? `, ${skippedCommands} skipped` : ''}${noCoverage.length > 0 ? `, ${noCoverage.length} with no coverage` : ''}`
 	];
 
 	const failingApps = payload.apps.filter((app) => !app.ok || !app.manifestOk);
@@ -1489,6 +1675,14 @@ function formatWorkspaceSnapshot(payload: { generatedAt: string; workspace: stri
 		for (const app of failingApps.slice(0, 8)) {
 			if (!app.manifestOk) {
 				lines.push(`- ${app.app}: manifest unavailable${parentheticalFirstLine(app.error)}`);
+				continue;
+			}
+			if (!app.auth?.ok) {
+				lines.push(`- ${app.app}: live auth ${app.auth?.status ?? 'not checked'} (${app.auth?.reasons.join(', ') || 'unknown'})`);
+				continue;
+			}
+			if (app.coverage?.status === 'none') {
+				lines.push(`- ${app.app}: coverage none (no audit-default read commands)`);
 				continue;
 			}
 			const failed = app.commands.filter((command) => !command.ok);
@@ -1669,9 +1863,28 @@ async function collectReadOnlyAuditDefaults(
 		}
 		options.progress?.selectorStart(entry.key);
 		app.selectorHints = await selectorHintsForEntry(io, entry, workspace);
-		const readCommands = manifest.manifest.commands.filter((command) => command.risk === 'read');
+		const authProbe = await probeAppAuth(
+			io,
+			entry,
+			workspace ? { workspace } : {}
+		);
+		app.auth = {
+			ok: authProbe.health.ok,
+			status: authProbe.health.status,
+			reasons: authProbe.health.reasons,
+			probe: authProbe.command,
+			code: authProbe.result.code,
+			stdout: redactOutput(authProbe.result.stdout.trim()),
+			stderr: redactOutput(authProbe.result.stderr.trim())
+		};
+		const readCommands = manifest.manifest.commands.filter(
+			(command) =>
+				command.risk === 'read' &&
+				command.path.join('\u0000') !== authProbe.command.join('\u0000')
+		);
 		const commands = readCommands.filter((command) => command.auditDefault);
 		app.coverage = {
+			status: commands.length === 0 ? 'none' : 'executed',
 			readCommands: readCommands.length,
 			auditDefaultCommands: commands.length,
 			executedCommands: 0,
@@ -1715,7 +1928,12 @@ async function collectReadOnlyAuditDefaults(
 				options.progress?.commandEnd(row);
 			}
 		}
-		app.ok = app.commands.every((command) => command.ok);
+		app.ok =
+			app.manifestOk &&
+			app.auth.ok &&
+			app.coverage.status !== 'none' &&
+			app.coverage.executedCommands > 0 &&
+			app.commands.every((command) => command.ok);
 		apps.push(app);
 		options.progress?.appEnd(app);
 	}
@@ -1723,9 +1941,15 @@ async function collectReadOnlyAuditDefaults(
 }
 
 async function opsAudit(io: CliIO, flags: Record<string, string | boolean | string[]>): Promise<number> {
-	const payload = await collectReadOnlyAuditDefaults(io, flags, readStringFlag(flags, 'workspace'));
+	const paths = resolveMerePaths(io.env);
+	const state = await loadState(paths);
+	const payload = await collectReadOnlyAuditDefaults(
+		io,
+		flags,
+		readStringFlag(flags, 'workspace') ?? state.defaultWorkspace ?? undefined
+	);
 	writeJson(io, { generatedAt: payload.generatedAt, workspace: payload.workspace, audits: payload.audits });
-	return payload.audits.every((audit) => audit.ok) ? 0 : 1;
+	return payload.apps.every((app) => app.ok) ? 0 : 1;
 }
 
 async function opsWorkspaceSnapshot(io: CliIO, flags: Record<string, string | boolean | string[]>): Promise<number> {
@@ -1743,6 +1967,7 @@ async function opsWorkspaceSnapshot(io: CliIO, flags: Record<string, string | bo
 	const snapshot = {
 		generatedAt: payload.generatedAt,
 		workspace,
+		ok: payload.apps.every((app) => app.ok),
 		apps: payload.apps
 	};
 	if (readBooleanFlag(flags, 'json')) writeJson(io, snapshot);
