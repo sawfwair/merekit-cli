@@ -6,7 +6,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.19 - 2026-08-19
+
 - Fixed root auth orchestration for apps that require no authentication so login, whoami, logout, and status report `not_required` instead of delegating unsupported auth commands.
+- Standardized live auth probes, workspace precedence, honest snapshot coverage, recursive secret redaction, and adapter source/version provenance across root diagnostics and delegated commands.
+- Published safer Business session output, collision-aware provisioning, and complete CRM update/archive/restore behavior with optional contact identity fields and atomic normalized task due dates.
+- Published the Works live-grant refresh fix and typed `work create` contract, then rebuilt all 16 bundled adapters deterministically from clean canonical `main` heads under the recorded `canonical-main` review policy.
+- Refreshed vulnerable transitive URI, IP-address, request-body, and Hono runtime dependencies; the release lock now passes a zero-vulnerability production audit and registry-signature verification.
 
 ## 0.5.18 - 2026-07-12
 

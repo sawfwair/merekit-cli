@@ -1095,6 +1095,14 @@ function mapAttachment(row) {
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
     r2Key: row.r2_key,
+    sha256: null,
+    detectedMimeType: null,
+    scanStatus: "unscannable",
+    scanProvider: null,
+    scanDetail: "Offline cache does not retain malware scan attestations.",
+    isEncryptedArchive: false,
+    quarantineReason: "Reconnect to Mere Email to verify this attachment before opening it.",
+    scanOverrideAt: null,
     createdAt: row.created_at
   };
 }
@@ -6496,11 +6504,11 @@ var EmailWorkspaceImportStatusSchema = external_exports.object({
 init_email_product();
 init_json();
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.3_@sveltejs+vite-p_42d4ecf4ce29d0029172682db9203b12/node_modules/@mere/cli-auth/src/client.ts
 import { spawn as spawn2 } from "node:child_process";
 import { createServer } from "node:http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.3_@sveltejs+vite-p_42d4ecf4ce29d0029172682db9203b12/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -6511,7 +6519,7 @@ var CLI_AUTH_CODE_QUERY_PARAM = "code";
 var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.3_@sveltejs+vite-p_42d4ecf4ce29d0029172682db9203b12/node_modules/@mere/cli-auth/src/session.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir2, open, readFile, rename, rm as rm2 } from "node:fs/promises";
 import os3 from "node:os";
@@ -6633,7 +6641,7 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.55.0_@sveltejs+vite-p_cce024e09157c6f3a2f48f55311f97e2/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.3_@sveltejs+vite-p_42d4ecf4ce29d0029172682db9203b12/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -6913,6 +6921,7 @@ function parseThread(value) {
 }
 function parseAttachment(value) {
   const record = expectRecord(value, "attachment");
+  const scanStatus = record.scanStatus === "pending" || record.scanStatus === "clean" || record.scanStatus === "infected" || record.scanStatus === "quarantined" || record.scanStatus === "unscannable" ? record.scanStatus : "unscannable";
   return {
     id: expectString(record.id, "attachment.id"),
     messageId: expectString(record.messageId, "attachment.messageId"),
@@ -6920,6 +6929,14 @@ function parseAttachment(value) {
     mimeType: expectNullableString(record.mimeType, "attachment.mimeType"),
     sizeBytes: expectNumber(record.sizeBytes, "attachment.sizeBytes"),
     r2Key: expectString(record.r2Key, "attachment.r2Key"),
+    sha256: typeof record.sha256 === "string" ? record.sha256 : null,
+    detectedMimeType: typeof record.detectedMimeType === "string" ? record.detectedMimeType : null,
+    scanStatus,
+    scanProvider: typeof record.scanProvider === "string" ? record.scanProvider : null,
+    scanDetail: typeof record.scanDetail === "string" ? record.scanDetail : null,
+    isEncryptedArchive: record.isEncryptedArchive === true,
+    quarantineReason: typeof record.quarantineReason === "string" ? record.quarantineReason : null,
+    scanOverrideAt: typeof record.scanOverrideAt === "string" ? record.scanOverrideAt : null,
     createdAt: expectString(record.createdAt, "attachment.createdAt")
   };
 }

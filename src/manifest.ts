@@ -12,6 +12,14 @@ export type ManifestLoadResult = {
 	error?: string;
 };
 
+const manifestOptionSchema = z.object({
+	name: z.string().min(1),
+	type: z.enum(['string', 'boolean', 'number', 'json']),
+	description: z.string().min(1),
+	required: z.boolean(),
+	enum: z.array(z.string()).optional()
+});
+
 const manifestCommandSchema = z.object({
 	id: z.string().min(1),
 	path: z.array(z.string().min(1)).min(1),
@@ -24,6 +32,12 @@ const manifestCommandSchema = z.object({
 	requiresConfirm: z.boolean(),
 	positionals: z.array(z.string()).default([]),
 	flags: z.array(z.string()).default([]),
+	options: z.array(manifestOptionSchema).optional(),
+	requiredFlags: z.array(z.string()).optional(),
+	requiredFlagGroups: z.array(z.array(z.string()).min(1)).optional(),
+	dataSchema: z.record(z.string(), z.unknown()).optional(),
+	examples: z.array(z.unknown()).optional(),
+	interactiveConfirm: z.boolean().optional(),
 	auditDefault: z.boolean().optional()
 });
 
@@ -33,9 +47,11 @@ const appCommandManifestSchema = z.object({
 	namespace: z.string().min(1),
 	aliases: z.array(z.string()).default([]),
 	auth: z.object({ kind: z.enum(['browser', 'token', 'device', 'none', 'mixed']) }),
+	authProbe: z.array(z.string().min(1)).min(1).optional(),
 	baseUrlEnv: z.array(z.string()),
 	sessionPath: z.string().nullable(),
 	globalFlags: z.array(z.string()).optional(),
+	globalOptions: z.array(manifestOptionSchema).optional(),
 	commands: z.array(manifestCommandSchema)
 });
 

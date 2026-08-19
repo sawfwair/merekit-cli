@@ -29,7 +29,7 @@ if (args[0] === 'commands') {
     globalFlags: ['workspace', 'json', 'yes', 'confirm', 'ai', 'projection-url'],
     commands: [
       { id: 'project.list', path: ['project', 'list'], summary: 'List projects.', auth: 'workspace', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
-      { id: 'project.create', path: ['project', 'create'], summary: 'Create project.', auth: 'workspace', risk: 'write', supportsJson: true, supportsData: true, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] },
+      { id: 'project.create', path: ['project', 'create'], summary: 'Create project.', auth: 'workspace', risk: 'write', supportsJson: true, supportsData: true, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['title'], requiredFlags: ['title'], options: [{ name: 'title', type: 'string', description: 'Project title.', required: true }], dataSchema: { type: 'object', required: ['title'] }, examples: [{ flags: { title: 'Example' } }] },
       { id: 'project.delete', path: ['project', 'delete'], summary: 'Delete project.', auth: 'workspace', risk: 'destructive', supportsJson: true, supportsData: false, requiresYes: true, requiresConfirm: true, positionals: [], flags: [] },
       { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [], auditDefault: true },
       { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
@@ -152,7 +152,7 @@ process.exit(0);
   await chmod(fake, 0o755);
 }
 
-async function writeFakeAuthCli(fake, payload, exitCode = 0) {
+async function writeFakeAuthCli(fake, payload, exitCode = 0, authProbe = ['auth', 'whoami']) {
   await mkdir(path.dirname(fake), { recursive: true });
   await writeFile(
     fake,
@@ -164,12 +164,13 @@ if (args[0] === 'commands') {
     app: 'fake-auth',
     namespace: 'projects',
     aliases: ['projects'],
-    auth: { kind: 'browser' },
+		auth: { kind: 'browser' },
+		authProbe: ${JSON.stringify(authProbe)},
     baseUrlEnv: [],
     sessionPath: null,
     globalFlags: ['workspace', 'json'],
     commands: [
-      { id: 'auth.whoami', path: ['auth', 'whoami'], summary: 'Whoami.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['workspace'], auditDefault: true },
+		  { id: 'auth.probe', path: ${JSON.stringify(authProbe)}, summary: 'Probe auth.', auth: 'session', risk: 'read', supportsJson: true, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: ['workspace'], auditDefault: true },
       { id: 'completion', path: ['completion'], summary: 'Completion.', auth: 'none', risk: 'read', supportsJson: false, supportsData: false, requiresYes: false, requiresConfirm: false, positionals: [], flags: [] }
     ]
   }));
@@ -190,7 +191,8 @@ if (commandArgs[0] === 'completion') {
   console.log('complete');
   process.exit(0);
 }
-if (commandArgs[0] === 'auth' && commandArgs[1] === 'whoami') {
+const authProbe = ${JSON.stringify(authProbe)};
+if (commandArgs.slice(0, authProbe.length).join(' ') === authProbe.join(' ')) {
   console.log(JSON.stringify({ ...${JSON.stringify(payload)}, args }));
   process.exit(${exitCode});
 }
@@ -333,9 +335,30 @@ Use the Mere CLI to complete business onboarding.
 }
 
 async function fakePackageRoot() {
-  const packageRoot = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-package-'));
-  await writeFakeProjectsCli(path.join(packageRoot, 'adapters', 'projects', 'run.js'));
-  return packageRoot;
+	const packageRoot = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-package-'));
+	await writeFakeProjectsCli(path.join(packageRoot, 'adapters', 'projects', 'run.js'));
+	await writeFile(
+		path.join(packageRoot, 'adapters', 'manifest.json'),
+		JSON.stringify({
+			schemaVersion: 2,
+			mode: 'release',
+			adapters: [
+				{
+					app: 'projects',
+					builtAt: '2026-08-18T00:00:00.000Z',
+					source: {
+						canonicalRepository: 'https://github.com/sawfwair/mere-projects.git',
+						commit: '1111111111111111111111111111111111111111',
+						tree: '2222222222222222222222222222222222222222',
+						canonicalRemote: true,
+						remoteHeadEvidence: 'live-ls-remote'
+					}
+				}
+			]
+		}),
+		'utf8',
+	);
+	return packageRoot;
 }
 
 async function writeFakeSwift(binDir) {
@@ -404,8 +427,9 @@ process.exit(1);
 async function run(args, env = {}) {
   let stdout = '';
   let stderr = '';
+  const isolatedHome = env.HOME ?? (env.MERE_ROOT ? path.join(env.MERE_ROOT, '.test-home') : undefined);
   const code = await runCli(args, {
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...(isolatedHome ? { HOME: isolatedHome } : {}), ...env },
     stdout: (text) => {
       stdout += text;
     },
@@ -855,9 +879,12 @@ test('resolves bundled adapters before local CLIs by default', async () => {
   });
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  const projects = payload.apps.find((app) => app.app === 'projects');
-  assert.equal(projects.source, 'bundled');
-  assert.equal(projects.exists, true);
+	const projects = payload.apps.find((app) => app.app === 'projects');
+	assert.equal(projects.source, 'bundled');
+	assert.equal(projects.exists, true);
+	assert.equal(projects.adapterVersion, 'fake-projects');
+	assert.equal(projects.provenance.sourceCommit, '1111111111111111111111111111111111111111');
+	assert.equal(projects.provenance.remoteHeadEvidence, 'live-ls-remote');
 });
 
 test('env overrides beat bundled adapters', async () => {
@@ -956,7 +983,39 @@ test('delegates supported pass-through flags only', async () => {
   });
   assert.equal(result.code, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.deepEqual(payload.args, ['--json', '--workspace', 'ws_1', 'project', 'list']);
+	assert.deepEqual(payload.args, ['--json', '--workspace', 'ws_1', 'project', 'list']);
+});
+
+test('root workspace context applies to direct delegation and explicit flags override it', async () => {
+  const root = await fakeMereRoot();
+  const home = await mkdtemp(path.join(os.tmpdir(), 'mere-cli-direct-workspace-'));
+  const env = { MERE_ROOT: root, MERE_CLI_SOURCE: 'local', HOME: home };
+
+  const context = await run(['context', 'set-workspace', '--workspace', 'ws_root'], env);
+  assert.equal(context.code, 0, context.stderr);
+
+  const inherited = await run(['projects', 'project', 'list', '--json'], env);
+  assert.equal(inherited.code, 0, inherited.stderr);
+  assert.deepEqual(JSON.parse(inherited.stdout).args, [
+    '--json',
+    '--workspace',
+    'ws_root',
+    'project',
+    'list',
+  ]);
+
+  const overridden = await run(
+    ['projects', 'project', 'list', '--workspace', 'ws_explicit', '--json'],
+    env,
+  );
+	assert.equal(overridden.code, 0, overridden.stderr);
+	assert.deepEqual(JSON.parse(overridden.stdout).args, [
+		'--workspace',
+		'ws_explicit',
+		'--json',
+		'project',
+    'list',
+  ]);
 });
 
 test('passes --ai and --projection-url through to apps that declare them as global', async () => {
@@ -1016,24 +1075,25 @@ test('workspace snapshot runs read-only audit defaults for a workspace', async (
   assert.equal(payload.apps.length, 1);
   assert.equal(payload.apps[0].app, 'projects');
   assert.deepEqual(payload.apps[0].coverage, {
-    readCommands: 3,
-    auditDefaultCommands: 2,
-    executedCommands: 2,
+    status: 'executed',
+    readCommands: 2,
+    auditDefaultCommands: 1,
+    executedCommands: 1,
     skippedReadCommands: [{ command: ['completion'], reason: 'Not marked auditDefault in the app manifest.' }],
   });
+  assert.equal(payload.apps[0].auth.ok, true);
+  assert.deepEqual(payload.apps[0].auth.probe, ['auth', 'whoami']);
   assert.deepEqual(
     payload.apps[0].commands.map((command) => command.command.join(' ')),
-    ['project list', 'auth whoami'],
+    ['project list'],
   );
   for (const command of payload.apps[0].commands) {
     const commandPayload = JSON.parse(command.stdout);
-    if (command.command.join(' ') === 'auth whoami') {
-      assert.equal(commandPayload.accessToken, '<redacted>');
-      assert.equal(commandPayload.refreshToken, '<redacted>');
-    }
     assert.ok(commandPayload.args.includes('--workspace'));
     assert.ok(commandPayload.args.includes('ws_1'));
   }
+  assert.equal(JSON.parse(payload.apps[0].auth.stdout).accessToken, '<redacted>');
+  assert.equal(JSON.parse(payload.apps[0].auth.stdout).refreshToken, '<redacted>');
 });
 
 test('workspace snapshot renders a human summary without json', async () => {
@@ -1046,7 +1106,7 @@ test('workspace snapshot renders a human summary without json', async () => {
   assert.match(result.stdout, /Workspace snapshot/);
   assert.match(result.stdout, /workspace: ws_1/);
   assert.match(result.stdout, /apps: 1\/1 ok/);
-  assert.match(result.stdout, /read checks: 2\/2 passed, 1 skipped/);
+  assert.match(result.stdout, /read checks: 1\/1 passed, 1 skipped/);
   assert.match(result.stdout, /Full payload: rerun with --json\./);
   assert.throws(() => JSON.parse(result.stdout));
 });
@@ -1059,7 +1119,7 @@ test('ops doctor does not report help text as an app version', async () => {
     MERE_ROOT: root,
     MERE_PROJECTS_CLI: fake,
   });
-  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.code, 1, result.stderr);
   const app = JSON.parse(result.stdout).apps[0];
   assert.equal(app.versionOk, false);
   assert.equal(app.version, null);
@@ -1081,7 +1141,7 @@ test('auth status treats expired sessions as unusable even when adapters exit ze
     MERE_PROJECTS_CLI: fake,
   });
 
-  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.code, 1, result.stderr);
   const status = JSON.parse(result.stdout).results[0];
   assert.equal(status.ok, false);
   assert.equal(status.authStatus, 'unauthenticated');
@@ -1102,7 +1162,7 @@ test('auth status treats authenticated false payloads as unusable despite ok tru
     MERE_PROJECTS_CLI: fake,
   });
 
-  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.code, 1, result.stderr);
   const status = JSON.parse(result.stdout).results[0];
   assert.equal(status.ok, false);
   assert.equal(status.authStatus, 'unauthenticated');
@@ -1136,7 +1196,57 @@ test('auth status uses stored workspace context when no workspace flag is passed
   const status = JSON.parse(result.stdout).results[0];
   assert.equal(status.ok, true);
   assert.equal(status.workspace, 'ws_active');
-  assert.deepEqual(JSON.parse(status.stdout).args, ['--json', '--workspace', 'ws_active', 'auth', 'whoami']);
+	assert.deepEqual(JSON.parse(status.stdout).args, ['--json', '--workspace', 'ws_active', 'auth', 'whoami']);
+});
+
+test('auth status and whoami use the manifest-declared live probe', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-custom-auth-probe.js');
+  await writeFakeAuthCli(
+    fake,
+    {
+      ok: true,
+      authenticated: true,
+      user: { email: 'person@example.com' },
+      expiresAt: '2999-01-01T00:00:00.000Z',
+    },
+    0,
+    ['session', 'probe'],
+  );
+
+  for (const action of ['status', 'whoami']) {
+    const result = await run(['auth', action, '--app', 'projects', '--json'], {
+      MERE_ROOT: root,
+      MERE_PROJECTS_CLI: fake,
+    });
+    assert.equal(result.code, 0, `${action}: ${result.stderr}`);
+    const status = JSON.parse(result.stdout).results[0];
+    assert.deepEqual(status.authProbe, ['session', 'probe']);
+    assert.deepEqual(JSON.parse(status.stdout).args.slice(-2), ['session', 'probe']);
+  }
+});
+
+test('workspace snapshot reports no audit coverage separately from healthy auth', async () => {
+  const root = await fakeMereRoot();
+  const fake = path.join(root, 'fake-no-audit-coverage.js');
+  await writeFakeAuthCli(fake, {
+    ok: true,
+    authenticated: true,
+    user: { email: 'person@example.com' },
+    expiresAt: '2999-01-01T00:00:00.000Z',
+  });
+
+  const result = await run(
+    ['ops', 'workspace-snapshot', '--app', 'projects', '--workspace', 'ws_1', '--json'],
+    { MERE_ROOT: root, MERE_PROJECTS_CLI: fake },
+  );
+
+  assert.equal(result.code, 1, result.stderr);
+  const app = JSON.parse(result.stdout).apps[0];
+  assert.equal(app.auth.ok, true);
+  assert.equal(app.coverage.status, 'none');
+  assert.equal(app.coverage.executedCommands, 0);
+  assert.equal(app.ok, false);
 });
 
 test('ops doctor uses the same auth usability semantics as auth status', async () => {
@@ -1154,7 +1264,7 @@ test('ops doctor uses the same auth usability semantics as auth status', async (
     MERE_PROJECTS_CLI: fake,
   });
 
-  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.code, 1, result.stderr);
   const app = JSON.parse(result.stdout).apps[0];
   assert.equal(app.authOk, false);
   assert.equal(app.authStatus, 'unauthenticated');
@@ -1310,6 +1420,10 @@ test('agent bootstrap writes a secret-free context pack', async () => {
   const commandReference = await readFile(path.join(output, 'command-reference.md'), 'utf8');
   assert.match(commandReference, /project list/);
   assert.match(commandReference, /--confirm/);
+  assert.match(commandReference, /Required/);
+  assert.match(commandReference, /--title/);
+  assert.match(commandReference, /Project title\./);
+  assert.match(commandReference, /"title":"Example"/);
 });
 
 test('finance auth login delegates when explicitly selected', async () => {

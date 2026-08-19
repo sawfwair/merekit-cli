@@ -19,6 +19,14 @@ export type AppKey =
 export type AuthKind = 'browser' | 'token' | 'device' | 'none' | 'mixed';
 export type CommandRisk = 'read' | 'write' | 'destructive' | 'external';
 
+export type ManifestOption = {
+	name: string;
+	type: 'string' | 'boolean' | 'number' | 'json';
+	description: string;
+	required: boolean;
+	enum?: string[] | undefined;
+};
+
 export type ManifestCommand = {
 	id: string;
 	path: string[];
@@ -31,6 +39,12 @@ export type ManifestCommand = {
 	requiresConfirm: boolean;
 	positionals: string[];
 	flags: string[];
+	options?: ManifestOption[] | undefined;
+	requiredFlags?: string[] | undefined;
+	requiredFlagGroups?: string[][] | undefined;
+	dataSchema?: Record<string, unknown> | undefined;
+	examples?: unknown[] | undefined;
+	interactiveConfirm?: boolean | undefined;
 	auditDefault?: boolean | undefined;
 };
 
@@ -40,9 +54,11 @@ export type AppCommandManifest = {
 	namespace: string;
 	aliases: string[];
 	auth: { kind: AuthKind };
+	authProbe?: string[] | undefined;
 	baseUrlEnv: string[];
 	sessionPath: string | null;
 	globalFlags?: string[] | undefined;
+	globalOptions?: ManifestOption[] | undefined;
 	commands: ManifestCommand[];
 };
 
