@@ -44,23 +44,46 @@ function authError(message, details) {
 // ../cli-core/src/terminal.ts
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+var REDACTED = "[REDACTED]";
+var SECRET_KEY = /(?:^|[_-])(?:access|refresh|bootstrap|auth|identity)?[_-]?(?:token|secret|password|authorization|api[_-]?key|identity[_-]?proof)s?$/i;
+var JWT_VALUE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+var BEARER_VALUE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+var MERE_TOKEN_VALUE = /\b(?:mere|mrt|mat|mrf|mra)[_-](?:access[_-]?|refresh[_-]?)?[A-Za-z0-9._~-]{12,}\b/gi;
+function redactText(value) {
+  return value.replace(BEARER_VALUE, `Bearer ${REDACTED}`).replace(JWT_VALUE, REDACTED).replace(MERE_TOKEN_VALUE, REDACTED);
+}
+function redactSecrets(value, seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value === "string") return redactText(value);
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactSecrets(entry, seen));
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      SECRET_KEY.test(key) ? REDACTED : redactSecrets(entry, seen)
+    ])
+  );
+}
 function printJson(stream, value) {
-  stream.write(`${JSON.stringify(value, null, 2)}
+  stream.write(`${JSON.stringify(redactSecrets(value), null, 2)}
 `);
 }
 function errorPayload(error) {
   if (error instanceof CommandError) {
-    return {
+    return redactSecrets({
       code: error.code,
       message: error.message,
       status: error.status,
       details: error.details
-    };
+    });
   }
-  return {
+  return redactSecrets({
     code: "unexpected_error",
     message: error instanceof Error ? error.message : "Unexpected error."
-  };
+  });
 }
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -70,7 +93,7 @@ function stringArray(value) {
   return value.filter((entry) => typeof entry === "string" && entry.trim().length > 0);
 }
 function formatErrorForTerminal(error) {
-  const message = error instanceof Error ? error.message : "Unexpected error.";
+  const message = redactText(error instanceof Error ? error.message : "Unexpected error.");
   if (!(error instanceof CommandError) || !isRecord(error.details)) {
     return message;
   }
@@ -88,7 +111,7 @@ function formatErrorForTerminal(error) {
       lines.push(`  ${command}`);
     }
   }
-  return lines.join("\n");
+  return redactText(lines.join("\n"));
 }
 async function confirmIfNeeded(message, options) {
   if (options.yes) return;
@@ -627,18 +650,27 @@ var CLI_OPERATION_NAMES = [
   "contacts.get",
   "contacts.create",
   "contacts.update",
+  "contacts.delete",
+  "contacts.restore",
   "companies.list",
   "companies.get",
   "companies.create",
+  "companies.update",
+  "companies.delete",
+  "companies.restore",
   "deals.list",
   "deals.get",
   "deals.pipelines",
   "deals.create",
   "deals.move-stage",
+  "deals.delete",
+  "deals.restore",
   "tasks.list",
   "tasks.get",
   "tasks.create",
   "tasks.status",
+  "tasks.delete",
+  "tasks.restore",
   "campaigns.list",
   "campaigns.get",
   "campaigns.create",
@@ -5740,6 +5772,24 @@ var NEVER = INVALID;
 var requiredString = external_exports.string().min(1);
 var emailString = external_exports.string().trim().email().transform((value) => value.toLowerCase());
 var optionalString = external_exports.string().optional();
+var taskStatusSchema = external_exports.enum(["todo", "in_progress", "completed", "cancelled"]);
+var taskStatusValues = [...taskStatusSchema.options];
+var optionalTaskDueDate = external_exports.string().optional().transform((value, context) => {
+  if (value === void 0 || value.trim() === "") return void 0;
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const normalized = `${trimmed}T00:00:00.000Z`;
+    if (new Date(normalized).toISOString().slice(0, 10) === trimmed) return normalized;
+  } else {
+    const parsed = new Date(trimmed);
+    if (Number.isFinite(parsed.getTime())) return parsed.toISOString();
+  }
+  context.addIssue({
+    code: external_exports.ZodIssueCode.custom,
+    message: "Must be a valid YYYY-MM-DD date or ISO-8601 timestamp."
+  });
+  return external_exports.NEVER;
+});
 var stringList = external_exports.array(external_exports.string()).optional().default([]);
 var optionalStringList = external_exports.array(external_exports.string()).optional();
 var optionalPositiveNumber = external_exports.preprocess(
@@ -5754,6 +5804,18 @@ function stringOption(name, key, summary, options = {}) {
     summary,
     type: "string",
     ...options
+  };
+}
+function safeSessionSummary(session) {
+  return {
+    ok: true,
+    authenticated: true,
+    user: session.user,
+    workspace: session.workspace,
+    workspaces: session.workspaces,
+    defaultWorkspaceId: session.defaultWorkspaceId,
+    baseUrl: session.baseUrl,
+    expiresAt: session.expiresAt
   };
 }
 function booleanOption(name, key, summary, short) {
@@ -6298,11 +6360,13 @@ var commands = [
       inviteCode: optionalString
     }),
     auth: "none",
-    execute: async (runtime, input2) => runtime.login({
-      consoleUrl: input2.consoleUrl,
-      workspace: runtime.global.workspace,
-      inviteCode: input2.inviteCode
-    }),
+    execute: async (runtime, input2) => safeSessionSummary(
+      await runtime.login({
+        consoleUrl: input2.consoleUrl,
+        workspace: runtime.global.workspace,
+        inviteCode: input2.inviteCode
+      })
+    ),
     format: (data) => {
       const session = data;
       const workspace = session.workspace ? `workspace: ${session.workspace.name} (${session.workspace.id})
@@ -6407,15 +6471,16 @@ ${workspace}`;
     }),
     auth: "none",
     risk: "write",
-    execute: (runtime, input2) => {
+    execute: async (runtime, input2) => {
       const requestId = input2.requestId?.trim();
       if (!requestId) {
         throw new Error("Required: --request-id");
       }
-      return runtime.pollDeviceLogin({
+      const result = await runtime.pollDeviceLogin({
         consoleUrl: input2.consoleUrl,
         requestId
       });
+      return result.status === "authorized" ? { ...result, session: safeSessionSummary(result.session) } : result;
     },
     format: (data) => {
       const result = data;
@@ -6505,7 +6570,7 @@ ${url}`;
     positionals: ["workspace"],
     schema: external_exports.object({ workspace: requiredString }),
     auth: "session",
-    execute: (runtime, input2) => runtime.switchWorkspace(input2.workspace),
+    execute: async (runtime, input2) => safeSessionSummary(await runtime.switchWorkspace(input2.workspace)),
     format: (data) => {
       const session = data;
       if (!session.workspace) return "Default workspace is not set.";
@@ -7177,9 +7242,10 @@ next: ${payload.nextUrl}` : ""}`;
   rpcCommand({
     path: ["contacts", "list"],
     summary: "List contacts.",
-    schema: external_exports.object({}),
+    options: [booleanOption("archived", "archived", "List only archived contacts.")],
+    schema: external_exports.object({ archived: external_exports.boolean().optional().default(false) }),
     op: "contacts.list",
-    buildInput: () => ({})
+    buildInput: (input2) => input2
   }),
   rpcCommand({
     path: ["contacts", "get"],
@@ -7193,7 +7259,7 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["contacts", "create"],
     summary: "Create a contact.",
     options: [
-      stringOption("first-name", "firstName", "First name."),
+      stringOption("first-name", "firstName", "First name.", { required: true }),
       stringOption("last-name", "lastName", "Last name."),
       stringOption("email", "email", "Email address."),
       stringOption("phone", "phone", "Phone number."),
@@ -7203,8 +7269,8 @@ next: ${payload.nextUrl}` : ""}`;
     ],
     schema: external_exports.object({
       firstName: requiredString,
-      lastName: requiredString,
-      email: requiredString,
+      lastName: optionalString,
+      email: emailString.optional(),
       phone: optionalString,
       companyId: optionalString,
       title: optionalString,
@@ -7218,9 +7284,9 @@ next: ${payload.nextUrl}` : ""}`;
     summary: "Update a contact.",
     positionals: ["contactId"],
     options: [
-      stringOption("first-name", "firstName", "First name."),
-      stringOption("last-name", "lastName", "Last name."),
-      stringOption("email", "email", "Email address."),
+      stringOption("first-name", "firstName", "First name.", { required: true }),
+      stringOption("last-name", "lastName", "Last name.", { required: true }),
+      stringOption("email", "email", "Email address.", { required: true }),
       stringOption("phone", "phone", "Phone number."),
       stringOption("company-id", "companyId", "Company identifier."),
       stringOption("title", "title", "Job title.")
@@ -7238,11 +7304,30 @@ next: ${payload.nextUrl}` : ""}`;
     buildInput: (input2) => input2
   }),
   rpcCommand({
+    path: ["contacts", "delete"],
+    summary: "Soft-archive a contact.",
+    positionals: ["contactId"],
+    schema: external_exports.object({ contactId: requiredString }),
+    op: "contacts.delete",
+    buildInput: (input2) => input2,
+    destructive: true,
+    confirmationTarget: (input2) => input2.contactId
+  }),
+  rpcCommand({
+    path: ["contacts", "restore"],
+    summary: "Restore an archived contact.",
+    positionals: ["contactId"],
+    schema: external_exports.object({ contactId: requiredString }),
+    op: "contacts.restore",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
     path: ["companies", "list"],
     summary: "List companies.",
-    schema: external_exports.object({}),
+    options: [booleanOption("archived", "archived", "List only archived companies.")],
+    schema: external_exports.object({ archived: external_exports.boolean().optional().default(false) }),
     op: "companies.list",
-    buildInput: () => ({})
+    buildInput: (input2) => input2
   }),
   rpcCommand({
     path: ["companies", "get"],
@@ -7256,7 +7341,7 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["companies", "create"],
     summary: "Create a company.",
     options: [
-      stringOption("name", "name", "Company name."),
+      stringOption("name", "name", "Company name.", { required: true }),
       stringOption("domain", "domain", "Primary domain."),
       stringOption("website", "website", "Website URL."),
       stringOption("phone", "phone", "Phone number."),
@@ -7273,14 +7358,60 @@ next: ${payload.nextUrl}` : ""}`;
     buildInput: (input2) => input2
   }),
   rpcCommand({
+    path: ["companies", "update"],
+    summary: "Update a company.",
+    positionals: ["companyId"],
+    options: [
+      stringOption("name", "name", "Company name.", { required: true }),
+      stringOption("domain", "domain", "Primary domain."),
+      stringOption("website", "website", "Website URL."),
+      stringOption("phone", "phone", "Phone number."),
+      stringOption("industry", "industry", "Industry."),
+      stringOption("size", "size", "Company size."),
+      stringOption("description", "description", "Description.")
+    ],
+    schema: external_exports.object({
+      companyId: requiredString,
+      name: requiredString,
+      domain: optionalString,
+      website: optionalString,
+      phone: optionalString,
+      industry: optionalString,
+      size: optionalString,
+      description: optionalString
+    }),
+    op: "companies.update",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["companies", "delete"],
+    summary: "Soft-archive a company.",
+    positionals: ["companyId"],
+    schema: external_exports.object({ companyId: requiredString }),
+    op: "companies.delete",
+    buildInput: (input2) => input2,
+    destructive: true,
+    confirmationTarget: (input2) => input2.companyId
+  }),
+  rpcCommand({
+    path: ["companies", "restore"],
+    summary: "Restore an archived company.",
+    positionals: ["companyId"],
+    schema: external_exports.object({ companyId: requiredString }),
+    op: "companies.restore",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
     path: ["deals", "list"],
     summary: "List deals.",
     options: [
+      booleanOption("archived", "archived", "List only archived deals."),
       stringOption("pipeline-id", "pipelineId", "Pipeline identifier."),
       stringOption("contact-id", "contactId", "Contact identifier."),
       stringOption("company-id", "companyId", "Company identifier.")
     ],
     schema: external_exports.object({
+      archived: external_exports.boolean().optional().default(false),
       pipelineId: optionalString,
       contactId: optionalString,
       companyId: optionalString
@@ -7307,9 +7438,9 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["deals", "create"],
     summary: "Create a deal.",
     options: [
-      stringOption("title", "title", "Deal title."),
-      stringOption("pipeline-id", "pipelineId", "Pipeline identifier."),
-      stringOption("stage-id", "stageId", "Stage identifier."),
+      stringOption("title", "title", "Deal title.", { required: true }),
+      stringOption("pipeline-id", "pipelineId", "Pipeline identifier.", { required: true }),
+      stringOption("stage-id", "stageId", "Stage identifier.", { required: true }),
       stringOption("contact-id", "contactId", "Contact identifier."),
       stringOption("company-id", "companyId", "Company identifier."),
       stringOption("value-amount", "valueAmount", "Expected value amount."),
@@ -7345,7 +7476,7 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["deals", "move-stage"],
     summary: "Move a deal to a stage.",
     positionals: ["dealId"],
-    options: [stringOption("stage-id", "stageId", "Stage identifier.")],
+    options: [stringOption("stage-id", "stageId", "Stage identifier.", { required: true })],
     schema: external_exports.object({
       dealId: requiredString,
       stageId: requiredString
@@ -7354,17 +7485,37 @@ next: ${payload.nextUrl}` : ""}`;
     buildInput: (input2) => input2
   }),
   rpcCommand({
+    path: ["deals", "delete"],
+    summary: "Soft-archive a deal.",
+    positionals: ["dealId"],
+    schema: external_exports.object({ dealId: requiredString }),
+    op: "deals.delete",
+    buildInput: (input2) => input2,
+    destructive: true,
+    confirmationTarget: (input2) => input2.dealId
+  }),
+  rpcCommand({
+    path: ["deals", "restore"],
+    summary: "Restore an archived deal.",
+    positionals: ["dealId"],
+    schema: external_exports.object({ dealId: requiredString }),
+    op: "deals.restore",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
     path: ["tasks", "list"],
     summary: "List tasks.",
     options: [
+      booleanOption("archived", "archived", "List only archived tasks."),
       stringOption("entity-type", "entityType", "Linked entity type."),
       stringOption("entity-id", "entityId", "Linked entity id."),
       stringOption("status", "status", "Task status.")
     ],
     schema: external_exports.object({
+      archived: external_exports.boolean().optional().default(false),
       entityType: optionalString,
       entityId: optionalString,
-      status: optionalString
+      status: taskStatusSchema.optional()
     }),
     op: "tasks.list",
     buildInput: (input2) => input2
@@ -7381,9 +7532,11 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["tasks", "create"],
     summary: "Create a task.",
     options: [
-      stringOption("title", "title", "Task title."),
+      stringOption("title", "title", "Task title.", { required: true }),
       stringOption("description", "description", "Description."),
-      stringOption("priority", "priority", "Priority."),
+      stringOption("priority", "priority", "Priority.", {
+        enum: ["low", "medium", "high", "urgent"]
+      }),
       stringOption("assignee-id", "assigneeId", "Assignee user id."),
       stringOption("entity-type", "entityType", "Linked entity type."),
       stringOption("entity-id", "entityId", "Linked entity id."),
@@ -7393,11 +7546,11 @@ next: ${payload.nextUrl}` : ""}`;
     schema: external_exports.object({
       title: requiredString,
       description: optionalString,
-      priority: optionalString,
+      priority: external_exports.enum(["low", "medium", "high", "urgent"]).optional(),
       assigneeId: optionalString,
       entityType: optionalString,
       entityId: optionalString,
-      dueDate: optionalString,
+      dueDate: optionalTaskDueDate,
       recurrence: optionalString
     }),
     op: "tasks.create",
@@ -7407,12 +7560,35 @@ next: ${payload.nextUrl}` : ""}`;
     path: ["tasks", "status"],
     summary: "Update task status.",
     positionals: ["taskId"],
-    options: [stringOption("status", "status", "Status value.")],
+    options: [
+      stringOption("status", "status", "Status value.", {
+        required: true,
+        enum: taskStatusValues
+      })
+    ],
     schema: external_exports.object({
       taskId: requiredString,
-      status: requiredString
+      status: taskStatusSchema
     }),
     op: "tasks.status",
+    buildInput: (input2) => input2
+  }),
+  rpcCommand({
+    path: ["tasks", "delete"],
+    summary: "Soft-archive a task.",
+    positionals: ["taskId"],
+    schema: external_exports.object({ taskId: requiredString }),
+    op: "tasks.delete",
+    buildInput: (input2) => input2,
+    destructive: true,
+    confirmationTarget: (input2) => input2.taskId
+  }),
+  rpcCommand({
+    path: ["tasks", "restore"],
+    summary: "Restore an archived task.",
+    positionals: ["taskId"],
+    schema: external_exports.object({ taskId: requiredString }),
+    op: "tasks.restore",
     buildInput: (input2) => input2
   }),
   rpcCommand({
@@ -8950,8 +9126,14 @@ function parseCommand(argv) {
   }
   const parsedInput = command.schema.safeParse(inputValues);
   if (!parsedInput.success) {
-    const issue = parsedInput.error.issues[0];
-    throw usageError(issue ? formatInputIssue(command, issue) : "Invalid command arguments.");
+    const issues = parsedInput.error.issues.map((issue) => ({
+      field: labelForInputIssue(command, issue),
+      message: formatInputIssue(command, issue)
+    }));
+    throw usageError(
+      issues.map((issue) => issue.message).join("\n") || "Invalid command arguments.",
+      { issues }
+    );
   }
   return {
     command,
@@ -9028,6 +9210,7 @@ function renderCommandManifest() {
       namespace: "business",
       aliases: ["mere-business", "zerosmb"],
       auth: { kind: "browser" },
+      authProbe: ["auth", "whoami"],
       baseUrlEnv: ["MERE_BUSINESS_BASE_URL"],
       sessionPath: "~/.local/state/zerosmb-cli/session.json",
       globalFlags: ["workspace", "json", "no-interactive", "yes", "confirm"],
@@ -9045,6 +9228,13 @@ function renderCommandManifest() {
           interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
           positionals: command.positionals ?? [],
           flags: (command.options ?? []).map((option) => option.name),
+          options: (command.options ?? []).map((option) => ({
+            name: option.name,
+            type: option.type,
+            description: option.summary,
+            required: option.required ?? false,
+            ...option.enum ? { enum: option.enum } : {}
+          })),
           requiredFlags: (command.options ?? []).filter((option) => option.required).map((option) => option.name),
           ...command.path.join(".") === "auth.whoami" || command.path.join(".") === "workspace.current" ? { auditDefault: true } : {}
         })),

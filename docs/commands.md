@@ -213,7 +213,7 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 164 | 2 | 60 read, 72 write, 15 destructive, 17 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
+| `business` | 173 | 2 | 60 read, 77 write, 19 destructive, 17 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json` |
 | `dynasite` | 33 | 3 | 14 read, 15 write, 4 external | `base-url`, `business-base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db` |
 | `projects` | 76 | 5 | 30 read, 29 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
@@ -225,7 +225,7 @@ This matrix is generated from the current local app manifests.
 | `email` | 50 | 7 | 22 read, 15 write, 4 destructive, 9 external | `base-url`, `business-base-url`, `workspace`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `json`, `yes`, `confirm` |
 | `im` | 42 | 6 | 17 read, 20 write, 2 destructive, 3 external | `base-url`, `business-base-url`, `workspace`, `json`, `cookie`, `session-cookie`, `bearer`, `token`, `internal-token`, `store`, `ai`, `local-db`, `data`, `data-file`, `output`, `file`, `projection-url`, `projection-token`, `published-by-user-id`, `published-by-email`, `dry-run`, `yes`, `confirm` |
 | `gives` | 46 | 9 | 24 read, 15 write, 5 destructive, 2 external | `base-url`, `business-base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
-| `works` | 49 | 0 | 17 read, 25 write, 4 destructive, 3 external | `base-url`, `business-base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `token` |
+| `works` | 50 | 2 | 18 read, 25 write, 4 destructive, 3 external | `base-url`, `business-base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm`, `token` |
 | `media` | 18 | 3 | 9 read, 9 write | `base-url`, `business-base-url`, `store`, `ai`, `local-db`, `workspace`, `token`, `json` |
 | `deliver` | 42 | 4 | 26 read, 11 write, 2 destructive, 3 external | `base-url`, `token`, `json`, `workspace`, `store`, `ai`, `local-db`, `yes`, `confirm` |
 | `link` | 21 | 0 | 16 read, 4 write, 1 external | `config`, `workspace`, `json`, `yes` |

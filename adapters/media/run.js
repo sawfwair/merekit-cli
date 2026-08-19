@@ -591,6 +591,12 @@ function optionalScalarString(value, label) {
 function isSourceType(value) {
   return SOURCE_TYPES.includes(value);
 }
+function isAudioRetentionPolicy(value) {
+  return AUDIO_RETENTION_POLICIES.includes(value);
+}
+function isAudioState(value) {
+  return AUDIO_STATES.includes(value);
+}
 function normalizeSourceType(value) {
   const normalized = value.trim().toLowerCase();
   if (!isSourceType(normalized)) {
@@ -598,7 +604,24 @@ function normalizeSourceType(value) {
   }
   return normalized;
 }
+function normalizeAudioRetentionPolicy(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!isAudioRetentionPolicy(normalized)) {
+    throw new Error(`Unsupported audio retention policy: ${value}`);
+  }
+  return normalized;
+}
+function normalizeAudioState(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!isAudioState(normalized)) {
+    throw new Error(`Unsupported audio state: ${value}`);
+  }
+  return normalized;
+}
 function toMediaItemSummary(row) {
+  const storageKey = optionalScalarString(row.storage_key, "media_items.storage_key");
+  const deletedReason = optionalScalarString(row.audio_deleted_reason, "media_items.audio_deleted_reason");
+  const audioState = storageKey ? "available" : deletedReason === "expired" || deletedReason === "removed" || deletedReason === "missing" ? deletedReason : "local-only";
   return {
     id: scalarString(row.id, "media_items.id"),
     sourceId: optionalScalarString(row.source_id, "media_items.source_id"),
@@ -607,7 +630,13 @@ function toMediaItemSummary(row) {
     mimeType: optionalScalarString(row.mime_type, "media_items.mime_type"),
     durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
     fileSizeBytes: row.file_size_bytes == null ? null : Number(row.file_size_bytes),
-    storageKey: optionalScalarString(row.storage_key, "media_items.storage_key"),
+    storageKey,
+    audioState,
+    audioRetentionPolicy: normalizeAudioRetentionPolicy(
+      scalarString(row.audio_retention_policy ?? "persistent", "media_items.audio_retention_policy")
+    ),
+    audioExpiresAt: optionalScalarString(row.audio_expires_at, "media_items.audio_expires_at"),
+    audioDeletedAt: optionalScalarString(row.audio_deleted_at, "media_items.audio_deleted_at"),
     originalPath: optionalScalarString(row.original_path, "media_items.original_path"),
     transcriptStatus: scalarString(row.transcript_status ?? "missing", "media_items.transcript_status"),
     segmentCount: Number(row.segment_count ?? 0),
@@ -625,12 +654,14 @@ function toTranscriptSegment(row) {
     speakerId: optionalScalarString(row.speaker_id, "segments.speaker_id")
   };
 }
-var SOURCE_TYPES;
+var SOURCE_TYPES, AUDIO_RETENTION_POLICIES, AUDIO_STATES;
 var init_media = __esm({
   "src/lib/shared/media.ts"() {
     "use strict";
     init_validation();
     SOURCE_TYPES = ["file", "folder", "youtube", "audiobook", "manual-upload"];
+    AUDIO_RETENTION_POLICIES = ["temporary", "persistent"];
+    AUDIO_STATES = ["available", "expired", "removed", "missing", "local-only"];
   }
 });
 
@@ -667,6 +698,12 @@ function normalizeMediaItemSummaryResponse(value, label = "media item") {
     durationSeconds: optionalNumber(record, "durationSeconds"),
     fileSizeBytes: optionalNumber(record, "fileSizeBytes"),
     storageKey: optionalString(record, "storageKey"),
+    audioState: normalizeAudioState(optionalString(record, "audioState") ?? "local-only"),
+    audioRetentionPolicy: normalizeAudioRetentionPolicy(
+      optionalString(record, "audioRetentionPolicy") ?? "persistent"
+    ),
+    audioExpiresAt: optionalString(record, "audioExpiresAt"),
+    audioDeletedAt: optionalString(record, "audioDeletedAt"),
     originalPath: optionalString(record, "originalPath"),
     transcriptStatus: expectString(record, "transcriptStatus", label),
     segmentCount: expectNumber(record, "segmentCount", label),
@@ -775,25 +812,30 @@ var init_api = __esm({
 function parseTimestamp(hours, minutes, seconds) {
   return (hours ? Number(hours) * 3600 : 0) + Number(minutes) * 60 + Number(seconds);
 }
-function parseTimestampedTranscript(itemId, transcript) {
-  const parsed = [];
-  for (const line of transcript.split(/\r?\n/u)) {
-    const match = TIMESTAMP_RE.exec(line.trim());
-    if (!match) {
-      continue;
-    }
-    const text = match[7]?.trim() ?? "";
+function extractTimestampedTranscript(transcript) {
+  const matches = [...transcript.matchAll(TIMESTAMP_RE)];
+  return matches.flatMap((match, index) => {
+    const textStart = (match.index ?? 0) + match[0].length;
+    const textEnd = matches[index + 1]?.index ?? transcript.length;
+    const text = transcript.slice(textStart, textEnd).trim();
     if (!text) {
-      continue;
+      return [];
     }
-    parsed.push({
-      itemId,
-      startSeconds: parseTimestamp(match[1], match[2] ?? "0", match[3] ?? "0"),
-      endSeconds: parseTimestamp(match[4], match[5] ?? "0", match[6] ?? "0"),
-      text,
-      speakerId: null
-    });
-  }
+    return [
+      {
+        startSeconds: parseTimestamp(match[1], match[2] ?? "0", match[3] ?? "0"),
+        endSeconds: parseTimestamp(match[4], match[5] ?? "0", match[6] ?? "0"),
+        text
+      }
+    ];
+  });
+}
+function parseTimestampedTranscript(itemId, transcript) {
+  const parsed = extractTimestampedTranscript(transcript).map((chunk) => ({
+    itemId,
+    ...chunk,
+    speakerId: null
+  }));
   if (parsed.length > 0) {
     return parsed;
   }
@@ -813,7 +855,7 @@ var TIMESTAMP_RE;
 var init_segments = __esm({
   "src/lib/shared/segments.ts"() {
     "use strict";
-    TIMESTAMP_RE = /^\[(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/u;
+    TIMESTAMP_RE = /\[(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\s*(?:-->|->|→)\s*(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)\]\s*/gu;
   }
 });
 
@@ -1453,11 +1495,11 @@ import os4 from "node:os";
 import path6 from "node:path";
 import { spawnSync as spawnSync2 } from "node:child_process";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_d17acb8bd318b2d59921c5a37e9f8aad/node_modules/@mere/cli-auth/src/client.ts
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/contract.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_d17acb8bd318b2d59921c5a37e9f8aad/node_modules/@mere/cli-auth/src/contract.ts
 var CLI_AUTH_START_PATH = "/api/cli/v1/auth/start";
 var CLI_AUTH_EXCHANGE_PATH = "/api/cli/v1/auth/exchange";
 var CLI_AUTH_REFRESH_PATH = "/api/cli/v1/auth/refresh";
@@ -1468,7 +1510,7 @@ var CLI_AUTH_CODE_QUERY_PARAM = "code";
 var CLI_AUTH_ERROR_QUERY_PARAM = "error";
 var CLI_AUTH_ERROR_DESCRIPTION_QUERY_PARAM = "error_description";
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/session.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_d17acb8bd318b2d59921c5a37e9f8aad/node_modules/@mere/cli-auth/src/session.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import os2 from "node:os";
@@ -1590,7 +1632,7 @@ function mergeSessionPayload(current, payload, options = {}) {
   };
 }
 
-// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_23266a883b1cd7e991fc17449e3c5227/node_modules/@mere/cli-auth/src/client.ts
+// node_modules/.pnpm/@mere+cli-auth@file+..+business+packages+cli-auth_@sveltejs+kit@2.69.1_@sveltejs+vite-p_d17acb8bd318b2d59921c5a37e9f8aad/node_modules/@mere/cli-auth/src/client.ts
 function maybeOpenBrowser(url) {
   try {
     if (process.platform === "darwin") {
@@ -1965,7 +2007,7 @@ async function listAudioFiles(dirPath) {
 }
 
 // cli/manifest.ts
-var CLI_VERSION = "0.1.0";
+var CLI_VERSION = "0.2.0";
 var HELP_TEXT = `mere-media CLI
 
 Usage:
@@ -2001,7 +2043,7 @@ Commands:
   mere-media import youtube <url> [--title TITLE] [--json]
   mere-media import audiobook <dir> [--json]
   mere-media import bundle <path> [--dry-run] [--json]
-  mere-media process <item-id|path> [--audio PATH] [--transcribe] [--embed] [--json]
+  mere-media process <item-id|path> [--audio PATH] [--transcribe] [--diarize] [--embed] [--json]
   mere-media search <query> [--json]
 `;
 var GLOBAL_FLAGS = {
@@ -2232,7 +2274,7 @@ var MANIFEST_COMMANDS = [
   {
     id: "process",
     path: ["process"],
-    summary: "Transcribe and optionally embed a media item or local audio path.",
+    summary: "Transcribe, optionally label speakers, and embed a media item or local audio path.",
     auth: "workspace",
     risk: "write",
     supportsJson: true,
@@ -2240,7 +2282,7 @@ var MANIFEST_COMMANDS = [
     requiresYes: false,
     requiresConfirm: false,
     positionals: ["item-id|path"],
-    flags: ["store", "ai", "local-db", "workspace", "audio", "transcribe", "embed"]
+    flags: ["store", "ai", "local-db", "workspace", "audio", "transcribe", "diarize", "embed"]
   },
   {
     id: "search",
@@ -2544,12 +2586,102 @@ async function transcribeAudio(audioPath, options = {}) {
 }
 
 // cli/mere-run.ts
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+// src/lib/shared/diarization.ts
+init_validation();
+function normalizeSpeakerIntervals(value, label = "speaker diarization") {
+  const payload = expectRecord(value, label);
+  if (!Array.isArray(payload.segments)) {
+    throw new Error(`${label}.segments must be an array.`);
+  }
+  return payload.segments.map((entry, index) => {
+    const segmentLabel = `${label}.segments[${index.toString()}]`;
+    const segment = expectRecord(entry, segmentLabel);
+    const speaker = expectString(segment, "speaker", segmentLabel).trim();
+    const speakerIndex = optionalNumber(segment, "speaker_index");
+    const startSeconds = optionalNumber(segment, "start_seconds");
+    const endSeconds = optionalNumber(segment, "end_seconds");
+    const durationSeconds = optionalNumber(segment, "duration_seconds");
+    if (!speaker) throw new Error(`${segmentLabel}.speaker must not be empty.`);
+    if (!Number.isInteger(speakerIndex) || speakerIndex === null || speakerIndex < 0) {
+      throw new Error(`${segmentLabel}.speaker_index must be a non-negative integer.`);
+    }
+    if (startSeconds === null || startSeconds < 0 || endSeconds === null || endSeconds < startSeconds) {
+      throw new Error(`${segmentLabel} must have a valid non-negative time range.`);
+    }
+    if (durationSeconds === null || durationSeconds < 0) {
+      throw new Error(`${segmentLabel}.duration_seconds must be non-negative.`);
+    }
+    return { speaker, speakerIndex, startSeconds, endSeconds, durationSeconds };
+  });
+}
+function overlapSeconds(segment, interval) {
+  return Math.max(0, Math.min(segment.endSeconds, interval.endSeconds) - Math.max(segment.startSeconds, interval.startSeconds));
+}
+function intervalAtInstant(seconds, intervals) {
+  return intervals.find((interval) => seconds >= interval.startSeconds && seconds <= interval.endSeconds) ?? null;
+}
+function addSpeakerLabels(segments, intervals) {
+  const ordered = [...intervals].sort(
+    (left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds
+  );
+  const labels = /* @__PURE__ */ new Map();
+  for (const interval of ordered) {
+    if (!labels.has(interval.speaker)) {
+      labels.set(interval.speaker, `Speaker ${(labels.size + 1).toString()}`);
+    }
+  }
+  return segments.map((segment) => {
+    let best = null;
+    let bestOverlap = 0;
+    for (const interval of ordered) {
+      const overlap = overlapSeconds(segment, interval);
+      if (overlap > bestOverlap) {
+        best = interval;
+        bestOverlap = overlap;
+      }
+    }
+    if (!best && segment.startSeconds === segment.endSeconds) {
+      best = intervalAtInstant(segment.startSeconds, ordered);
+    }
+    return {
+      ...segment,
+      speakerId: best ? labels.get(best.speaker) ?? null : segment.speakerId ?? null
+    };
+  });
+}
+
+// cli/mere-run.ts
 var APP_ID = "mere-media";
+var execFileAsync = promisify(execFile);
+async function resolveMereRunBin2(env = process.env) {
+  return resolveMereRunBin(env, APP_ID);
+}
 async function transcribeAudio2(audioPath, env = process.env) {
   return transcribeAudio(audioPath, {
     env,
     appId: APP_ID
   });
+}
+async function diarizeAudio(audioPath, env = process.env) {
+  const binary = await resolveMereRunBin2(env);
+  const { stdout } = await execFileAsync(
+    binary,
+    [
+      "speech",
+      "diarize",
+      audioPath,
+      "--model",
+      "speech-diarization-sortformer",
+      "--format",
+      "json",
+      "--quiet"
+    ],
+    { maxBuffer: 16 * 1024 * 1024, env }
+  );
+  return normalizeSpeakerIntervals(parseJsonText(stdout, "mere.run diarization response"));
 }
 async function embedTexts2(texts, env = process.env) {
   return embedTexts(texts, {
@@ -3096,8 +3228,9 @@ async function resolveProcessTarget(target, args, store) {
 }
 async function runProcess(args, io) {
   const target = args.positionals[1];
-  if (!target) throw new Error("Usage: mere-media process <item-id|path> [--transcribe] [--embed]");
-  const shouldTranscribe = Boolean(args.options.transcribe) || !args.options.embed;
+  if (!target) throw new Error("Usage: mere-media process <item-id|path> [--transcribe] [--diarize] [--embed]");
+  const shouldDiarize = Boolean(args.options.diarize);
+  const shouldTranscribe = Boolean(args.options.transcribe) || shouldDiarize || !args.options.embed;
   const shouldEmbed = Boolean(args.options.embed);
   const store = await storeFromContext(args.options, io);
   try {
@@ -3111,15 +3244,16 @@ async function runProcess(args, io) {
       const wav = await toWav(resolved.audioPath);
       try {
         transcriptText = await transcribeAudio2(wav.path, io.env);
+        const parsedSegments = parseTimestampedTranscript(resolved.itemId, transcriptText).map((segment) => ({
+          startSeconds: segment.startSeconds,
+          endSeconds: segment.endSeconds,
+          text: segment.text,
+          speakerId: segment.speakerId
+        }));
+        segments = shouldDiarize ? addSpeakerLabels(parsedSegments, await diarizeAudio(wav.path, io.env)) : parsedSegments;
       } finally {
         await wav.cleanup();
       }
-      segments = parseTimestampedTranscript(resolved.itemId, transcriptText).map((segment) => ({
-        startSeconds: segment.startSeconds,
-        endSeconds: segment.endSeconds,
-        text: segment.text,
-        speakerId: segment.speakerId
-      }));
       segmentCount = segments.length;
       await store.saveTranscript(resolved.itemId, {
         transcriptText,
@@ -3150,6 +3284,7 @@ async function runProcess(args, io) {
       ok: true,
       itemId: resolved.itemId,
       transcribed: shouldTranscribe,
+      diarized: shouldDiarize,
       embedded: shouldEmbed,
       segmentCount,
       vectorCount,

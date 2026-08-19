@@ -1,6 +1,6 @@
 {
   "name": "@merekit/cli",
-  "version": "0.5.18",
+  "version": "0.5.19",
   "description": "Public Mere command plane with waitlist and invite onboarding, bundled app adapters, agent context packs, audits, and MCP access.",
   "private": false,
   "license": "Apache-2.0",
@@ -52,18 +52,24 @@
     "access": "public"
   },
   "overrides": {
+    "@hono/node-server": "1.19.17",
+    "body-parser": "2.3.0",
     "esbuild": "0.28.1",
-    "fast-uri": "3.1.2",
-    "hono": "4.12.28",
+    "fast-uri": "3.1.5",
+    "hono": "4.12.34",
+    "ip-address": "10.3.1",
     "qs": "6.15.2",
     "vite": "6.4.3"
   },
   "pnpm": {
     "overrides": {
+      "@hono/node-server": "1.19.17",
       "@vitejs/plugin-vue": "6.0.6",
+      "body-parser": "2.3.0",
       "esbuild": "0.28.1",
-      "fast-uri": "3.1.2",
-      "hono": "4.12.28",
+      "fast-uri": "3.1.5",
+      "hono": "4.12.34",
+      "ip-address": "10.3.1",
       "qs": "6.15.2",
       "vite": "6.4.3"
     }
