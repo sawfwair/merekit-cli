@@ -2,81 +2,64 @@
 layout: home
 hero:
   name: Mere CLI
-  text: One command plane for Mere workspaces.
-  tagline: Install once, onboard safely, inspect live app manifests, read authenticated product docs, and hand agents a secret-free operating pack.
+  text: Manage Mere from your terminal
+  tagline: For workspace owners, operators, and developers. Use the Mere command-line interface (CLI) to check app state and prepare context for AI agents.
   actions:
     - theme: brand
-      text: Start Onboarding
-      link: /onboarding/
+      text: Get started
+      link: '#get-started'
     - theme: alt
-      text: Command Reference
+      text: Command reference
       link: /commands
     - theme: alt
-      text: Docs CLI
-      link: /product-docs
+      text: Agent setup
+      link: /agent
 features:
-  - title: Onboarding first
-    details: "'mere onboard --interactive' guides normal users from a waitlist email or invite code; 'mere onboard' runs discovery, readiness checks, auth status, manifest collection, and safe workspace reads for operators and agents."
-  - title: Manifest-backed operations
-    details: Product behavior stays in app CLIs. The root discovers exact command paths, risks, flags, JSON support, and destructive guardrails.
-  - title: Agent-ready by default
-    details: Context packs include docs, manifests, auth summaries, snapshots, MCP config, and next commands without copying product secrets.
-  - title: Hosted product docs
-    details: "'mere docs' searches and reads authenticated platform and app docs from mere-docs.mere.world, so agents do not need local repos or private paths."
+  - title: Set up your workspace
+    details: Use your invite code to create and set up a workspace. If you don't have an invite, join the waitlist.
+  - title: Inspect before you act
+    details: Review each app's commands, options, and required confirmations. Before you make changes, check sign-in status and workspace data.
+  - title: Prepare context for your agent
+    details: Generate files with command details, setup reports, and workspace snapshots. Use the reports to plan the agent's next steps.
+  - title: Read product docs
+    details: Search and read Mere product documentation with <code>mere docs</code>. To use protected docs, sign in to the documentation service.
 ---
 
-## What Mere CLI Is
+## Get started
 
-`mere` is the public command plane for Mere. It gives humans and agents one entrypoint while product behavior remains owned by the app CLIs bundled inside `@merekit/cli`.
+You need Node.js 24 or 25 and npm. You don't need to install Mere CLI globally.
 
-The root CLI is responsible for discovery, onboarding, context, diagnostics, read-only ops workflows, audit metadata, and MCP access. App CLIs remain authoritative for product authentication, workspace selectors, mutation semantics, and destructive guardrails.
-
-<div class="mere-path">
-  <div class="mere-step">
-    <strong>Install</strong>
-    <span>Add <code>@merekit/cli</code> and confirm the <code>mere</code> binary is available.</span>
-  </div>
-  <div class="mere-step">
-    <strong>Onboard</strong>
-    <span>Run <code>mere onboard --interactive</code> to join the protected waitlist, redeem an invite, or use <code>mere onboard</code> when an operator or agent already has a workspace.</span>
-  </div>
-  <div class="mere-step">
-    <strong>Operate</strong>
-    <span>Use manifests, hosted docs, snapshots, workspace lifecycle commands, site workflows, and MCP tools to inspect first and delegate carefully.</span>
-  </div>
-</div>
-
-## Start Here
-
-Waitlist before an invite exists:
-
-```sh
-npx --yes @merekit/cli@latest business waitlist join --email you@example.com
-```
-
-Human waitlist or invite-code first run:
+To start setup, run this command in an interactive terminal:
 
 ```sh
 npx --yes @merekit/cli@latest onboard --interactive
 ```
 
-Headless invite bootstrap and operator workspace handoff:
+When prompted, enter the value that matches your task:
 
-```sh
-mere business onboard start INVITE_CODE --json
-mere onboard --workspace WORKSPACE_ID --target codex --json
-```
+- **Invite code:** Redeem your invite to create and set up a workspace. If prompted, sign in through your browser.
+- **Email address:** Join the waitlist through your browser and confirm your email address. Joining the waitlist doesn't create a workspace.
+- **Workspace ID:** Run setup checks for a workspace that you already have permission to use. This option is for operators and agents.
 
-Then open the generated `ONBOARDING.md` for a readable summary and `onboarding-report.json` for automation.
+For installation options, see [Install the CLI](/onboarding/install). For setup without interactive prompts, see [First run](/onboarding/first-run).
 
-## Next Steps
+## Review your setup
 
-- [Install the CLI](/onboarding/install)
-- [Run onboarding](/onboarding/first-run)
+After workspace checks finish, the CLI writes reports to `~/.config/mere/agents/default/` by default.
+
+Open the `ONBOARDING.md` file for setup status and recommended commands. For automation, use the `onboarding-report.json` file. Before running app commands, resolve any remaining setup requirements.
+
+## Before you make changes
+
+Installing the CLI doesn't grant workspace access. Each Mere app enforces its own authentication, workspace access, and confirmation requirements.
+
+Before changing data, review the app's command options and [confirmation requirements](/reference/safety).
+
+To connect an AI agent, use the [Model Context Protocol (MCP) server](/mcp). It provides read-only tools by default.
+
+## Next steps
+
 - [Read the onboarding report](/onboarding/report)
-- [Understand the agent context pack](/onboarding/context-pack)
-- [Follow the agent workflow](/agent)
-- [Read hosted product docs](/product-docs)
-- [Operate Business workspaces and sites](/business-site)
-- [Use the command reference](/commands)
-- [Run the release checklist](/release-checklist)
+- [Prepare an agent context pack](/onboarding/context-pack)
+- [Read product docs from your terminal](/product-docs)
+- [Manage Business workspaces and sites](/business-site)
