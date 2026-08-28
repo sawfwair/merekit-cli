@@ -1123,7 +1123,7 @@ body {
   font-weight: 620;
   letter-spacing: 0.14em;
   line-height: 1.4;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .VPHero .text {
@@ -1218,7 +1218,7 @@ body {
   font-size: 10px;
   font-weight: 540;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .mere-atlas-topline span:last-child::before {

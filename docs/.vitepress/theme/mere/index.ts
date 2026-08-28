@@ -54,31 +54,31 @@ export function createMereProductDocsTheme(options: MereProductDocsThemeOptions)
   const planes: MereAtlasPlane[] = [
     {
       name: `${options.productName} guide`,
-      signal: 'Setup paths, product workflows, and common tasks',
+      signal: 'Install the CLI and set up your workspace',
       href: guideHref,
       accent: 'green',
-      items: ['Guide', 'Workflows', 'Setup'],
+      items: ['Install', 'Onboarding', 'Commands'],
     },
     {
-      name: 'Architecture',
-      signal: 'Boundaries, data flow, and integration contracts',
+      name: 'Workspaces and sites',
+      signal: 'Create workspaces, manage content, and publish sites',
       href: architectureHref,
       accent: 'blue',
-      items: ['Contracts', 'Runtime', 'Data'],
+      items: ['Workspaces', 'Content', 'Sites'],
     },
     {
-      name: 'Operations',
-      signal: 'Deploy, verify, release, and troubleshoot',
+      name: 'Workspace checks',
+      signal: 'Check app availability, sign-in status, and workspace data',
       href: operationsHref,
       accent: 'plum',
-      items: ['Deploy', 'Testing', 'Runbooks'],
+      items: ['Diagnostics', 'Snapshots', 'Audits'],
     },
     {
-      name: 'Mere atlas',
-      signal: 'Cross-product docs and ecosystem inventory',
+      name: 'Mere product docs',
+      signal: 'Read platform and app documentation after signing in',
       href: 'https://mere-docs.mere.world/',
       accent: 'copper',
-      items: ['Products', 'Matrix', 'Reference'],
+      items: ['Products', 'Guides', 'Reference'],
     },
   ]
 
@@ -86,7 +86,7 @@ export function createMereProductDocsTheme(options: MereProductDocsThemeOptions)
     keyColor: resolveMereProductDocsKeyColor(options.productName, options.productDomain, options.keyColor),
     atlas: {
       eyebrowLeft: options.docsUrl.replace(/^https?:\/\//, '').replace(/\/$/, ''),
-      eyebrowRight: 'docs online',
+      eyebrowRight: 'Documentation',
       corePrefix,
       coreSuffix,
       planes,
