@@ -213,7 +213,7 @@ This matrix is generated from the current local app manifests.
 
 | Namespace | Commands | Audit Defaults | Risk Summary | Global Flags |
 | --- | ---: | ---: | --- | --- |
-| `business` | 173 | 2 | 60 read, 77 write, 19 destructive, 17 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
+| `business` | 174 | 2 | 60 read, 77 write, 19 destructive, 18 external | `workspace`, `json`, `no-interactive`, `yes`, `confirm` |
 | `finance` | 43 | 3 | 29 read, 8 write, 4 destructive, 2 external | `base-url`, `profile`, `store`, `ai`, `local-db`, `projection-url`, `projection-token`, `workspace`, `json` |
 | `dynasite` | 33 | 3 | 14 read, 15 write, 4 external | `base-url`, `business-base-url`, `workspace`, `json`, `token`, `cookie`, `e2e-token`, `e2e`, `store`, `ai`, `local-db` |
 | `projects` | 76 | 5 | 30 read, 29 write, 9 destructive, 8 external | `base-url`, `workspace`, `store`, `ai`, `local-db`, `json`, `yes`, `confirm` |
