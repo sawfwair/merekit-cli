@@ -54,7 +54,10 @@ function redactText(value) {
 }
 function redactSecrets(value, seen = /* @__PURE__ */ new WeakSet()) {
   if (typeof value === "string") return redactText(value);
-  if (!value || typeof value !== "object") return value;
+  if (value === null || value === void 0) return value;
+  if (typeof value === "boolean" || typeof value === "number" || typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
+    return value;
+  }
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
   if (Array.isArray(value)) {
@@ -710,6 +713,7 @@ var CLI_OPERATION_NAMES = [
   "site.revisions.list",
   "site.revisions.revert",
   "site.publish",
+  "site.unpublish",
   "site.bundle.upload",
   "site.bundle.status",
   "site.bundle.publish",
@@ -875,7 +879,7 @@ async function redeemConsoleInvite(input2) {
         authorization: `Bearer ${input2.accessToken}`
       }
     }
-  ).then((payload) => payload);
+  );
 }
 async function bootstrapConsoleOnboarding(input2) {
   const url = new URL("/api/cli/v1/onboarding/bootstrap", input2.baseUrl);
@@ -887,7 +891,7 @@ async function bootstrapConsoleOnboarding(input2) {
         authorization: `Bearer ${input2.accessToken}`
       }
     }
-  ).then((payload) => payload);
+  );
 }
 async function bootstrapConsoleAgentOnboarding(input2) {
   const url = new URL("/api/cli/v1/onboarding/agent-bootstrap", input2.baseUrl);
@@ -895,14 +899,17 @@ async function bootstrapConsoleAgentOnboarding(input2) {
   if (input2.bootstrapToken?.trim()) {
     headers.set("authorization", `Bearer ${input2.bootstrapToken.trim()}`);
   }
+  const body = {
+    code: input2.code,
+    values: input2.values ?? {},
+    agent: input2.agent ?? {}
+  };
+  if (input2.identityProof?.trim()) {
+    Object.assign(body, { identityProof: input2.identityProof.trim() });
+  }
   return postJson2(
     url,
-    {
-      code: input2.code,
-      values: input2.values ?? {},
-      agent: input2.agent ?? {},
-      ...input2.identityProof?.trim() ? { identityProof: input2.identityProof.trim() } : {}
-    },
+    body,
     { headers }
   );
 }
@@ -912,13 +919,16 @@ async function reissueConsoleAgentSession(input2) {
   if (input2.bootstrapToken?.trim()) {
     headers.set("authorization", `Bearer ${input2.bootstrapToken.trim()}`);
   }
+  const body = {
+    workspaceId: input2.workspaceId,
+    agent: input2.agent ?? {}
+  };
+  if (input2.identityProof?.trim()) {
+    Object.assign(body, { identityProof: input2.identityProof.trim() });
+  }
   return postJson2(
     url,
-    {
-      workspaceId: input2.workspaceId,
-      agent: input2.agent ?? {},
-      ...input2.identityProof?.trim() ? { identityProof: input2.identityProof.trim() } : {}
-    },
+    body,
     { headers }
   );
 }
@@ -940,13 +950,16 @@ async function mintAgentsIdentifyMereProof(input2) {
 }
 async function mintAgentsIdentifyMereBootstrapProof(input2) {
   const url = new URL("/api/mere/workspace-bootstrap-proof", input2.origin);
+  const body = {
+    inviteCode: input2.code
+  };
+  if (input2.mereAgentId?.trim()) {
+    Object.assign(body, { mereAgentId: input2.mereAgentId.trim() });
+  }
+  Object.assign(body, { audience: input2.audience });
   return postJson2(
     url,
-    {
-      inviteCode: input2.code,
-      ...input2.mereAgentId?.trim() ? { mereAgentId: input2.mereAgentId.trim() } : {},
-      audience: input2.audience
-    },
+    body,
     {
       headers: {
         authorization: `Bearer ${input2.apiKey}`
@@ -964,7 +977,7 @@ async function createConsoleWorkspace(input2) {
         authorization: `Bearer ${input2.accessToken}`
       }
     }
-  ).then((payload) => payload);
+  );
 }
 async function getConsoleOnboardingStatus(input2) {
   const url = new URL("/api/cli/v1/onboarding/status", input2.baseUrl);
@@ -976,7 +989,7 @@ async function getConsoleOnboardingStatus(input2) {
         authorization: `Bearer ${input2.accessToken}`
       }
     }
-  ).then((payload) => payload);
+  );
 }
 async function postWorkspaceOperation(workspace, accessToken, op, input2) {
   const url = new URL(CLI_ROUTE_PATH, workspaceBaseUrl2(workspace));
@@ -6539,8 +6552,11 @@ ${url}`;
       if (!session) {
         throw usageError("No local session found. Run `mere-business auth login` first.");
       }
+      const selector = runtime.global.workspace ?? session.defaultWorkspaceId;
       return {
-        current: session.workspace,
+        current: selector ? requireWorkspaceSelection2(session.workspaces, selector) : null,
+        selectionSource: runtime.global.workspace ? "workspace-option" : "business-default",
+        authenticatedWorkspace: session.workspace,
         defaultWorkspace: session.workspaces.find((workspace) => workspace.id === session.defaultWorkspaceId) ?? null
       };
     },
@@ -6556,8 +6572,9 @@ ${url}`;
       if (!session) {
         throw usageError("No local session found. Run `mere-business auth login` first.");
       }
+      const selector = runtime.global.workspace ?? session.defaultWorkspaceId;
       return {
-        currentWorkspaceId: session.workspace?.id ?? null,
+        currentWorkspaceId: selector ? requireWorkspaceSelection2(session.workspaces, selector).id : null,
         defaultWorkspaceId: session.defaultWorkspaceId,
         workspaces: session.workspaces
       };
@@ -8636,6 +8653,15 @@ next: ${payload.nextUrl}` : ""}`;
     risk: "write"
   }),
   rpcCommand({
+    path: ["site", "unpublish"],
+    summary: "Take the live website offline while preserving its draft and preview (owner or admin).",
+    options: [stringOption("request-id", "requestId", "Website request id. Defaults to the current request.")],
+    schema: external_exports.object({ requestId: optionalString }),
+    op: "site.unpublish",
+    buildInput: (input2) => input2,
+    risk: "external"
+  }),
+  rpcCommand({
     path: ["site", "publish"],
     summary: "Publish the linked Dynasite site to preview or live.",
     options: [
@@ -9085,14 +9111,18 @@ function parseCommand(argv) {
     allowPositionals: true,
     strict: true,
     options: Object.fromEntries(
-      optionSpecs.map((option) => [
-        option.name,
-        {
-          type: option.type,
-          ...option.short ? { short: option.short } : {},
-          ...option.multiple ? { multiple: true } : {}
+      optionSpecs.map((option) => {
+        const parsedOption = {
+          type: option.type
+        };
+        if (option.short) {
+          Object.assign(parsedOption, { short: option.short });
         }
-      ])
+        if (option.multiple) {
+          Object.assign(parsedOption, { multiple: true });
+        }
+        return [option.name, parsedOption];
+      })
     )
   });
   const values = {};
@@ -9215,29 +9245,39 @@ function renderCommandManifest() {
       sessionPath: "~/.local/state/zerosmb-cli/session.json",
       globalFlags: ["workspace", "json", "no-interactive", "yes", "confirm"],
       commands: [
-        ...commands.map((command) => ({
-          id: command.path.join("."),
-          path: command.path,
-          summary: command.summary,
-          auth: command.auth ?? "workspace",
-          risk: commandRisk(command),
-          supportsJson: true,
-          supportsData: command.supportsData ?? false,
-          requiresYes: command.destructive || commandRisk(command) === "external",
-          requiresConfirm: Boolean(command.confirmationTarget),
-          interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
-          positionals: command.positionals ?? [],
-          flags: (command.options ?? []).map((option) => option.name),
-          options: (command.options ?? []).map((option) => ({
-            name: option.name,
-            type: option.type,
-            description: option.summary,
-            required: option.required ?? false,
-            ...option.enum ? { enum: option.enum } : {}
-          })),
-          requiredFlags: (command.options ?? []).filter((option) => option.required).map((option) => option.name),
-          ...command.path.join(".") === "auth.whoami" || command.path.join(".") === "workspace.current" ? { auditDefault: true } : {}
-        })),
+        ...commands.map((command) => {
+          const manifestCommand = {
+            id: command.path.join("."),
+            path: command.path,
+            summary: command.summary,
+            auth: command.auth ?? "workspace",
+            risk: commandRisk(command),
+            supportsJson: true,
+            supportsData: command.supportsData ?? false,
+            requiresYes: command.destructive || commandRisk(command) === "external",
+            requiresConfirm: Boolean(command.confirmationTarget),
+            interactiveConfirm: command.destructive || commandRisk(command) === "external" || Boolean(command.confirmationTarget),
+            positionals: command.positionals ?? [],
+            flags: (command.options ?? []).map((option) => option.name),
+            options: (command.options ?? []).map((option) => {
+              const manifestOption = {
+                name: option.name,
+                type: option.type,
+                description: option.summary,
+                required: option.required ?? false
+              };
+              if (option.enum) {
+                Object.assign(manifestOption, { enum: option.enum });
+              }
+              return manifestOption;
+            }),
+            requiredFlags: (command.options ?? []).filter((option) => option.required).map((option) => option.name)
+          };
+          if (command.path.join(".") === "auth.whoami" || command.path.join(".") === "workspace.current") {
+            Object.assign(manifestCommand, { auditDefault: true });
+          }
+          return manifestCommand;
+        }),
         {
           id: "completion",
           path: ["completion"],

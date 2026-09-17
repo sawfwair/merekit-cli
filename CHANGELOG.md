@@ -6,6 +6,13 @@ This project follows semantic versioning before `1.0.0` with the usual pre-1.0 c
 
 ## Unreleased
 
+## 0.5.20 - 2026-09-17
+
+- Added `mere business site unpublish --request-id REQUEST_ID --yes` for workspace owners and admins. Unpublishing preserves the draft and preview.
+- Fixed Business workspace reporting to distinguish the effective workspace selected through root context or `--workspace` from the saved default.
+- Added packaged-adapter regression coverage for workspace precedence and credential redaction.
+- Rebuilt all 16 bundled adapters from clean canonical `main` heads with byte-identical rebuilds under the recorded `canonical-main` review policy.
+
 ## 0.5.19 - 2026-08-19
 
 - Fixed root auth orchestration for apps that require no authentication so login, whoami, logout, and status report `not_required` instead of delegating unsupported auth commands.
