@@ -32,7 +32,12 @@ function runPackDryRun() {
 	if (result.status !== 0) {
 		throw new Error(result.stderr || result.stdout || `npm pack --dry-run exited ${result.status}`);
 	}
-	return JSON.parse(result.stdout)[0].files.map((file) => file.path);
+	const payload = JSON.parse(result.stdout);
+	const pack = Array.isArray(payload) ? payload[0] : Object.values(payload)[0];
+	if (!pack || !Array.isArray(pack.files)) {
+		throw new Error('npm pack --dry-run returned an unrecognized JSON payload.');
+	}
+	return pack.files.map((file) => file.path);
 }
 
 const files = runPackDryRun();

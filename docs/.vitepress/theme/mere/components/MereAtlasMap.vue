@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withBase } from 'vitepress'
 import { useMereDocsThemeConfig } from '../config'
 
 const themeConfig = useMereDocsThemeConfig()
@@ -24,7 +25,7 @@ const themeConfig = useMereDocsThemeConfig()
           :key="plane.name"
           class="mere-atlas-plane"
           :class="`is-${plane.accent}`"
-          :href="plane.href"
+          :href="withBase(plane.href)"
         >
           <span class="mere-atlas-plane-name">{{ plane.name }}</span>
           <span class="mere-atlas-plane-signal">{{ plane.signal }}</span>

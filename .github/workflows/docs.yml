@@ -10,6 +10,7 @@ on:
       - 'docs/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/docs.yml'
       - 'README.md'
   pull_request:
@@ -17,14 +18,13 @@ on:
       - 'docs/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/docs.yml'
       - 'README.md'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: docs-pages
@@ -33,16 +33,20 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 10.8.1
+          version: 10.34.5
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -72,6 +76,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

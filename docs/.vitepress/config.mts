@@ -13,7 +13,7 @@ function resolveBase(): string {
 
 export default defineConfig({
   title: 'Mere CLI',
-  description: 'The user and agent command plane for Mere workspaces.',
+  description: 'Manage Mere workspaces and apps from your terminal. Check setup, read product docs, and prepare context for AI agents.',
   base: resolveBase(),
   cleanUrls: true,
   lastUpdated: true,
@@ -21,7 +21,7 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#f8faf7' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'Mere CLI' }],
-    ['meta', { property: 'og:description', content: 'Install Mere, onboard safely, inspect workspaces, and operate app CLIs from one command plane.' }]
+    ['meta', { property: 'og:description', content: 'Manage Mere workspaces and apps from your terminal. Check setup, read product docs, and prepare context for AI agents.' }]
   ],
   markdown: mereMarkdown(),
   vite: {
@@ -34,11 +34,11 @@ export default defineConfig({
     logo: '/mark.svg',
     search: { provider: 'local' },
     nav: [
-      { text: 'Start', link: '/getting-started' },
+      { text: 'Get started', link: '/getting-started' },
       { text: 'Onboarding', link: '/onboarding/' },
       { text: 'Commands', link: '/commands' },
-      { text: 'Docs CLI', link: '/product-docs' },
-      { text: 'MCP', link: '/mcp' }
+      { text: 'Product docs', link: '/product-docs' },
+      { text: 'MCP server', link: '/mcp' }
     ],
     socialLinks: [
       { icon: 'github', link: 'https://github.com/sawfwair/merekit-cli' }
@@ -48,36 +48,36 @@ export default defineConfig({
         text: 'Orientation',
         items: [
           { text: 'Home', link: '/' },
-          { text: 'Getting Started', link: '/getting-started' }
+          { text: 'Get started', link: '/getting-started' }
         ]
       },
       {
         text: 'Onboarding',
         items: [
           { text: 'Overview', link: '/onboarding/' },
-          { text: 'Install', link: '/onboarding/install' },
-          { text: 'First Run', link: '/onboarding/first-run' },
-          { text: 'Read The Report', link: '/onboarding/report' },
-          { text: 'Agent Context Pack', link: '/onboarding/context-pack' },
+          { text: 'Install the CLI', link: '/onboarding/install' },
+          { text: 'First run', link: '/onboarding/first-run' },
+          { text: 'Read the report', link: '/onboarding/report' },
+          { text: 'Agent context pack', link: '/onboarding/context-pack' },
           { text: 'Troubleshooting', link: '/onboarding/troubleshooting' }
         ]
       },
       {
         text: 'Operate',
         items: [
-          { text: 'Command Reference', link: '/commands' },
-          { text: 'Hosted Product Docs', link: '/product-docs' },
-          { text: 'Business Workspaces And Sites', link: '/business-site' },
-          { text: 'Agent Workflow', link: '/agent' },
-          { text: 'Ops Workflows', link: '/ops' },
-          { text: 'MCP Server', link: '/mcp' }
+          { text: 'Command reference', link: '/commands' },
+          { text: 'Product docs', link: '/product-docs' },
+          { text: 'Business workspaces and sites', link: '/business-site' },
+          { text: 'Agent workflow', link: '/agent' },
+          { text: 'Operational workflows', link: '/ops' },
+          { text: 'MCP server', link: '/mcp' }
         ]
       },
       {
         text: 'Reference',
         items: [
-          { text: 'Safety Model', link: '/reference/safety' },
-          { text: 'Release Checklist', link: '/release-checklist' }
+          { text: 'Safety model', link: '/reference/safety' },
+          { text: 'Release checklist', link: '/release-checklist' }
         ]
       }
     ],

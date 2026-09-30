@@ -15,8 +15,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   version:
@@ -42,23 +41,26 @@ jobs:
           if [[ "$version" == "$published" ]]; then
             should_publish=false
           fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "npm_tag=${NPM_TAG}" >> "$GITHUB_OUTPUT"
-          echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${version}"
+            echo "npm_tag=${NPM_TAG}"
+            echo "should_publish=${should_publish}"
+          } >> "$GITHUB_OUTPUT"
           echo "local version: ${version}"
           echo "published version: ${published:-none}"
           echo "should publish: ${should_publish}"
 
-  npm:
+  package:
     needs: version
     if: needs.version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
-    environment: npm
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
-          version: 10.8.1
+          version: 10.34.5
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -70,18 +72,44 @@ jobs:
       - run: pnpm docs:build
       - run: pnpm test:pack
       - run: pnpm pack:dry
-      - run: npm publish --access public --provenance --tag "$NPM_TAG"
+      - name: Pack verified package
+        run: npm pack --ignore-scripts
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: '*.tgz'
+          if-no-files-found: error
+          retention-days: 1
+
+  npm:
+    needs: [version, package]
+    if: needs.version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Download verified package
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+      - run: npm publish ./*.tgz --access public --provenance --tag "$NPM_TAG" --ignore-scripts
         env:
-          NPM_CONFIG_IGNORE_SCRIPTS: true
           NPM_TAG: ${{ needs.version.outputs.npm_tag }}
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           NPM_TAG: ${{ needs.version.outputs.npm_tag }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          tag="v${version}"
+          tag="v${VERSION}"
           args=(--repo "$GITHUB_REPOSITORY" --title "Mere CLI ${tag}" --generate-notes)
           if [[ "$NPM_TAG" != "latest" ]]; then
             args+=(--prerelease)
